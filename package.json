@@ -3,10 +3,10 @@
   "version": "0.2.0",
   "private": true,
   "scripts": {
-    "dev": "next dev -p 3000 2>&1 | tee dev.log",
-    "build": "prisma generate && next build",
+    "dev": "NODE_OPTIONS='--max-old-space-size=4096' next dev -p 3000 2>&1 | tee dev.log",
+    "build": "NODE_OPTIONS='--max-old-space-size=4096' prisma generate && NODE_OPTIONS='--max-old-space-size=4096' next build",
     "postinstall": "prisma generate",
-    "start": "NODE_ENV=production bun .next/standalone/server.js 2>&1 | tee server.log",
+    "start": "NODE_OPTIONS='--max-old-space-size=2048' NODE_ENV=production bun .next/standalone/server.js 2>&1 | tee server.log",
     "lint": "eslint .",
     "db:push": "prisma db push",
     "db:generate": "prisma generate",

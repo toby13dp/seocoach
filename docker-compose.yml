@@ -23,8 +23,16 @@ services:
       - NODE_ENV=production
       - PORT=3000
       - HOSTNAME=0.0.0.0
+      # OOM Prevention: 2GB heap voor productie-runtime
+      - NODE_OPTIONS=--max-old-space-size=2048
       # PostgreSQL connectie (overschrijft .env als PostgreSQL actief is)
       - DATABASE_URL=${DATABASE_URL:-postgresql://seocoach:seocoach_password@postgres:5432/seocoach?schema=public&connection_limit=20&pool_timeout=10}
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+        reservations:
+          memory: 2G
     depends_on:
       postgres:
         condition: service_healthy

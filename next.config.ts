@@ -16,6 +16,10 @@ const nextConfig: NextConfig = {
 
   // Prisma requires serverExternalPackages for optimal performance
   serverExternalPackages: ["@prisma/client", "bcryptjs"],
+
+  // OOM Prevention: limit concurrent workers during build to reduce peak memory
+  // Default is cpu.count - 1 which can exhaust memory on large projects
+  staticPageGenerationTimeout: 120,
 };
 
 export default withNextIntl(nextConfig);

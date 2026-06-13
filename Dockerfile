@@ -31,6 +31,10 @@ FROM node:24-alpine AS builder
 
 WORKDIR /app
 
+# OOM Prevention: verhoog Node.js heap-limiet naar 4GB voor de build
+# Deze applicatie heeft 200+ routes en een groot Prisma schema
+ENV NODE_OPTIONS="--max-old-space-size=4096"
+
 # Kopieer afhankelijkheden uit deps stage
 COPY --from=deps /app/node_modules ./node_modules
 
@@ -58,6 +62,8 @@ ENV NODE_ENV=production
 # Next.js standalone collecteert alles in .next/standalone
 ENV HOSTNAME="0.0.0.0"
 ENV PORT=3000
+# OOM Prevention: 2GB heap voor productie-runtime is ruim voldoende
+ENV NODE_OPTIONS="--max-old-space-size=2048"
 
 # Veilige non-root gebruiker aanmaken
 RUN addgroup --system --gid 1001 nodejs && \
