@@ -31,7 +31,7 @@ export {
   syncGA4Data,
   fetchGBPProfile,
   fetchGBPReviews,
-  listGBPSccounts,
+  listGBPAccounts,
   listGBPLocations,
   syncGBPDataToDb,
 } from './google-api';

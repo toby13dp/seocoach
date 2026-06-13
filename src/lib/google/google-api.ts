@@ -658,7 +658,7 @@ export async function fetchGBPReviews(
 /**
  * List available GBP accounts.
  */
-export async function listGBPSccounts(
+export async function listGBPAccounts(
   connectionId: string
 ): Promise<{ name: string; accountName: string; type: string }[]> {
   const client = await getAuthenticatedClient(connectionId);

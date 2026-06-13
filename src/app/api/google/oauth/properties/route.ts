@@ -9,7 +9,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthenticatedUser } from '@/app/api/_helpers/auth';
 import { validateProjectAccess } from '@/lib/tenant';
-import { listGSCProperties, listGA4Properties, listGBPSccounts, listGBPLocations } from '@/lib/google';
+import { listGSCProperties, listGA4Properties, listGBPAccounts, listGBPLocations } from '@/lib/google';
 import { db } from '@/lib/db';
 
 // GET /api/google/oauth/properties?projectId=...&connectionId=...
@@ -80,7 +80,7 @@ export async function GET(request: NextRequest) {
       }
 
       case 'GOOGLE_BUSINESS_PROFILE': {
-        const accounts = await listGBPSccounts(connectionId);
+        const accounts = await listGBPAccounts(connectionId);
         // For each account, also fetch locations
         const accountsWithLocations = await Promise.all(
           accounts.map(async (acc) => {
