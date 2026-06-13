@@ -1,19 +1,13 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "nextjs",
-  "buildCommand": "bun run build",
   "installCommand": "bun install",
-  "outputDirectory": ".next",
+  "buildCommand": "bunx prisma generate && next build",
   "regions": ["iad1"],
   "crons": [
     {
       "path": "/api/cron/sync",
       "schedule": "0 3 * * *"
     }
-  ],
-  "env": {
-    "DATABASE_URL": "@database_url",
-    "NEXTAUTH_SECRET": "@nextauth_secret",
-    "NEXTAUTH_URL": "@nextauth_url"
-  }
+  ]
 }
