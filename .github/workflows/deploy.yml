@@ -6,6 +6,9 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: write
+
 env:
   NODE_VERSION: "24"
 
@@ -86,7 +89,7 @@ jobs:
         run: |
           mkdir -p www
           if [ ! -f www/index.html ]; then
-            cat > www/index.html << 'EOF'
+            cat > www/index.html << 'HTMLEOF'
           <!DOCTYPE html>
           <html lang="nl">
           <head>
@@ -110,7 +113,7 @@ jobs:
             </div>
           </body>
           </html>
-          EOF
+          HTMLEOF
           fi
 
       - name: Sync Capacitor Android
@@ -141,6 +144,8 @@ jobs:
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag_name: "apk-v1.0.${{ github.run_number }}"
           name: "SEOCoach Android APK #${{ github.run_number }}"
@@ -157,35 +162,3 @@ jobs:
             4. Installeer en open
           files: |
             android/app/build/outputs/apk/release/app-release.apk
-
-  # ============================================================
-  # Job 3: Deploy to Vercel (production only)
-  # ============================================================
-  deploy-production:
-    name: Deploy to Production
-    needs: build
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Install Vercel CLI
-        run: npm install -g vercel@latest
-
-      - name: Pull Vercel Environment Info
-        run: vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
-        continue-on-error: true
-
-      - name: Build with Vercel
-        run: vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
-        env:
-          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
-
-      - name: Deploy to Vercel
-        run: vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }}
-        env:
-          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
