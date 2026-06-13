@@ -1,5 +1,5 @@
 // ============================================================================
-// Prisma Schema — AI-Driven SEO Automation Platform (Phase 1-5)
+// Prisma Schema — AI-Driven SEO Automation Platform (Phase 1-6)
 // ============================================================================
 
 generator client {
@@ -1956,4 +1956,424 @@ model ReportComment {
   @@index([sectionId])
   @@index([resolved])
   @@map("report_comments")
+}
+
+// ============================================================================
+// Phase 6: GEO & Competitive Intelligence — Enums
+// ============================================================================
+
+enum GeoCheckCategory {
+  DIRECT_ANSWERS
+  DEFINITIONS
+  ANSWER_BLOCKS
+  ENTITY_CLARITY
+  ORGANISATION_CLARITY
+  AUTHOR_INFORMATION
+  SOURCE_TRANSPARENCY
+  DATES
+  STRUCTURED_DATA
+  FAQS
+  UNIQUE_INFORMATION
+  CITABLE_FACTS
+  CRAWLABILITY
+  INDEXABILITY
+  BRAND_CONSISTENCY
+}
+
+enum GeoCheckStatus {
+  PASSING
+  NEEDS_IMPROVEMENT
+  FAILING
+  NOT_CHECKED
+}
+
+enum AIVisibilityMethod {
+  MANUAL_TEST
+  CSV_IMPORT
+  LOCAL_SIMULATION
+  PROVIDER_ADAPTER
+}
+
+enum CompetitorChangeType {
+  NEW_PAGE
+  TITLE_CHANGE
+  HEADING_CHANGE
+  TOPIC_CHANGE
+  SERVICE_CHANGE
+  CATEGORY_CHANGE
+  LOCATION_CHANGE
+  STRUCTURED_DATA_CHANGE
+  INTERNAL_LINK_CHANGE
+  PRICE_CHANGE
+  PUBLISHING_FREQUENCY_CHANGE
+  POSITIONING_CHANGE
+}
+
+enum TrendSourceType {
+  SEARCH_QUERY
+  INTERNAL_SEARCH
+  COMPETITOR_CHANGE
+  REVIEW_THEME
+  NEWS_SOURCE
+  REGULATION
+  SEASONALITY
+  AI_PROMPT
+}
+
+enum AuthorityRecordType {
+  BACKLINK
+  LOST_LINK
+  NEW_LINK
+  BRAND_MENTION
+  LINK_GAP
+  OUTREACH_OPPORTUNITY
+  CAMPAIGN
+}
+
+// ============================================================================
+// Phase 6: GEO Readiness
+// ============================================================================
+
+model GeoReadinessCheck {
+  id              String            @id @default(uuid())
+  projectId       String
+  pageId          String?
+  url             String?
+  category        GeoCheckCategory
+  status          GeoCheckStatus    @default(NOT_CHECKED)
+  score           Float             @default(0)
+  // Dutch findings
+  title           String            // Dutch title
+  description     String            // Dutch description
+  recommendation  String?           // Dutch recommendation
+  evidence        String?           // JSON evidence
+  // Metadata
+  checkedAt       DateTime          @default(now())
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  @@index([projectId])
+  @@index([pageId])
+  @@index([category])
+  @@index([status])
+  @@index([score])
+  @@map("geo_readiness_checks")
+}
+
+model GeoReadinessSummary {
+  id                String   @id @default(uuid())
+  projectId         String   @unique
+  overallScore      Float    @default(0)
+  directAnswersScore Float   @default(0)
+  definitionsScore  Float    @default(0)
+  answerBlocksScore Float    @default(0)
+  entityClarityScore Float   @default(0)
+  organisationClarityScore Float @default(0)
+  authorInfoScore   Float    @default(0)
+  sourceTransparencyScore Float @default(0)
+  datesScore        Float    @default(0)
+  structuredDataScore Float  @default(0)
+  faqsScore         Float    @default(0)
+  uniqueInfoScore   Float    @default(0)
+  citableFactsScore Float    @default(0)
+  crawlabilityScore Float    @default(0)
+  indexabilityScore Float    @default(0)
+  brandConsistencyScore Float @default(0)
+  totalChecks       Int      @default(0)
+  passingChecks     Int      @default(0)
+  failingChecks     Int      @default(0)
+  notCheckedChecks  Int      @default(0)
+  calculatedAt      DateTime @default(now())
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([projectId])
+  @@index([overallScore])
+  @@map("geo_readiness_summaries")
+}
+
+// ============================================================================
+// Phase 6: AI Visibility (Measured)
+// ============================================================================
+
+model AIPromptLibrary {
+  id          String   @id @default(uuid())
+  projectId   String
+  name        String
+  prompt      String
+  clusterId   String?
+  funnelStage FunnelStage @default(UNKNOWN)
+  searchIntent SearchIntent @default(UNKNOWN)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  cluster AIPromptCluster? @relation(fields: [clusterId], references: [id], onDelete: SetNull)
+  results AIVisibilityResult[]
+
+  @@index([projectId])
+  @@index([clusterId])
+  @@index([isActive])
+  @@map("ai_prompt_library")
+}
+
+model AIPromptCluster {
+  id          String   @id @default(uuid())
+  projectId   String
+  name        String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  prompts AIPromptLibrary[]
+
+  @@index([projectId])
+  @@map("ai_prompt_clusters")
+}
+
+model AIVisibilityResult {
+  id              String            @id @default(uuid())
+  projectId       String
+  promptId        String?
+  method          AIVisibilityMethod
+  // Test context
+  platform        String?           // chatgpt, gemini, perplexity, etc.
+  model           String?
+  promptText      String
+  response        String?           // full AI response
+  screenshotUrl   String?           // screenshot evidence
+  // Test metadata
+  testDate        DateTime          @default(now())
+  country         String?           @default("NL")
+  language        String?           @default("nl-NL")
+  // Result analysis
+  isMentioned     Boolean           @default(false)
+  mentionedUrls   String?           // JSON array of URLs mentioned
+  mentionedSources String?          // JSON array of source names
+  competitorMentions String?        // JSON array of competitor mentions
+  sentiment       String?           // positive, neutral, negative, mixed
+  accuracy        Float?            // 0-1 how accurate the mention is
+  confidence      Float?            // 0-1 confidence in the result
+  evidence        String?           // JSON evidence data
+  // Simulation flag
+  isSimulation    Boolean           @default(false)
+  simulationNote  String?           // Dutch: "Simulatie – geen bewijs van werkelijke externe AI-zichtbaarheid."
+  // CSV import batch
+  importBatch     String?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  prompt AIPromptLibrary? @relation(fields: [promptId], references: [id], onDelete: SetNull)
+
+  @@index([projectId])
+  @@index([promptId])
+  @@index([method])
+  @@index([platform])
+  @@index([isMentioned])
+  @@index([testDate])
+  @@index([importBatch])
+  @@map("ai_visibility_results")
+}
+
+model AIVisibilitySummary {
+  id                   String   @id @default(uuid())
+  projectId            String   @unique
+  shareOfAIVoice       Float    @default(0)
+  brandMentionRate     Float    @default(0)
+  sourceMentionRate    Float    @default(0)
+  competitorMentionRate Float   @default(0)
+  avgAccuracy          Float    @default(0)
+  avgSentiment         Float    @default(0)
+  promptCoverage       Float    @default(0)
+  funnelCoverage       Float    @default(0)
+  totalTests           Int      @default(0)
+  mentionedTests       Int      @default(0)
+  simulationTests      Int      @default(0)
+  calculatedAt         DateTime @default(now())
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@index([projectId])
+  @@index([shareOfAIVoice])
+  @@map("ai_visibility_summaries")
+}
+
+// ============================================================================
+// Phase 6: Competitor Intelligence
+// ============================================================================
+
+model Competitor {
+  id              String   @id @default(uuid())
+  projectId       String
+  name            String
+  websiteUrl      String
+  description     String?
+  isActive        Boolean  @default(true)
+  lastCrawledAt   DateTime?
+  deletedAt       DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  snapshots CompetitorSnapshot[]
+  changes   CompetitorChange[]
+
+  @@unique([projectId, websiteUrl])
+  @@index([projectId])
+  @@index([isActive])
+  @@index([deletedAt])
+  @@map("competitors")
+}
+
+model CompetitorSnapshot {
+  id              String   @id @default(uuid())
+  competitorId    String
+  // Page-level snapshot data
+  url             String
+  title           String?
+  headings        String?  // JSON array of headings
+  topics          String?  // JSON array of detected topics
+  services        String?  // JSON array of services
+  categories      String?  // JSON array of categories
+  locations       String?  // JSON array of locations
+  structuredData  String?  // JSON structured data
+  internalLinks   String?  // JSON count + key links
+  publicPrices    String?  // JSON price info
+  metaDescription String?
+  wordCount       Int      @default(0)
+  // Snapshot metadata
+  crawledAt       DateTime @default(now())
+  createdAt       DateTime @default(now())
+
+  competitor Competitor @relation(fields: [competitorId], references: [id], onDelete: Cascade)
+
+  @@index([competitorId])
+  @@index([url])
+  @@index([crawledAt])
+  @@map("competitor_snapshots")
+}
+
+model CompetitorChange {
+  id               String              @id @default(uuid())
+  competitorId     String
+  projectId        String
+  changeType       CompetitorChangeType
+  url              String?
+  // Change details
+  previousValue    String?             // previous content/value
+  newValue         String?             // new content/value
+  changeSummary    String              // Dutch summary of the change
+  impactSuggestion String?             // Dutch suggestion of impact
+  recommendedResponse String?          // Dutch recommended response
+  // Evidence
+  evidenceSnapshot  String?            // JSON evidence data
+  // Metadata
+  detectedAt       DateTime            @default(now())
+  dismissed        Boolean             @default(false)
+  dismissedBy      String?
+  dismissedAt      DateTime?
+  createdAt        DateTime            @default(now())
+
+  competitor Competitor @relation(fields: [competitorId], references: [id], onDelete: Cascade)
+
+  @@index([competitorId])
+  @@index([projectId])
+  @@index([changeType])
+  @@index([detectedAt])
+  @@index([dismissed])
+  @@map("competitor_changes")
+}
+
+// ============================================================================
+// Phase 6: Trends
+// ============================================================================
+
+model TrendRecord {
+  id              String          @id @default(uuid())
+  projectId       String
+  sourceType      TrendSourceType
+  sourceId        String?
+  // Trend data
+  keyword         String?
+  topic           String?
+  trendDirection  String          // rising, declining, stable, seasonal
+  magnitude       Float           @default(0)
+  // Dutch content
+  description     String          // Dutch description
+  evidence        String?         // JSON evidence
+  // Time context
+  observedAt      DateTime        @default(now())
+  expiresAt       DateTime?
+  createdAt       DateTime        @default(now())
+
+  @@index([projectId])
+  @@index([sourceType])
+  @@index([trendDirection])
+  @@index([keyword])
+  @@index([observedAt])
+  @@map("trend_records")
+}
+
+// ============================================================================
+// Phase 6: Authority (Provider-Neutral)
+// ============================================================================
+
+model AuthorityRecord {
+  id              String            @id @default(uuid())
+  projectId       String
+  type            AuthorityRecordType
+  // Link/mention details
+  sourceUrl       String?
+  targetUrl       String?
+  anchorText      String?
+  domain          String?
+  // Metadata
+  discoveredAt    DateTime          @default(now())
+  lostAt          DateTime?
+  // Quality metrics
+  domainAuthority Float?
+  pageAuthority   Float?
+  isNofollow      Boolean           @default(false)
+  // Dutch context
+  notes           String?           // Dutch notes
+  // Campaign tracking
+  campaignId      String?
+  status          String            @default("active") // active, lost, pending, outreached, acquired
+  // Provider-neutral: data from CSV import or API adapter
+  providerSource  String?           // e.g. "csv_import", "ahrefs_adapter", "moz_adapter"
+  importBatch     String?
+  deletedAt       DateTime?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  @@index([projectId])
+  @@index([type])
+  @@index([domain])
+  @@index([status])
+  @@index([discoveredAt])
+  @@index([providerSource])
+  @@index([importBatch])
+  @@index([deletedAt])
+  @@map("authority_records")
+}
+
+model OutreachCampaign {
+  id              String   @id @default(uuid())
+  projectId       String
+  name            String
+  description     String?  // Dutch description
+  status          String   @default("draft") // draft, active, completed, paused
+  targetCount     Int      @default(0)
+  contactedCount  Int      @default(0)
+  responseCount   Int      @default(0)
+  acquiredCount   Int      @default(0)
+  startDate       DateTime?
+  endDate         DateTime?
+  deletedAt       DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([projectId])
+  @@index([status])
+  @@index([deletedAt])
+  @@map("outreach_campaigns")
 }

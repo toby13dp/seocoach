@@ -1,0 +1,1085 @@
+     1→// ============================================================================
+     2→// GEO Readiness — Analyzer
+     3→// SEOCoach: AI-Driven SEO Automation Platform (Dutch Market)
+     4→// ============================================================================
+     5→// Analyzes crawled pages for GEO (Generative Engine Optimization) readiness
+     6→// across 15 categories. Uses existing Page, TechnicalIssue, StructuredData,
+     7→// and BrandProfile data.
+     8→//
+     9→// CRITICAL: This analysis is about CONTENT READINESS for AI interpretation.
+    10→// It does NOT represent measured external AI visibility.
+    11→// ============================================================================
+    12→import { db } from '@/lib/db';
+    13→import type {
+    14→  GeoCheckResult,
+    15→  GeoReadinessConfig,
+    16→  GeoCheckCategory,
+    17→} from './types';
+    18→import {
+    19→  GEO_CHECK_CATEGORIES,
+    20→  DEFAULT_GEO_CONFIG,
+    21→} from './types';
+    22→import type { GeoCheckStatus } from '@prisma/client';
+    23→
+    24→// ============================================================================
+    25→// Helper: Content Analysis
+    26→// ============================================================================
+    27→
+    28→/**
+    29→ * Check if content contains answer-style paragraphs (sentences starting with
+    30→ * definitive language patterns).
+    31→ */
+    32→function hasAnswerParagraphs(content: string, minWordCount: number): {
+    33→  found: boolean;
+    34→  count: number;
+    35→  evidence: string[];
+    36→} {
+    37→  if (!content || content.split(/\s+/).length < minWordCount) {
+    38→    return { found: false, count: 0, evidence: [] };
+    39→  }
+    40→
+    41→  const answerPatterns = [
+    42→    /(?:het antwoord is|de oplossing is|korte antwoord|samenvattend|kortom)\s/i,
+    43→    /(?:dat is|dit is|hierbij|volgens)\s.*(?:een|de|het)\s/i,
+    44→    /(?:^[A-Z][^.]*\.\s){2,}/m, // Multiple short definitive sentences
+    45→  ];
+    46→
+    47→  const paragraphs = content.split(/\n\s*\n/);
+    48→  const matchingParagraphs: string[] = [];
+    49→
+    50→  for (const para of paragraphs) {
+    51→    const trimmed = para.trim();
+    52→    if (trimmed.length < 20) continue;
+    53→    for (const pattern of answerPatterns) {
+    54→      if (pattern.test(trimmed)) {
+    55→        matchingParagraphs.push(trimmed.slice(0, 200));
+    56→        break;
+    57→      }
+    58→    }
+    59→  }
+    60→
+    61→  return {
+    62→    found: matchingParagraphs.length > 0,
+    63→    count: matchingParagraphs.length,
+    64→    evidence: matchingParagraphs.slice(0, 5),
+    65→  };
+    66→}
+    67→
+    68→/**
+    69→ * Check if content contains definition-style content ("X is een Y").
+    70→ */
+    71→function hasDefinitions(content: string): {
+    72→  found: boolean;
+    73→  count: number;
+    74→  evidence: string[];
+    75→} {
+    76→  if (!content) return { found: false, count: 0, evidence: [] };
+    77→
+    78→  const definitionPatterns = [
+    79→    /(?:is een|is een soort|is een vorm van|betekent|verwijst naar|omvat)\s/i,
+    80→    /(?:wordt gedefinieerd als|staat voor|is het)\s/i,
+    81→  ];
+    82→
+    83→  const lines = content.split('\n');
+    84→  const matches: string[] = [];
+    85→
+    86→  for (const line of lines) {
+    87→    const trimmed = line.trim();
+    88→    if (trimmed.length < 10) continue;
+    89→    for (const pattern of definitionPatterns) {
+    90→      if (pattern.test(trimmed)) {
+    91→        matches.push(trimmed.slice(0, 200));
+    92→        break;
+    93→      }
+    94→    }
+    95→  }
+    96→
+    97→  return {
+    98→    found: matches.length > 0,
+    99→    count: matches.length,
+   100→    evidence: matches.slice(0, 5),
+   101→  };
+   102→}
+   103→
+   104→/**
+   105→ * Check if content has FAQ-style Q&A sections.
+   106→ */
+   107→function hasFaqBlocks(content: string): {
+   108→  found: boolean;
+   109→  count: number;
+   110→  evidence: string[];
+   111→} {
+   112→  if (!content) return { found: false, count: 0, evidence: [] };
+   113→
+   114→  const faqPatterns = [
+   115→    /(?:veelgestelde vragen|faq|vragen en antwoorden)/i,
+   116→    /(?:V:|Vraag:|Q:)\s/i,
+   117→    /(?:A:|Antwoord:|A:)\s/i,
+   118→  ];
+   119→
+   120→  const matches: string[] = [];
+   121→  for (const pattern of faqPatterns) {
+   122→    if (pattern.test(content)) {
+   123→      const matchResult = content.match(pattern);
+   124→      if (matchResult) {
+   125→        matches.push(matchResult[0]);
+   126→      }
+   127→    }
+   128→  }
+   129→
+   130→  // Count Q&A pairs
+   131→  const questionCount = (content.match(/(?:V:|Vraag:|Q:)\s/gi) || []).length;
+   132→
+   133→  return {
+   134→    found: questionCount >= 1 || matches.length > 0,
+   135→    count: questionCount || matches.length,
+   136→    evidence: matches.slice(0, 5),
+   137→  };
+   138→}
+   139→
+   140→/**
+   141→ * Check if content has citation-style source references.
+   142→ */
+   143→function hasCitations(content: string): {
+   144→  found: boolean;
+   145→  count: number;
+   146→  evidence: string[];
+   147→} {
+   148→  if (!content) return { found: false, count: 0, evidence: [] };
+   149→
+   150→  const citationPatterns = [
+   151→    /(?:bron:|source:|volgens|referentie:|geciteerd in)/i,
+   152→    /(?:\[\d+\]|\(\d{4}\))/, // [1] or (2024) style
+   153→    /(?:https?:\/\/[^\s]+\s*(?:bron|source|referentie))/i,
+   154→  ];
+   155→
+   156→  const matches: string[] = [];
+   157→  for (const pattern of citationPatterns) {
+   158→    const regex = new RegExp(pattern.source, 'gi');
+   159→    let match;
+   160→    while ((match = regex.exec(content)) !== null) {
+   161→      matches.push(match[0].slice(0, 200));
+   162→      if (matches.length >= 10) break;
+   163→    }
+   164→  }
+   165→
+   166→  return {
+   167→    found: matches.length > 0,
+   168→    count: matches.length,
+   169→    evidence: matches.slice(0, 5),
+   170→  };
+   171→}
+   172→
+   173→/**
+   174→ * Check for citable facts (statistics, numbers, data points).
+   175→ */
+   176→function hasCitableFacts(content: string): {
+   177→  found: boolean;
+   178→  count: number;
+   179→  evidence: string[];
+   180→} {
+   181→  if (!content) return { found: false, count: 0, evidence: [] };
+   182→
+   183→  const factPatterns = [
+   184→    /(?:\d+(?:[.,]\d+)?\s*(?:%|procent|procent|per jaar|jaarlijks|per maand))/i,
+   185→    /(?:gemiddeld|totaal|stijging|daling|toename|afname)\s+\d+/i,
+   186→    /(?:\d+(?:[.,]\d+)?\s*(?:miljoen|miljard|duizend|euro|EUR|USD))/i,
+   187→  ];
+   188→
+   189→  const matches: string[] = [];
+   190→  for (const pattern of factPatterns) {
+   191→    const regex = new RegExp(pattern.source, 'gi');
+   192→    let match;
+   193→    while ((match = regex.exec(content)) !== null) {
+   194→      const start = Math.max(0, match.index - 30);
+   195→      const end = Math.min(content.length, match.index + match[0].length + 30);
+   196→      matches.push(content.slice(start, end));
+   197→      if (matches.length >= 10) break;
+   198→    }
+   199→  }
+   200→
+   201→  return {
+   202→    found: matches.length > 0,
+   203→    count: matches.length,
+   204→    evidence: matches.slice(0, 5),
+   205→  };
+   206→}
+   207→
+   208→// ============================================================================
+   209→// Category Check Functions
+   210→// ============================================================================
+   211→
+   212→interface PageForGeo {
+   213→  id: string;
+   214→  url: string;
+   215→  title: string | null;
+   216→  description: string | null;
+   217→  h1: string | null;
+   218→  wordCount: number;
+   219→  mainContent: string | null;
+   220→  indexability: string;
+   221→  metaRobots: string | null;
+   222→  publicationDate: Date | null;
+   223→  modificationDate: Date | null;
+   224→  structuredData: string | null;
+   225→}
+   226→
+   227→interface StructuredDataForGeo {
+   228→  id: string;
+   229→  type: string;
+   230→  data: string;
+   231→  isValid: boolean;
+   232→  url: string | null;
+   233→}
+   234→
+   235→/**
+   236→ * Run a single category check against all pages.
+   237→ */
+   238→function checkCategory(
+   239→  category: GeoCheckCategory,
+   240→  pages: PageForGeo[],
+   241→  structuredDataRecords: StructuredDataForGeo[],
+   242→  brandProfile: { brandName: string | null } | null,
+   243→  config: Required<GeoReadinessConfig>
+   244→): GeoCheckResult[] {
+   245→  const results: GeoCheckResult[] = [];
+   246→  const categoryInfo = GEO_CHECK_CATEGORIES[category];
+   247→
+   248→  switch (category) {
+   249→    case 'DIRECT_ANSWERS': {
+   250→      for (const page of pages) {
+   251→        const content = page.mainContent ?? '';
+   252→        const analysis = hasAnswerParagraphs(content, config.minWordCountForAnswers);
+   253→        const status: GeoCheckStatus = analysis.found
+   254→          ? 'PASSING'
+   255→          : page.wordCount >= config.minWordCountForAnswers
+   256→            ? 'NEEDS_IMPROVEMENT'
+   257→            : 'FAILING';
+   258→        const score = analysis.found
+   259→          ? Math.min(100, analysis.count * 20)
+   260→          : page.wordCount >= config.minWordCountForAnswers
+   261→            ? 30
+   262→            : 0;
+   263→
+   264→        results.push({
+   265→          category,
+   266→          status,
+   267→          score,
+   268→          title: `${categoryInfo.label}: ${page.title ?? page.url}`,
+   269→          description: analysis.found
+   270→            ? `${analysis.count} antwoordparagraaf(ven) gevonden op deze pagina.`
+   271→            : page.wordCount >= config.minWordCountForAnswers
+   272→              ? 'Pagina heeft voldoende content maar bevat geen duidelijke antwoordparagrafen.'
+   273→              : 'Pagina heeft onvoldoende content voor antwoordparagrafen.',
+   274→          recommendation:
+   275→            status !== 'PASSING'
+   276→              ? 'Voeg duidelijke antwoordparagrafen toe met samenvattingen bovenaan de pagina.'
+   277→              : null,
+   278→          evidence: analysis.evidence.length > 0
+   279→            ? { matchingParagraphs: analysis.evidence }
+   280→            : null,
+   281→          pageId: page.id,
+   282→          url: page.url,
+   283→        });
+   284→      }
+   285→      break;
+   286→    }
+   287→
+   288→    case 'DEFINITIONS': {
+   289→      for (const page of pages) {
+   290→        const content = page.mainContent ?? '';
+   291→        const analysis = hasDefinitions(content);
+   292→        const status: GeoCheckStatus = analysis.found
+   293→          ? 'PASSING'
+   294→          : 'NEEDS_IMPROVEMENT';
+   295→        const score = analysis.found ? Math.min(100, analysis.count * 25) : 20;
+   296→
+   297→        results.push({
+   298→          category,
+   299→          status,
+   300→          score,
+   301→          title: `${categoryInfo.label}: ${page.title ?? page.url}`,
+   302→          description: analysis.found
+   303→            ? `${analysis.count} definitie(s) gevonden op deze pagina.`
+   304→            : 'Geen definitie-achtige content gevonden op deze pagina.',
+   305→          recommendation:
+   306→            status !== 'PASSING'
+   307→              ? 'Voeg definitie-achtige zinnen toe, bijvoorbeeld: "[Term] is een [categorie] die [beschrijving]".'
+   308→              : null,
+   309→          evidence: analysis.evidence.length > 0
+   310→            ? { definitions: analysis.evidence }
+   311→            : null,
+   312→          pageId: page.id,
+   313→          url: page.url,
+   314→        });
+   315→      }
+   316→      break;
+   317→    }
+   318→
+   319→    case 'ANSWER_BLOCKS': {
+   320→      for (const page of pages) {
+   321→        const content = page.mainContent ?? '';
+   322→        const analysis = hasFaqBlocks(content);
+   323→        const status: GeoCheckStatus = analysis.found
+   324→          ? 'PASSING'
+   325→          : 'NEEDS_IMPROVEMENT';
+   326→        const score = analysis.found
+   327→          ? Math.min(100, analysis.count * 15)
+   328→          : 10;
+   329→
+   330→        results.push({
+   331→          category,
+   332→          status,
+   333→          score,
+   334→          title: `${categoryInfo.label}: ${page.title ?? page.url}`,
+   335→          description: analysis.found
+   336→            ? `${analysis.count} FAQ-stijl vraag-en-antwoord blok(ken) gevonden.`
+   337→            : 'Geen FAQ-stijl vraag-en-antwoord secties gevonden.',
+   338→          recommendation:
+   339→            status !== 'PASSING'
+   340→              ? 'Voeg FAQ-secties toe met vragen en antwoorden in gestructureerd formaat.'
+   341→              : null,
+   342→          evidence: analysis.evidence.length > 0
+   343→            ? { faqMatches: analysis.evidence }
+   344→            : null,
+   345→          pageId: page.id,
+   346→          url: page.url,
+   347→        });
+   348→      }
+   349→      break;
+   350→    }
+   351→
+   352→    case 'ENTITY_CLARITY': {
+   353→      const entityTypes = new Set<string>();
+   354→      for (const sd of structuredDataRecords) {
+   355→        if (sd.isValid && (sd.type === 'ORGANIZATION' || sd.type === 'PERSON')) {
+   356→          entityTypes.add(sd.type);
+   357→        }
+   358→      }
+   359→      const hasOrg = entityTypes.has('ORGANIZATION');
+   360→      const hasPerson = entityTypes.has('PERSON');
+   361→      const status: GeoCheckStatus =
+   362→        hasOrg && hasPerson ? 'PASSING' : hasOrg || hasPerson ? 'NEEDS_IMPROVEMENT' : 'FAILING';
+   363→      const score = (hasOrg ? 50 : 0) + (hasPerson ? 50 : 0);
+   364→
+   365→      results.push({
+   366→        category,
+   367→        status,
+   368→        score,
+   369→        title: categoryInfo.label,
+   370→        description:
+   371→          entityTypes.size > 0
+   372→            ? `Entiteiten gevonden: ${Array.from(entityTypes).join(', ')}.`
+   373→            : 'Geen organisatie- of persoonsentiteiten gevonden in gestructureerde data.',
+   374→        recommendation:
+   375→          status !== 'PASSING'
+   376→            ? 'Voeg Organization en Person schema markup toe aan de relevante pagina\'s.'
+   377→            : null,
+   378→        evidence: entityTypes.size > 0 ? { entityTypes: Array.from(entityTypes) } : null,
+   379→      });
+   380→      break;
+   381→    }
+   382→
+   383→    case 'ORGANISATION_CLARITY': {
+   384→      const orgSchemas = structuredDataRecords.filter(
+   385→        (sd) => sd.isValid && sd.type === 'ORGANIZATION'
+   386→      );
+   387→      const status: GeoCheckStatus =
+   388→        orgSchemas.length > 0 ? 'PASSING' : 'FAILING';
+   389→      const score = orgSchemas.length > 0 ? 100 : 0;
+   390→
+   391→      results.push({
+   392→        category,
+   393→        status,
+   394→        score,
+   395→        title: categoryInfo.label,
+   396→        description:
+   397→          orgSchemas.length > 0
+   398→            ? `${orgSchemas.length} Organization-schema(s) gevonden.`
+   399→            : 'Geen Organization-schema gevonden. AI-modellen kunnen uw bedrijf niet duidelijk identificeren.',
+   400→        recommendation:
+   401→          status !== 'PASSING'
+   402→            ? 'Voeg Organization schema markup toe met bedrijfsnaam, adres en contactgegevens.'
+   403→            : null,
+   404→        evidence:
+   405→          orgSchemas.length > 0
+   406→            ? { count: orgSchemas.length }
+   407→            : null,
+   408→      });
+   409→      break;
+   410→    }
+   411→
+   412→    case 'AUTHOR_INFORMATION': {
+   413→      const authorSchemas = structuredDataRecords.filter(
+   414→        (sd) => sd.isValid && sd.type === 'PERSON'
+   415→      );
+   416→      const aboutPages = pages.filter(
+   417→        (p) =>
+   418→          p.url.toLowerCase().includes('/over') ||
+   419→          p.url.toLowerCase().includes('/team') ||
+   420→          p.url.toLowerCase().includes('/about') ||
+   421→          (p.title ?? '').toLowerCase().includes('over ons') ||
+   422→          (p.h1 ?? '').toLowerCase().includes('over ons')
+   423→      );
+   424→      const hasAuthorSchema = authorSchemas.length > 0;
+   425→      const hasAboutPage = aboutPages.length > 0;
+   426→      const status: GeoCheckStatus =
+   427→        hasAuthorSchema && hasAboutPage
+   428→          ? 'PASSING'
+   429→          : hasAuthorSchema || hasAboutPage
+   430→            ? 'NEEDS_IMPROVEMENT'
+   431→            : 'FAILING';
+   432→      const score = (hasAuthorSchema ? 60 : 0) + (hasAboutPage ? 40 : 0);
+   433→
+   434→      results.push({
+   435→        category,
+   436→        status,
+   437→        score,
+   438→        title: categoryInfo.label,
+   439→        description: `Auteur-markup: ${hasAuthorSchema ? 'aanwezig' : 'ontbreekt'}. Over-pagina: ${hasAboutPage ? 'aanwezig' : 'ontbreekt'}.`,
+   440→        recommendation:
+   441→          status !== 'PASSING'
+   442→            ? 'Voeg auteur-markup (Person schema) toe en zorg voor een over-ons pagina met teaminformatie.'
+   443→            : null,
+   444→        evidence: {
+   445→          authorSchemaCount: authorSchemas.length,
+   446→          aboutPageCount: aboutPages.length,
+   447→        },
+   448→      });
+   449→      break;
+   450→    }
+   451→
+   452→    case 'SOURCE_TRANSPARENCY': {
+   453→      let pagesWithCitations = 0;
+   454→      const details: { url: string; citationCount: number }[] = [];
+   455→
+   456→      for (const page of pages) {
+   457→        const content = page.mainContent ?? '';
+   458→        const analysis = hasCitations(content);
+   459→        if (analysis.found) {
+   460→          pagesWithCitations++;
+   461→          details.push({ url: page.url, citationCount: analysis.count });
+   462→        }
+   463→      }
+   464→
+   465→      const citationRate = pages.length > 0 ? pagesWithCitations / pages.length : 0;
+   466→      const status: GeoCheckStatus =
+   467→        citationRate >= 0.3
+   468→          ? 'PASSING'
+   469→          : citationRate > 0
+   470→            ? 'NEEDS_IMPROVEMENT'
+   471→            : 'FAILING';
+   472→      const score = Math.round(citationRate * 100);
+   473→
+   474→      results.push({
+   475→        category,
+   476→        status,
+   477→        score,
+   478→        title: categoryInfo.label,
+   479→        description: `${pagesWithCitations} van ${pages.length} pagina's bevatten bronvermeldingen (${Math.round(citationRate * 100)}%).`,
+   480→        recommendation:
+   481→          status !== 'PASSING'
+   482→            ? 'Voeg bronvermeldingen, citaten en verwijzingen naar originele bronnen toe aan uw content.'
+   483→            : null,
+   484→        evidence: details.length > 0 ? { pagesWithCitations: details.slice(0, 10) } : null,
+   485→      });
+   486→      break;
+   487→    }
+   488→
+   489→    case 'DATES': {
+   490→      let pagesWithDates = 0;
+   491→      let pagesWithModified = 0;
+   492→      for (const page of pages) {
+   493→        if (page.publicationDate) pagesWithDates++;
+   494→        if (page.modificationDate) pagesWithModified++;
+   495→      }
+   496→      const pubRate = pages.length > 0 ? pagesWithDates / pages.length : 0;
+   497→      const modRate = pages.length > 0 ? pagesWithModified / pages.length : 0;
+   498→      const status: GeoCheckStatus =
+   499→        pubRate >= 0.5 ? 'PASSING' : pubRate > 0 ? 'NEEDS_IMPROVEMENT' : 'FAILING';
+   500→      const score = Math.round(pubRate * 70 + modRate * 30);
+   501→
+   502→      results.push({
+   503→        category,
+   504→        status,
+   505→        score,
+   506→        title: categoryInfo.label,
+   507→        description: `${pagesWithDates} van ${pages.length} pagina's hebben een publicatiedatum. ${pagesWithModified} hebben een wijzigingsdatum.`,
+   508→        recommendation:
+   509→          status !== 'PASSING'
+   510→            ? 'Voeg publicatie- en wijzigingsdatums toe aan uw pagina\'s, bij voorkeur via gestructureerde data.'
+   511→            : null,
+   512→        evidence: { pagesWithDates, pagesWithModified, totalPages: pages.length },
+   513→      });
+   514→      break;
+   515→    }
+   516→
+   517→    case 'STRUCTURED_DATA': {
+   518→      const validSD = structuredDataRecords.filter((sd) => sd.isValid);
+   519→      const invalidSD = structuredDataRecords.filter((sd) => !sd.isValid);
+   520→      const pagesWithSD = new Set(
+   521→        structuredDataRecords.map((sd) => sd.url).filter(Boolean)
+   522→      ).size;
+   523→      const sdRate = pages.length > 0 ? pagesWithSD / pages.length : 0;
+   524→      const status: GeoCheckStatus =
+   525→        sdRate >= 0.5 && invalidSD.length === 0
+   526→          ? 'PASSING'
+   527→          : sdRate > 0
+   528→            ? 'NEEDS_IMPROVEMENT'
+   529→            : 'FAILING';
+   530→      const score =
+   531→        invalidSD.length > 0
+   532→          ? Math.round(sdRate * 50)
+   533→          : Math.round(sdRate * 100);
+   534→
+   535→      results.push({
+   536→        category,
+   537→        status,
+   538→        score,
+   539→        title: categoryInfo.label,
+   540→        description: `${validSD.length} valide en ${invalidSD.length} invalide gestructureerde data items gevonden. ${pagesWithSD} van ${pages.length} pagina's hebben gestructureerde data.`,
+   541→        recommendation:
+   542→          status !== 'PASSING'
+   543→            ? invalidSD.length > 0
+   544→              ? 'Repareer invalide gestructureerde data en voeg JSON-LD markup toe aan meer pagina\'s.'
+   545→              : 'Voeg gestructureerde data (JSON-LD) toe aan uw pagina\'s voor betere AI-interpreteerbaarheid.'
+   546→            : null,
+   547→        evidence: {
+   548→          validCount: validSD.length,
+   549→          invalidCount: invalidSD.length,
+   550→          pagesWithSD,
+   551→          totalPages: pages.length,
+   552→        },
+   553→      });
+   554→      break;
+   555→    }
+   556→
+   557→    case 'FAQS': {
+   558→      const faqSchemas = structuredDataRecords.filter(
+   559→        (sd) => sd.isValid && sd.type === 'FAQ_PAGE'
+   560→      );
+   561→      let faqPages = 0;
+   562→      const faqDetails: { url: string; count: number }[] = [];
+   563→
+   564→      for (const page of pages) {
+   565→        const content = page.mainContent ?? '';
+   566→        const analysis = hasFaqBlocks(content);
+   567→        if (analysis.found) {
+   568→          faqPages++;
+   569→          faqDetails.push({ url: page.url, count: analysis.count });
+   570→        }
+   571→      }
+   572→
+   573→      const totalFaqPresence = faqSchemas.length + faqPages;
+   574→      const status: GeoCheckStatus =
+   575→        totalFaqPresence >= config.minFaqItems
+   576→          ? 'PASSING'
+   577→          : totalFaqPresence > 0
+   578→            ? 'NEEDS_IMPROVEMENT'
+   579→            : 'FAILING';
+   580→      const score = Math.min(100, totalFaqPresence * 20);
+   581→
+   582→      results.push({
+   583→        category,
+   584→        status,
+   585→        score,
+   586→        title: categoryInfo.label,
+   587→        description: `${faqSchemas.length} FAQ-schema's en ${faqPages} pagina's met FAQ-secties gevonden.`,
+   588→        recommendation:
+   589→          status !== 'PASSING'
+   590→            ? 'Maak FAQ-pagina\'s met FAQ-schema markup. Zorg voor minimaal 3 vragen en antwoorden per pagina.'
+   591→            : null,
+   592→        evidence:
+   593→          faqDetails.length > 0
+   594→            ? { faqSchemas: faqSchemas.length, faqPages: faqDetails.slice(0, 10) }
+   595→            : { faqSchemas: faqSchemas.length },
+   596→      });
+   597→      break;
+   598→    }
+   599→
+   600→    case 'UNIQUE_INFORMATION': {
+   601→      // Check for unique content by looking at word count diversity and specific signals
+   602→      let pagesWithUniqueSignals = 0;
+   603→      const uniqueDetails: { url: string; signals: string[] }[] = [];
+   604→
+   605→      for (const page of pages) {
+   606→        const content = page.mainContent ?? '';
+   607→        const signals: string[] = [];
+   608→
+   609→        // Original research/case study signals
+   610→        if (/(?:onderzoek|research|studie|case study|casestudy|onderzoeksresultaten)/i.test(content)) {
+   611→          signals.push('original_research');
+   612→        }
+   613→        // Proprietary data signals
+   614→        if (/(?:onze gegevens|onze data|eigen onderzoek|exclusief|uniek)/i.test(content)) {
+   615→          signals.push('proprietary_data');
+   616→        }
+   617→        // Expert opinion signals
+   618→        if (/(?:volgens onze expert|in onze ervaring|uit onze praktijk|onze bevindingen)/i.test(content)) {
+   619→          signals.push('expert_opinion');
+   620→        }
+   621→
+   622→        if (signals.length > 0) {
+   623→          pagesWithUniqueSignals++;
+   624→          uniqueDetails.push({ url: page.url, signals });
+   625→        }
+   626→      }
+   627→
+   628→      const uniqueRate = pages.length > 0 ? pagesWithUniqueSignals / pages.length : 0;
+   629→      const status: GeoCheckStatus =
+   630→        uniqueRate >= 0.2
+   631→          ? 'PASSING'
+   632→          : uniqueRate > 0
+   633→            ? 'NEEDS_IMPROVEMENT'
+   634→            : 'FAILING';
+   635→      const score = Math.round(uniqueRate * 100);
+   636→
+   637→      results.push({
+   638→        category,
+   639→        status,
+   640→        score,
+   641→        title: categoryInfo.label,
+   642→        description: `${pagesWithUniqueSignals} van ${pages.length} pagina's bevatten signalen van unieke informatie.`,
+   643→        recommendation:
+   644→          status !== 'PASSING'
+   645→            ? 'Voeg origineel onderzoek, eigen data of expertmeningen toe om onderscheidende content te creëren.'
+   646→            : null,
+   647→        evidence:
+   648→          uniqueDetails.length > 0
+   649→            ? { pagesWithUniqueSignals: uniqueDetails.slice(0, 10) }
+   650→            : null,
+   651→      });
+   652→      break;
+   653→    }
+   654→
+   655→    case 'CITABLE_FACTS': {
+   656→      let pagesWithFacts = 0;
+   657→      const factDetails: { url: string; factCount: number }[] = [];
+   658→
+   659→      for (const page of pages) {
+   660→        const content = page.mainContent ?? '';
+   661→        const analysis = hasCitableFacts(content);
+   662→        if (analysis.found) {
+   663→          pagesWithFacts++;
+   664→          factDetails.push({ url: page.url, factCount: analysis.count });
+   665→        }
+   666→      }
+   667→
+   668→      const factRate = pages.length > 0 ? pagesWithFacts / pages.length : 0;
+   669→      const status: GeoCheckStatus =
+   670→        factRate >= 0.3
+   671→          ? 'PASSING'
+   672→          : factRate > 0
+   673→            ? 'NEEDS_IMPROVEMENT'
+   674→            : 'FAILING';
+   675→      const score = Math.round(factRate * 100);
+   676→
+   677→      results.push({
+   678→        category,
+   679→        status,
+   680→        score,
+   681→        title: categoryInfo.label,
+   682→        description: `${pagesWithFacts} van ${pages.length} pagina's bevatten citeerbare feiten en statistieken.`,
+   683→        recommendation:
+   684→          status !== 'PASSING'
+   685→            ? 'Voeg statistieken, cijfers en onderbouwde claims toe die AI-modellen kunnen citeren.'
+   686→            : null,
+   687→        evidence:
+   688→          factDetails.length > 0
+   689→            ? { pagesWithFacts: factDetails.slice(0, 10) }
+   690→            : null,
+   691→      });
+   692→      break;
+   693→    }
+   694→
+   695→    case 'CRAWLABILITY': {
+   696→      // Check for crawl-blocking technical issues
+   697→      const blockingIssues = pages.filter(
+   698→        (p) => p.metaRobots?.includes('nofollow') === true
+   699→      );
+   700→      const status: GeoCheckStatus =
+   701→        blockingIssues.length === 0 ? 'PASSING' : 'NEEDS_IMPROVEMENT';
+   702→      const score =
+   703→        pages.length > 0
+   704→          ? Math.round(((pages.length - blockingIssues.length) / pages.length) * 100)
+   705→          : 0;
+   706→
+   707→      results.push({
+   708→        category,
+   709→        status,
+   710→        score,
+   711→        title: categoryInfo.label,
+   712→        description:
+   713→          blockingIssues.length === 0
+   714→            ? 'Geen crawl-blokkerende issues gevonden.'
+   715→            : `${blockingIssues.length} pagina's met mogelijke crawl-beperkingen gevonden.`,
+   716→        recommendation:
+   717→          status !== 'PASSING'
+   718→            ? 'Controleer robots.txt en meta-robots tags. Zorg dat belangrijke pagina\'s crawlbaar zijn.'
+   719→            : null,
+   720→        evidence: {
+   721→          totalPages: pages.length,
+   722→          blockingCount: blockingIssues.length,
+   723→        },
+   724→      });
+   725→      break;
+   726→    }
+   727→
+   728→    case 'INDEXABILITY': {
+   729→      const nonIndexablePages = pages.filter(
+   730→        (p) =>
+   731→          p.indexability !== 'INDEXABLE' ||
+   732→          p.metaRobots?.includes('noindex') === true
+   733→      );
+   734→      const indexableCount = pages.length - nonIndexablePages.length;
+   735→      const indexRate = pages.length > 0 ? indexableCount / pages.length : 0;
+   736→      const status: GeoCheckStatus =
+   737→        indexRate >= 0.9
+   738→          ? 'PASSING'
+   739→          : indexRate >= 0.7
+   740→            ? 'NEEDS_IMPROVEMENT'
+   741→            : 'FAILING';
+   742→      const score = Math.round(indexRate * 100);
+   743→
+   744→      results.push({
+   745→        category,
+   746→        status,
+   747→        score,
+   748→        title: categoryInfo.label,
+   749→        description: `${indexableCount} van ${pages.length} pagina's zijn indexeerbaar (${Math.round(indexRate * 100)}%).`,
+   750→        recommendation:
+   751→          status !== 'PASSING'
+   752→            ? 'Verwijder noindex-tags van pagina\'s die geïndexeerd moeten worden. Controleer canonical-tags.'
+   753→            : null,
+   754→        evidence: {
+   755→          indexableCount,
+   756→          nonIndexableCount: nonIndexablePages.length,
+   757→          totalPages: pages.length,
+   758→        },
+   759→      });
+   760→      break;
+   761→    }
+   762→
+   763→    case 'BRAND_CONSISTENCY': {
+   764→      const brandName = brandProfile?.brandName;
+   765→      if (!brandName) {
+   766→        results.push({
+   767→          category,
+   768→          status: 'NOT_CHECKED',
+   769→          score: 0,
+   770→          title: categoryInfo.label,
+   771→          description: 'Geen merknaam gevonden in het merkprofiel. Controle kan niet worden uitgevoerd.',
+   772→          recommendation:
+   773→            'Stel een merknaam in bij het merkprofiel om consistentiecontrole mogelijk te maken.',
+   774→          evidence: null,
+   775→        });
+   776→        break;
+   777→      }
+   778→
+   779→      let pagesWithBrand = 0;
+   780→      const brandLower = brandName.toLowerCase();
+   781→      for (const page of pages) {
+   782→        const titleMatch = (page.title ?? '').toLowerCase().includes(brandLower);
+   783→        const h1Match = (page.h1 ?? '').toLowerCase().includes(brandLower);
+   784→        const descMatch = (page.description ?? '').toLowerCase().includes(brandLower);
+   785→        if (titleMatch || h1Match || descMatch) {
+   786→          pagesWithBrand++;
+   787→        }
+   788→      }
+   789→
+   790→      const brandRate = pages.length > 0 ? pagesWithBrand / pages.length : 0;
+   791→      const status: GeoCheckStatus =
+   792→        brandRate >= 0.5
+   793→          ? 'PASSING'
+   794→          : brandRate > 0
+   795→            ? 'NEEDS_IMPROVEMENT'
+   796→            : 'FAILING';
+   797→      const score = Math.round(brandRate * 100);
+   798→
+   799→      results.push({
+   800→        category,
+   801→        status,
+   802→        score,
+   803→        title: categoryInfo.label,
+   804→        description: `Merknaam "${brandName}" gevonden op ${pagesWithBrand} van ${pages.length} pagina's (${Math.round(brandRate * 100)}%).`,
+   805→        recommendation:
+   806→          status !== 'PASSING'
+   807→            ? `Gebruik de merknaam "${brandName}" consistent in titels, H1-koppen en beschrijvingen.`
+   808→            : null,
+   809→        evidence: { brandName, pagesWithBrand, totalPages: pages.length },
+   810→      });
+   811→      break;
+   812→    }
+   813→  }
+   814→
+   815→  return results;
+   816→}
+   817→
+   818→// ============================================================================
+   819→// Main Analyzer
+   820→// ============================================================================
+   821→
+   822→/**
+   823→ * Analyze GEO readiness for a project across all 15 categories.
+   824→ *
+   825→ * This function:
+   826→ * - Retrieves crawled pages, structured data, technical issues, and brand profile
+   827→ * - Runs category-specific checks against the data
+   828→ * - Creates GeoReadinessCheck records for each check result
+   829→ * - Updates the GeoReadinessSummary with aggregated scores
+   830→ * - Returns the summary
+   831→ *
+   832→ * CRITICAL: This does NOT represent measured external AI visibility.
+   833→ * It analyzes content readiness for AI interpretation only.
+   834→ *
+   835→ * @param projectId - The project to analyze
+   836→ * @param config - Optional configuration for the analysis
+   837→ * @returns The updated GeoReadinessSummary
+   838→ */
+   839→export async function analyzeGeoReadiness(
+   840→  projectId: string,
+   841→  config?: GeoReadinessConfig
+   842→) {
+   843→  const effectiveConfig: Required<GeoReadinessConfig> = {
+   844→    ...DEFAULT_GEO_CONFIG,
+   845→    ...config,
+   846→  };
+   847→
+   848→  // Fetch project data
+   849→  const [pages, structuredDataRecords, brandProfile] = await Promise.all([
+   850→    db.page.findMany({
+   851→      where: {
+   852→        projectId,
+   853→        deletedAt: null,
+   854→        status: 'OK',
+   855→      },
+   856→      select: {
+   857→        id: true,
+   858→        url: true,
+   859→        title: true,
+   860→        description: true,
+   861→        h1: true,
+   862→        wordCount: true,
+   863→        mainContent: true,
+   864→        indexability: true,
+   865→        metaRobots: true,
+   866→        publicationDate: true,
+   867→        modificationDate: true,
+   868→        structuredData: true,
+   869→      },
+   870→      take: 500, // Limit for performance
+   871→    }),
+   872→    db.structuredData.findMany({
+   873→      where: {
+   874→        projectId,
+   875→      },
+   876→      select: {
+   877→        id: true,
+   878→        type: true,
+   879→        data: true,
+   880→        isValid: true,
+   881→        url: true,
+   882→      },
+   883→    }),
+   884→    db.brandProfile.findUnique({
+   885→      where: { projectId },
+   886→      select: { brandName: true },
+   887→    }),
+   888→  ]);
+   889→
+   890→  // If no pages, return early with NOT_CHECKED status
+   891→  if (pages.length === 0) {
+   892→    const summary = await db.geoReadinessSummary.upsert({
+   893→      where: { projectId },
+   894→      create: {
+   895→        projectId,
+   896→        overallScore: 0,
+   897→        totalChecks: 0,
+   898→        passingChecks: 0,
+   899→        failingChecks: 0,
+   900→        notCheckedChecks: 15,
+   901→      },
+   902→      update: {
+   903→        overallScore: 0,
+   904→        totalChecks: 0,
+   905→        passingChecks: 0,
+   906→        failingChecks: 0,
+   907→        notCheckedChecks: 15,
+   908→        calculatedAt: new Date(),
+   909→      },
+   910→    });
+   911→    return summary;
+   912→  }
+   913→
+   914→  // Delete previous checks for this project (full re-analysis)
+   915→  await db.geoReadinessCheck.deleteMany({
+   916→    where: { projectId },
+   917→  });
+   918→
+   919→  // Run checks for each category
+   920→  const allCategories = Object.keys(GEO_CHECK_CATEGORIES) as GeoCheckCategory[];
+   921→  const categoriesToCheck = allCategories.filter(
+   922→    (c) => !effectiveConfig.skipCategories.includes(c)
+   923→  );
+   924→
+   925→  let totalChecks = 0;
+   926→  let passingChecks = 0;
+   927→  let failingChecks = 0;
+   928→  let notCheckedChecks = 0;
+   929→  const categoryScores: Record<string, number[]> = {};
+   930→  const checkRecords: Array<{
+   931→    category: GeoCheckCategory;
+   932→    result: GeoCheckResult;
+   933→  }> = [];
+   934→
+   935→  for (const category of categoriesToCheck) {
+   936→    const results = checkCategory(
+   937→      category,
+   938→      pages as PageForGeo[],
+   939→      structuredDataRecords as StructuredDataForGeo[],
+   940→      brandProfile,
+   941→      effectiveConfig
+   942→    );
+   943→
+   944→    categoryScores[category] = [];
+   945→
+   946→    for (const result of results) {
+   947→      totalChecks++;
+   948→      categoryScores[category].push(result.score);
+   949→
+   950→      if (result.status === 'PASSING') passingChecks++;
+   951→      else if (result.status === 'FAILING') failingChecks++;
+   952→      else if (result.status === 'NOT_CHECKED') notCheckedChecks++;
+   953→
+   954→      checkRecords.push({ category, result });
+   955→    }
+   956→  }
+   957→
+   958→  // Batch create GeoReadinessCheck records
+   959→  for (const { result } of checkRecords) {
+   960→    await db.geoReadinessCheck.create({
+   961→      data: {
+   962→        projectId,
+   963→        pageId: result.pageId ?? null,
+   964→        url: result.url ?? null,
+   965→        category: result.category,
+   966→        status: result.status,
+   967→        score: result.score,
+   968→        title: result.title,
+   969→        description: result.description,
+   970→        recommendation: result.recommendation,
+   971→        evidence: result.evidence ? JSON.stringify(result.evidence) : null,
+   972→        checkedAt: new Date(),
+   973→      },
+   974→    });
+   975→  }
+   976→
+   977→  // Calculate average score per category
+   978→  const categoryAvgScores: Record<string, number> = {};
+   979→  for (const [cat, scores] of Object.entries(categoryScores)) {
+   980→    categoryAvgScores[cat] =
+   981→      scores.length > 0
+   982→        ? scores.reduce((sum, s) => sum + s, 0) / scores.length
+   983→        : 0;
+   984→  }
+   985→
+   986→  // Calculate overall score (weighted average)
+   987→  const allScores = Object.values(categoryAvgScores);
+   988→  const overallScore =
+   989→    allScores.length > 0
+   990→      ? allScores.reduce((sum, s) => sum + s, 0) / allScores.length
+   991→      : 0;
+   992→
+   993→  // Update or create summary
+   994→  const summary = await db.geoReadinessSummary.upsert({
+   995→    where: { projectId },
+   996→    create: {
+   997→      projectId,
+   998→      overallScore,
+   999→      directAnswersScore: categoryAvgScores['DIRECT_ANSWERS'] ?? 0,
+  1000→      definitionsScore: categoryAvgScores['DEFINITIONS'] ?? 0,
+  1001→      answerBlocksScore: categoryAvgScores['ANSWER_BLOCKS'] ?? 0,
+  1002→      entityClarityScore: categoryAvgScores['ENTITY_CLARITY'] ?? 0,
+  1003→      organisationClarityScore: categoryAvgScores['ORGANISATION_CLARITY'] ?? 0,
+  1004→      authorInfoScore: categoryAvgScores['AUTHOR_INFORMATION'] ?? 0,
+  1005→      sourceTransparencyScore: categoryAvgScores['SOURCE_TRANSPARENCY'] ?? 0,
+  1006→      datesScore: categoryAvgScores['DATES'] ?? 0,
+  1007→      structuredDataScore: categoryAvgScores['STRUCTURED_DATA'] ?? 0,
+  1008→      faqsScore: categoryAvgScores['FAQS'] ?? 0,
+  1009→      uniqueInfoScore: categoryAvgScores['UNIQUE_INFORMATION'] ?? 0,
+  1010→      citableFactsScore: categoryAvgScores['CITABLE_FACTS'] ?? 0,
+  1011→      crawlabilityScore: categoryAvgScores['CRAWLABILITY'] ?? 0,
+  1012→      indexabilityScore: categoryAvgScores['INDEXABILITY'] ?? 0,
+  1013→      brandConsistencyScore: categoryAvgScores['BRAND_CONSISTENCY'] ?? 0,
+  1014→      totalChecks,
+  1015→      passingChecks,
+  1016→      failingChecks,
+  1017→      notCheckedChecks,
+  1018→      calculatedAt: new Date(),
+  1019→    },
+  1020→    update: {
+  1021→      overallScore,
+  1022→      directAnswersScore: categoryAvgScores['DIRECT_ANSWERS'] ?? 0,
+  1023→      definitionsScore: categoryAvgScores['DEFINITIONS'] ?? 0,
+  1024→      answerBlocksScore: categoryAvgScores['ANSWER_BLOCKS'] ?? 0,
+  1025→      entityClarityScore: categoryAvgScores['ENTITY_CLARITY'] ?? 0,
+  1026→      organisationClarityScore: categoryAvgScores['ORGANISATION_CLARITY'] ?? 0,
+  1027→      authorInfoScore: categoryAvgScores['AUTHOR_INFORMATION'] ?? 0,
+  1028→      sourceTransparencyScore: categoryAvgScores['SOURCE_TRANSPARENCY'] ?? 0,
+  1029→      datesScore: categoryAvgScores['DATES'] ?? 0,
+  1030→      structuredDataScore: categoryAvgScores['STRUCTURED_DATA'] ?? 0,
+  1031→      faqsScore: categoryAvgScores['FAQS'] ?? 0,
+  1032→      uniqueInfoScore: categoryAvgScores['UNIQUE_INFORMATION'] ?? 0,
+  1033→      citableFactsScore: categoryAvgScores['CITABLE_FACTS'] ?? 0,
+  1034→      crawlabilityScore: categoryAvgScores['CRAWLABILITY'] ?? 0,
+  1035→      indexabilityScore: categoryAvgScores['INDEXABILITY'] ?? 0,
+  1036→      brandConsistencyScore: categoryAvgScores['BRAND_CONSISTENCY'] ?? 0,
+  1037→      totalChecks,
+  1038→      passingChecks,
+  1039→      failingChecks,
+  1040→      notCheckedChecks,
+  1041→      calculatedAt: new Date(),
+  1042→    },
+  1043→  });
+  1044→
+  1045→  return summary;
+  1046→}
+  1047→
+  1048→/**
+  1049→ * Get the current GEO readiness summary for a project.
+  1050→ *
+  1051→ * @param projectId - The project ID
+  1052→ * @returns The current summary or null if never calculated
+  1053→ */
+  1054→export async function getGeoReadinessSummary(projectId: string) {
+  1055→  return db.geoReadinessSummary.findUnique({
+  1056→    where: { projectId },
+  1057→  });
+  1058→}
+  1059→
+  1060→/**
+  1061→ * Get GEO readiness checks for a project with optional filters.
+  1062→ */
+  1063→export async function getGeoReadinessChecks(
+  1064→  projectId: string,
+  1065→  filters?: {
+  1066→    category?: GeoCheckCategory;
+  1067→    status?: GeoCheckStatus;
+  1068→    pageId?: string;
+  1069→    limit?: number;
+  1070→    offset?: number;
+  1071→  }
+  1072→) {
+  1073→  const where: Record<string, unknown> = { projectId };
+  1074→  if (filters?.category) where.category = filters.category;
+  1075→  if (filters?.status) where.status = filters.status;
+  1076→  if (filters?.pageId) where.pageId = filters.pageId;
+  1077→
+  1078→  return db.geoReadinessCheck.findMany({
+  1079→    where,
+  1080→    orderBy: { checkedAt: 'desc' },
+  1081→    take: filters?.limit ?? 50,
+  1082→    skip: filters?.offset ?? 0,
+  1083→  });
+  1084→}
+  1085→

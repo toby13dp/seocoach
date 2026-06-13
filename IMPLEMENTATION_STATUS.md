@@ -15,7 +15,7 @@
 | 3 | Keywords & Content Intelligence | 🟢 Complete | 2026-06-13 | 2026-06-13 | 100% |
 | 4 | Content Automation & CMS | 🟢 Complete | 2026-06-13 | 2026-06-13 | 100% |
 | 5 | Analytics & Monitoring | 🟢 Complete | 2026-06-13 | 2026-06-13 | 100% |
-| 6 | GEO & Competitive Intelligence | ⚪ Planned | — | — | 0% |
+| 6 | GEO & Competitive Intelligence | 🟢 Complete | 2026-06-13 | 2026-06-13 | 100% |
 | 7 | Local SEO & Reputation | ⚪ Planned | — | — | 0% |
 | 8 | E-commerce SEO | ⚪ Planned | — | — | 0% |
 | 9 | CRO & Business Intelligence | ⚪ Planned | — | — | 0% |
@@ -343,24 +343,24 @@
 
 ## Phase 6: GEO & Competitive Intelligence
 
-**Status:** ⚪ Planned  
-**Description:** Implement GEO readiness analysis, measured AI visibility, competitor intelligence, trends, and authority analysis with digital PR.
+**Status:** 🟢 Complete  
+**Description:** Implement GEO readiness analysis, measured AI visibility, competitor intelligence, and authority/trend tracking.
 
-### Planned Sub-Deliverables
+### Implemented Sub-Deliverables
 
-| Sub-Deliverable | Key Requirements | Dependencies |
-|----------------|-----------------|-------------|
-| A. GEO readiness | GEO-001, GEO-002 | Crawl data, structured data, content analysis |
-| B. Measured AI visibility | AIVIS-001 through AIVIS-006 | AI provider layer, prompt library |
-| C. Competitor intelligence | COMP-001 through COMP-003 | Safe crawler (Phase 2), change detection |
-| D. Trends & authority | TREND-001, AUTH-001, AUTH-002 | Time-series data, provider adapters |
+| Sub-Deliverable | Key Requirements | Status | Implementation |
+|----------------|-----------------|--------|---------------|
+| E. GEO readiness | GEO-001, GEO-002 | 🟢 Complete | `src/lib/geo/` — 15-category readiness analysis (direct answers, definitions, FAQs, structured data, brand consistency, etc.), summary scoring, NOT presented as measured AI visibility |
+| F. Measured AI visibility | AIVIS-001 through AIVIS-006 | 🟢 Complete | `src/lib/ai-visibility/` — Prompt library with clusters, manual test entry, CSV import, local simulation (always flagged: "Simulatie – geen bewijs van werkelijke externe AI-zichtbaarheid"), Share of AI Voice, brand/competitor mention rates |
+| G. Competitor intelligence | COMP-001 through COMP-003 | 🟢 Complete | `src/lib/competitor/` — Respectful public crawling, snapshot creation, change detection with Dutch summaries, change feed with dismissal. CRITICAL: Never invents traffic or revenue |
+| H. Trends & authority | TREND-001, AUTH-001, AUTH-002 | 🟢 Complete | `src/lib/trends/` + `src/lib/authority/` — Trend records from 8 source types, provider-neutral backlink data, CSV import, outreach campaigns. CRITICAL: Does not send outreach automatically |
 
 ### Phase 6 Definition of Done
 
-- [ ] GEO readiness is assessed without claiming external AI visibility
-- [ ] AI visibility tests are recorded with honest methodology labels
-- [ ] Competitor changes are tracked with evidence, no fabricated traffic data
-- [ ] Authority data is provider-neutral
+- [x] GEO readiness is assessed without claiming external AI visibility
+- [x] AI visibility tests are recorded with honest methodology labels
+- [x] Competitor changes are tracked with evidence, no fabricated traffic data
+- [x] Authority data is provider-neutral
 
 ---
 
@@ -536,7 +536,7 @@
 | 3. Keywords & Content Intelligence | 28 | 28 | 0 | 0 | 0 |
 | 4. Content Automation & CMS | 27 | 27 | 0 | 0 | 0 |
 | 5. Analytics & Monitoring | 14 | 14 | 0 | 0 | 0 |
-| 6. GEO & Competitive Intelligence | 12 | 0 | 0 | 12 | 0 |
+| 6. GEO & Competitive Intelligence | 12 | 12 | 0 | 0 | 0 |
 | 7. Local SEO & Reputation | 8 | 0 | 0 | 8 | 0 |
 | 8. E-commerce SEO | 6 | 0 | 0 | 6 | 0 |
 | 9. CRO & Business Intelligence | 8 | 0 | 0 | 8 | 0 |
@@ -545,7 +545,7 @@
 | 12. Migrations & Deployments | 8 | 0 | 0 | 8 | 0 |
 | 13. Production Hardening | 10 | 0 | 0 | 10 | 0 |
 | Cross-Cutting | 10 | 2 | 0 | 8 | 0 |
-| **Total** | **218** | **140** | **0** | **78** | **0** |
+| **Total** | **218** | **152** | **0** | **66** | **0** |
 
 ### Critical Path
 

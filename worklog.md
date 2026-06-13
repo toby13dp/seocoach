@@ -299,3 +299,37 @@ Stage Summary:
 - 180 tests all passing
 - Report snapshots ensure historical reports don't change when source data changes
 - Alert deduplication prevents notification spam
+
+---
+Task ID: 6
+Agent: Main Agent
+Task: Build Phase 6 - GEO & Competitive Intelligence
+
+Work Log:
+- Updated Prisma schema with 6 new enums (GeoCheckCategory, GeoCheckStatus, AIVisibilityMethod, CompetitorChangeType, TrendSourceType, AuthorityRecordType) and 12 new models (GeoReadinessCheck, GeoReadinessSummary, AIPromptLibrary, AIPromptCluster, AIVisibilityResult, AIVisibilitySummary, Competitor, CompetitorSnapshot, CompetitorChange, TrendRecord, AuthorityRecord, OutreachCampaign)
+- Fixed prompt/relation naming conflict in AIVisibilityResult (prompt → promptText)
+- Pushed schema changes to SQLite database
+- Implemented GEO Readiness module (src/lib/geo/): 15-category readiness analysis using existing Page/TechnicalIssue/StructuredData/BrandProfile data, summary scoring, NOT presented as measured external AI visibility
+- Implemented AI Visibility module (src/lib/ai-visibility/): prompt library with clusters, manual test entry, CSV import, local simulation (always flagged with Dutch disclaimer "Simulatie – geen bewijs van werkelijke externe AI-zichtbaarheid"), Share of AI Voice calculation, brand/competitor mention rates
+- Implemented Competitor Intelligence module (src/lib/competitor/): respectful public crawling with robots.txt/SSRF protection, snapshot creation, change detection with Dutch summaries, change feed with dismissal. CRITICAL: Never invents traffic or revenue data
+- Implemented Trends module (src/lib/trends/): trend records from 8 source types, keyword/seasonal trend detection, internal search CSV import
+- Implemented Authority module (src/lib/authority/): provider-neutral backlink data, CSV import (Ahrefs/Moz/Semrush formats), mark-as-lost, outreach campaigns. CRITICAL: Does not send outreach automatically
+- Created 15 API route files covering GEO, AI visibility, competitors, trends, authority, outreach
+- Created 3 frontend pages: GEO-gereedheid, AI-zichtbaarheid, Concurrentieanalyse
+- Updated project detail page with 3 Phase 6 navigation cards
+- Wrote 78 tests across 5 test suites - all passing (183 assertions)
+- Fixed multiple test type mismatches between test expectations and actual function signatures
+- Added global fetch mock for competitor crawl tests
+- Updated IMPLEMENTATION_STATUS.md
+
+Stage Summary:
+- Phase 6 (GEO & Competitive Intelligence) is complete with all definition of done items checked
+- 152 requirements implemented out of 218 total (70%)
+- All lint passes, Phase 6 TypeScript compiles cleanly
+- All user-facing text is in Dutch
+- 5 new backend library modules (20 files), 15 API routes, 3 frontend pages
+- 78 tests all passing
+- GEO readiness is clearly NOT presented as measured external AI visibility
+- AI simulations are always flagged with Dutch disclaimer
+- Competitor intelligence never invents traffic or revenue
+- Authority data is provider-neutral; outreach is never sent automatically

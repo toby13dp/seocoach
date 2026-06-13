@@ -1,0 +1,781 @@
+  1600→  TABLE
+  1601→  TEXT
+  1602→  RECOMMENDATIONS
+  1603→  ROADMAP
+  1604→  PAGE_BREAK
+  1605→}
+  1606→
+  1607→// ============================================================================
+  1608→// Phase 5: Data Connections (Search Console, GA4, CSV)
+  1609→// ============================================================================
+  1610→
+  1611→model DataConnection {
+  1612→  id               String              @id @default(uuid())
+  1613→  projectId        String
+  1614→  name             String
+  1615→  type             DataConnectionType
+  1616→  status           DataConnectionStatus @default(PENDING)
+  1617→  // Connection config (JSON): OAuth tokens, API keys, file references, etc.
+  1618→  config           String?
+  1619→  // Last sync tracking
+  1620→  lastSyncAt       DateTime?
+  1621→  lastSyncStatus   String?             // success, partial, failed
+  1622→  lastSyncError    String?
+  1623→  nextSyncAt       DateTime?
+  1624→  syncIntervalMinutes Int              @default(1440) // 24h default
+  1625→  // Data freshness
+  1626→  dataStartDate    DateTime?
+  1627→  dataEndDate      DateTime?
+  1628→  dataNote         String?             // Dutch explanation for missing data
+  1629→  // Metadata
+  1630→  metadata         String?             // JSON: account info, property info, etc.
+  1631→  deletedAt        DateTime?
+  1632→  createdAt        DateTime            @default(now())
+  1633→  updatedAt        DateTime            @updatedAt
+  1634→
+  1635→  @@index([projectId])
+  1636→  @@index([type])
+  1637→  @@index([status])
+  1638→  @@index([deletedAt])
+  1639→  @@map("data_connections")
+  1640→}
+  1641→
+  1642→// ============================================================================
+  1643→// Phase 5: Daily Metrics (time-series data from GSC/GA4/CSV)
+  1644→// ============================================================================
+  1645→
+  1646→model DailyMetric {
+  1647→  id               String   @id @default(uuid())
+  1648→  projectId        String
+  1649→  connectionId     String
+  1650→  date             DateTime
+  1651→  // Search metrics
+  1652→  clicks           Int      @default(0)
+  1653→  impressions      Int      @default(0)
+  1654→  ctr              Float    @default(0)
+  1655→  averagePosition  Float    @default(0)
+  1656→  // Analytics metrics
+  1657→  sessions         Int      @default(0)
+  1658→  users            Int      @default(0)
+  1659→  newUsers         Int      @default(0)
+  1660→  pageViews        Int      @default(0)
+  1661→  bounceRate       Float?
+  1662→  avgSessionDuration Float?  // seconds
+  1663→  // Conversion metrics
+  1664→  conversions      Int      @default(0)
+  1665→  conversionRate   Float?
+  1666→  // Revenue metrics
+  1667→  revenue          Float?
+  1668→  productRevenue   Float?
+  1669→  // Segmentation
+  1670→  source           String?  // organic, paid, social, direct, referral, etc.
+  1671→  medium           String?
+  1672→  campaign         String?
+  1673→  device           String?  // desktop, mobile, tablet
+  1674→  country          String?
+  1675→  landingPage      String?  // URL
+  1676→  // Metadata
+  1677→  importBatch      String?  // batch ID for bulk imports
+  1678→  createdAt        DateTime @default(now())
+  1679→
+  1680→  @@unique([projectId, connectionId, date, source, medium, device, country, landingPage])
+  1681→  @@index([projectId])
+  1682→  @@index([connectionId])
+  1683→  @@index([date])
+  1684→  @@index([source])
+  1685→  @@index([device])
+  1686→  @@index([country])
+  1687→  @@index([landingPage])
+  1688→  @@index([importBatch])
+  1689→  @@map("daily_metrics")
+  1690→}
+  1691→
+  1692→// ============================================================================
+  1693→// Phase 5: Query Performance (GSC query-level data)
+  1694→// ============================================================================
+  1695→
+  1696→model QueryPerformance {
+  1697→  id               String   @id @default(uuid())
+  1698→  projectId        String
+  1699→  connectionId     String
+  1700→  date             DateTime
+  1701→  query            String
+  1702→  // Metrics
+  1703→  clicks           Int      @default(0)
+  1704→  impressions      Int      @default(0)
+  1705→  ctr              Float    @default(0)
+  1706→  position         Float    @default(0)
+  1707→  // Segmentation
+  1708→  country          String?
+  1709→  device           String?
+  1710→  page             String?  // landing page URL
+  1711→  // Metadata
+  1712→  importBatch      String?
+  1713→  createdAt        DateTime @default(now())
+  1714→
+  1715→  @@unique([projectId, connectionId, date, query, country, device, page])
+  1716→  @@index([projectId])
+  1717→  @@index([connectionId])
+  1718→  @@index([date])
+  1719→  @@index([query])
+  1720→  @@index([position])
+  1721→  @@index([clicks])
+  1722→  @@map("query_performance")
+  1723→}
+  1724→
+  1725→// ============================================================================
+  1726→// Phase 5: Alerts
+  1727→// ============================================================================
+  1728→
+  1729→model Alert {
+  1730→  id               String        @id @default(uuid())
+  1731→  projectId        String
+  1732→  type             AlertType
+  1733→  severity         AlertSeverity @default(MEDIUM)
+  1734→  status           AlertStatus   @default(ACTIVE)
+  1735→  // Alert content
+  1736→  title            String        // Dutch title
+  1737→  message          String        // Dutch explanation
+  1738→  evidence         String?       // JSON evidence data
+  1739→  metricValue      Float?
+  1740→  previousValue    Float?
+  1741→  changePercentage Float?
+  1742→  threshold        Float?
+  1743→  // Minimum data volume check
+  1744→  dataPointsUsed   Int           @default(0)
+  1745→  dataSufficient   Boolean       @default(true)
+  1746→  dataNote         String?       // Dutch explanation if data insufficient
+  1747→  // Grouping and deduplication
+  1748→  alertGroup       String?       // group key for related alerts
+  1749→  // Lifecycle
+  1750→  acknowledgedBy   String?
+  1751→  acknowledgedAt   DateTime?
+  1752→  snoozedUntil     DateTime?
+  1753→  snoozedBy        String?
+  1754→  resolvedBy       String?
+  1755→  resolvedAt       DateTime?
+  1756→  dismissedBy      String?
+  1757→  dismissedAt      DateTime?
+  1758→  assignedTo       String?
+  1759→  resolution       String?       // Dutch resolution note
+  1760→  // Notification
+  1761→  notifiedChannels String?       // JSON array: email, in_app, webhook
+  1762→  // Anomaly detection metadata
+  1763→  anomalyScore     Float?
+  1764→  anomalyMethod    String?       // statistical, threshold, trend
+  1765→  // Metadata
+  1766→  createdAt        DateTime      @default(now())
+  1767→  updatedAt        DateTime      @updatedAt
+  1768→
+  1769→  @@index([projectId])
+  1770→  @@index([type])
+  1771→  @@index([severity])
+  1772→  @@index([status])
+  1773→  @@index([alertGroup])
+  1774→  @@index([assignedTo])
+  1775→  @@index([createdAt])
+  1776→  @@map("alerts")
+  1777→}
+  1778→
+  1779→// ============================================================================
+  1780→// Phase 5: Alert Notification Preferences
+  1781→// ============================================================================
+  1782→
+  1783→model AlertPreference {
+  1784→  id               String     @id @default(uuid())
+  1785→  projectId        String
+  1786→  userId           String
+  1787→  alertType        AlertType?
+  1788→  severity         AlertSeverity?
+  1789→  channel          String     // email, in_app, webhook
+  1790→  isEnabled        Boolean    @default(true)
+  1791→  digestFrequency  String?    // none, daily, weekly
+  1792→  quietHoursStart  String?    // "22:00"
+  1793→  quietHoursEnd    String?    // "08:00"
+  1794→  createdAt        DateTime   @default(now())
+  1795→  updatedAt        DateTime   @updatedAt
+  1796→
+  1797→  @@unique([projectId, userId, alertType, severity, channel])
+  1798→  @@index([projectId])
+  1799→  @@index([userId])
+  1800→  @@map("alert_preferences")
+  1801→}
+  1802→
+  1803→// ============================================================================
+  1804→// Phase 5: Roadmap Items
+  1805→// ============================================================================
+  1806→
+  1807→model RoadmapItem {
+  1808→  id               String           @id @default(uuid())
+  1809→  projectId        String
+  1810→  type             RoadmapItemType
+  1811→  title            String           // Dutch title
+  1812→  description      String?          // Dutch description
+  1813→  // Source reference
+  1814→  sourceType       String?          // technical_issue, keyword, decay, etc.
+  1815→  sourceId         String?          // ID of the source entity
+  1816→  // Priority & scheduling
+  1817→  priority         ActionPriority   @default(MEDIUM)
+  1818→  effort           ActionEffort     @default(MEDIUM)
+  1819→  impact           String?          // Dutch impact description
+  1820→  scheduledDate    DateTime?
+  1821→  dueDate          DateTime?
+  1822→  view             RoadmapView      @default(LATER)
+  1823→  sortOrder        Int              @default(0)
+  1824→  // Status
+  1825→  status           ActionItemStatus @default(PENDING)
+  1826→  assignedTo       String?
+  1827→  completedAt      DateTime?
+  1828→  // AI-generated recommendation
+  1829→  recommendation   String?          // Dutch recommendation
+  1830→  autoGenerated    Boolean          @default(false)
+  1831→  // Metadata
+  1832→  createdAt        DateTime         @default(now())
+  1833→  updatedAt        DateTime         @updatedAt
+  1834→
+  1835→  @@index([projectId])
+  1836→  @@index([type])
+  1837→  @@index([priority])
+  1838→  @@index([status])
+  1839→  @@index([view])
+  1840→  @@index([scheduledDate])
+  1841→  @@index([assignedTo])
+  1842→  @@index([sortOrder])
+  1843→  @@map("roadmap_items")
+  1844→}
+  1845→
+  1846→// ============================================================================
+  1847→// Phase 5: White-Label Profile
+  1848→// ============================================================================
+  1849→
+  1850→model WhiteLabelProfile {
+  1851→  id                String    @id @default(uuid())
+  1852→  organizationId    String
+  1853→  name              String
+  1854→  // Branding
+  1855→  logoUrl           String?
+  1856→  primaryColor      String?   @default("#059669") // emerald-600
+  1857→  secondaryColor    String?
+  1858→  accentColor       String?
+  1859→  fontFamily        String?
+  1860→  // Organization details shown in reports
+  1861→  companyName       String?
+  1862→  companyTagline    String?
+  1863→  companyAddress    String?
+  1864→  companyPhone      String?
+  1865→  companyEmail      String?
+  1866→  companyWebsite    String?
+  1867→  companyKvk        String?   // KvK number
+  1868→  // Report content
+  1869→  introductionText  String?   // Dutch intro for reports
+  1870→  closingText       String?   // Dutch closing for reports
+  1871→  footerText        String?   // Dutch footer text
+  1872→  senderIdentity    String?   // "Van: [name]"
+  1873→  // Custom domain architecture (URL prefix pattern)
+  1874→  customDomainReady Boolean   @default(false)
+  1875→  customDomainPattern String?
+  1876→  // Metadata
+  1877→  isDefault         Boolean   @default(false)
+  1878→  deletedAt         DateTime?
+  1879→  createdAt         DateTime  @default(now())
+  1880→  updatedAt         DateTime  @updatedAt
+  1881→
+  1882→  @@index([organizationId])
+  1883→  @@index([deletedAt])
+  1884→  @@map("white_label_profiles")
+  1885→}
+  1886→
+  1887→// ============================================================================
+  1888→// Phase 5: Reports
+  1889→// ============================================================================
+  1890→
+  1891→model Report {
+  1892→  id                String         @id @default(uuid())
+  1893→  projectId         String
+  1894→  whiteLabelId      String?
+  1895→  type              ReportType
+  1896→  status            ReportStatus   @default(DRAFT)
+  1897→  title             String         // Dutch title
+  1898→  description       String?        // Dutch description
+  1899→  // Date range
+  1900→  startDate         DateTime
+  1901→  endDate           DateTime
+  1902→  comparisonStartDate DateTime?     // for period comparison
+  1903→  comparisonEndDate DateTime?
+  1904→  // Sections (JSON array of section definitions)
+  1905→  sections          String         // JSON
+  1906→  // Snapshot data (frozen at generation time)
+  1907→  snapshotData      String?        // JSON - frozen data so reports don't change
+  1908→  snapshotGeneratedAt DateTime?
+  1909→  // Output
+  1910→  htmlOutput        String?        // generated HTML
+  1911→  pdfPath           String?        // path to generated PDF
+  1912→  // Approval
+  1913→  approvedBy        String?
+  1914→  approvedAt        DateTime?
+  1915→  // Sharing
+  1916→  shareToken        String?        @unique
+  1917→  sharePassword     String?        // hashed password for shared reports
+  1918→  shareExpiresAt    DateTime?
+  1919→  shareAccessCount  Int            @default(0)
+  1920→  // Scheduling
+  1921→  scheduledAt       DateTime?
+  1922→  // Version tracking
+  1923→  version           Int            @default(1)
+  1924→  parentReportId    String?        // for version history
+  1925→  // Metadata
+  1926→  createdById       String?
+  1927→  deletedAt         DateTime?
+  1928→  createdAt         DateTime       @default(now())
+  1929→  updatedAt         DateTime       @updatedAt
+  1930→
+  1931→  @@index([projectId])
+  1932→  @@index([type])
+  1933→  @@index([status])
+  1934→  @@index([whiteLabelId])
+  1935→  @@index([shareToken])
+  1936→  @@index([scheduledAt])
+  1937→  @@index([deletedAt])
+  1938→  @@map("reports")
+  1939→}
+  1940→
+  1941→// ============================================================================
+  1942→// Phase 5: Report Comments (client/colleague feedback)
+  1943→// ============================================================================
+  1944→
+  1945→model ReportComment {
+  1946→  id          String   @id @default(uuid())
+  1947→  reportId    String
+  1948→  userId      String?
+  1949→  sectionId   String?  // which section the comment refers to
+  1950→  comment     String   // Dutch comment
+  1951→  resolved    Boolean  @default(false)
+  1952→  createdAt   DateTime @default(now())
+  1953→  updatedAt   DateTime @updatedAt
+  1954→
+  1955→  @@index([reportId])
+  1956→  @@index([sectionId])
+  1957→  @@index([resolved])
+  1958→  @@map("report_comments")
+  1959→}
+  1960→
+  1961→// ============================================================================
+  1962→// Phase 6: GEO & Competitive Intelligence — Enums
+  1963→// ============================================================================
+  1964→
+  1965→enum GeoCheckCategory {
+  1966→  DIRECT_ANSWERS
+  1967→  DEFINITIONS
+  1968→  ANSWER_BLOCKS
+  1969→  ENTITY_CLARITY
+  1970→  ORGANISATION_CLARITY
+  1971→  AUTHOR_INFORMATION
+  1972→  SOURCE_TRANSPARENCY
+  1973→  DATES
+  1974→  STRUCTURED_DATA
+  1975→  FAQS
+  1976→  UNIQUE_INFORMATION
+  1977→  CITABLE_FACTS
+  1978→  CRAWLABILITY
+  1979→  INDEXABILITY
+  1980→  BRAND_CONSISTENCY
+  1981→}
+  1982→
+  1983→enum GeoCheckStatus {
+  1984→  PASSING
+  1985→  NEEDS_IMPROVEMENT
+  1986→  FAILING
+  1987→  NOT_CHECKED
+  1988→}
+  1989→
+  1990→enum AIVisibilityMethod {
+  1991→  MANUAL_TEST
+  1992→  CSV_IMPORT
+  1993→  LOCAL_SIMULATION
+  1994→  PROVIDER_ADAPTER
+  1995→}
+  1996→
+  1997→enum CompetitorChangeType {
+  1998→  NEW_PAGE
+  1999→  TITLE_CHANGE
+  2000→  HEADING_CHANGE
+  2001→  TOPIC_CHANGE
+  2002→  SERVICE_CHANGE
+  2003→  CATEGORY_CHANGE
+  2004→  LOCATION_CHANGE
+  2005→  STRUCTURED_DATA_CHANGE
+  2006→  INTERNAL_LINK_CHANGE
+  2007→  PRICE_CHANGE
+  2008→  PUBLISHING_FREQUENCY_CHANGE
+  2009→  POSITIONING_CHANGE
+  2010→}
+  2011→
+  2012→enum TrendSourceType {
+  2013→  SEARCH_QUERY
+  2014→  INTERNAL_SEARCH
+  2015→  COMPETITOR_CHANGE
+  2016→  REVIEW_THEME
+  2017→  NEWS_SOURCE
+  2018→  REGULATION
+  2019→  SEASONALITY
+  2020→  AI_PROMPT
+  2021→}
+  2022→
+  2023→enum AuthorityRecordType {
+  2024→  BACKLINK
+  2025→  LOST_LINK
+  2026→  NEW_LINK
+  2027→  BRAND_MENTION
+  2028→  LINK_GAP
+  2029→  OUTREACH_OPPORTUNITY
+  2030→  CAMPAIGN
+  2031→}
+  2032→
+  2033→// ============================================================================
+  2034→// Phase 6: GEO Readiness
+  2035→// ============================================================================
+  2036→
+  2037→model GeoReadinessCheck {
+  2038→  id              String            @id @default(uuid())
+  2039→  projectId       String
+  2040→  pageId          String?
+  2041→  url             String?
+  2042→  category        GeoCheckCategory
+  2043→  status          GeoCheckStatus    @default(NOT_CHECKED)
+  2044→  score           Float             @default(0)
+  2045→  // Dutch findings
+  2046→  title           String            // Dutch title
+  2047→  description     String            // Dutch description
+  2048→  recommendation  String?           // Dutch recommendation
+  2049→  evidence        String?           // JSON evidence
+  2050→  // Metadata
+  2051→  checkedAt       DateTime          @default(now())
+  2052→  createdAt       DateTime          @default(now())
+  2053→  updatedAt       DateTime          @updatedAt
+  2054→
+  2055→  @@index([projectId])
+  2056→  @@index([pageId])
+  2057→  @@index([category])
+  2058→  @@index([status])
+  2059→  @@index([score])
+  2060→  @@map("geo_readiness_checks")
+  2061→}
+  2062→
+  2063→model GeoReadinessSummary {
+  2064→  id                String   @id @default(uuid())
+  2065→  projectId         String   @unique
+  2066→  overallScore      Float    @default(0)
+  2067→  directAnswersScore Float   @default(0)
+  2068→  definitionsScore  Float    @default(0)
+  2069→  answerBlocksScore Float    @default(0)
+  2070→  entityClarityScore Float   @default(0)
+  2071→  organisationClarityScore Float @default(0)
+  2072→  authorInfoScore   Float    @default(0)
+  2073→  sourceTransparencyScore Float @default(0)
+  2074→  datesScore        Float    @default(0)
+  2075→  structuredDataScore Float  @default(0)
+  2076→  faqsScore         Float    @default(0)
+  2077→  uniqueInfoScore   Float    @default(0)
+  2078→  citableFactsScore Float    @default(0)
+  2079→  crawlabilityScore Float    @default(0)
+  2080→  indexabilityScore Float    @default(0)
+  2081→  brandConsistencyScore Float @default(0)
+  2082→  totalChecks       Int      @default(0)
+  2083→  passingChecks     Int      @default(0)
+  2084→  failingChecks     Int      @default(0)
+  2085→  notCheckedChecks  Int      @default(0)
+  2086→  calculatedAt      DateTime @default(now())
+  2087→  createdAt         DateTime @default(now())
+  2088→  updatedAt         DateTime @updatedAt
+  2089→
+  2090→  @@index([projectId])
+  2091→  @@index([overallScore])
+  2092→  @@map("geo_readiness_summaries")
+  2093→}
+  2094→
+  2095→// ============================================================================
+  2096→// Phase 6: AI Visibility (Measured)
+  2097→// ============================================================================
+  2098→
+  2099→model AIPromptLibrary {
+  2100→  id          String   @id @default(uuid())
+  2101→  projectId   String
+  2102→  name        String
+  2103→  prompt      String
+  2104→  clusterId   String?
+  2105→  funnelStage FunnelStage @default(UNKNOWN)
+  2106→  searchIntent SearchIntent @default(UNKNOWN)
+  2107→  isActive    Boolean  @default(true)
+  2108→  createdAt   DateTime @default(now())
+  2109→  updatedAt   DateTime @updatedAt
+  2110→
+  2111→  cluster AIPromptCluster? @relation(fields: [clusterId], references: [id], onDelete: SetNull)
+  2112→  results AIVisibilityResult[]
+  2113→
+  2114→  @@index([projectId])
+  2115→  @@index([clusterId])
+  2116→  @@index([isActive])
+  2117→  @@map("ai_prompt_library")
+  2118→}
+  2119→
+  2120→model AIPromptCluster {
+  2121→  id          String   @id @default(uuid())
+  2122→  projectId   String
+  2123→  name        String
+  2124→  description String?
+  2125→  createdAt   DateTime @default(now())
+  2126→  updatedAt   DateTime @updatedAt
+  2127→
+  2128→  prompts AIPromptLibrary[]
+  2129→
+  2130→  @@index([projectId])
+  2131→  @@map("ai_prompt_clusters")
+  2132→}
+  2133→
+  2134→model AIVisibilityResult {
+  2135→  id              String            @id @default(uuid())
+  2136→  projectId       String
+  2137→  promptId        String?
+  2138→  method          AIVisibilityMethod
+  2139→  // Test context
+  2140→  platform        String?           // chatgpt, gemini, perplexity, etc.
+  2141→  model           String?
+  2142→  promptText      String
+  2143→  response        String?           // full AI response
+  2144→  screenshotUrl   String?           // screenshot evidence
+  2145→  // Test metadata
+  2146→  testDate        DateTime          @default(now())
+  2147→  country         String?           @default("NL")
+  2148→  language        String?           @default("nl-NL")
+  2149→  // Result analysis
+  2150→  isMentioned     Boolean           @default(false)
+  2151→  mentionedUrls   String?           // JSON array of URLs mentioned
+  2152→  mentionedSources String?          // JSON array of source names
+  2153→  competitorMentions String?        // JSON array of competitor mentions
+  2154→  sentiment       String?           // positive, neutral, negative, mixed
+  2155→  accuracy        Float?            // 0-1 how accurate the mention is
+  2156→  confidence      Float?            // 0-1 confidence in the result
+  2157→  evidence        String?           // JSON evidence data
+  2158→  // Simulation flag
+  2159→  isSimulation    Boolean           @default(false)
+  2160→  simulationNote  String?           // Dutch: "Simulatie – geen bewijs van werkelijke externe AI-zichtbaarheid."
+  2161→  // CSV import batch
+  2162→  importBatch     String?
+  2163→  createdAt       DateTime          @default(now())
+  2164→  updatedAt       DateTime          @updatedAt
+  2165→
+  2166→  prompt AIPromptLibrary? @relation(fields: [promptId], references: [id], onDelete: SetNull)
+  2167→
+  2168→  @@index([projectId])
+  2169→  @@index([promptId])
+  2170→  @@index([method])
+  2171→  @@index([platform])
+  2172→  @@index([isMentioned])
+  2173→  @@index([testDate])
+  2174→  @@index([importBatch])
+  2175→  @@map("ai_visibility_results")
+  2176→}
+  2177→
+  2178→model AIVisibilitySummary {
+  2179→  id                   String   @id @default(uuid())
+  2180→  projectId            String   @unique
+  2181→  shareOfAIVoice       Float    @default(0)
+  2182→  brandMentionRate     Float    @default(0)
+  2183→  sourceMentionRate    Float    @default(0)
+  2184→  competitorMentionRate Float   @default(0)
+  2185→  avgAccuracy          Float    @default(0)
+  2186→  avgSentiment         Float    @default(0)
+  2187→  promptCoverage       Float    @default(0)
+  2188→  funnelCoverage       Float    @default(0)
+  2189→  totalTests           Int      @default(0)
+  2190→  mentionedTests       Int      @default(0)
+  2191→  simulationTests      Int      @default(0)
+  2192→  calculatedAt         DateTime @default(now())
+  2193→  createdAt            DateTime @default(now())
+  2194→  updatedAt            DateTime @updatedAt
+  2195→
+  2196→  @@index([projectId])
+  2197→  @@index([shareOfAIVoice])
+  2198→  @@map("ai_visibility_summaries")
+  2199→}
+  2200→
+  2201→// ============================================================================
+  2202→// Phase 6: Competitor Intelligence
+  2203→// ============================================================================
+  2204→
+  2205→model Competitor {
+  2206→  id              String   @id @default(uuid())
+  2207→  projectId       String
+  2208→  name            String
+  2209→  websiteUrl      String
+  2210→  description     String?
+  2211→  isActive        Boolean  @default(true)
+  2212→  lastCrawledAt   DateTime?
+  2213→  deletedAt       DateTime?
+  2214→  createdAt       DateTime @default(now())
+  2215→  updatedAt       DateTime @updatedAt
+  2216→
+  2217→  snapshots CompetitorSnapshot[]
+  2218→  changes   CompetitorChange[]
+  2219→
+  2220→  @@unique([projectId, websiteUrl])
+  2221→  @@index([projectId])
+  2222→  @@index([isActive])
+  2223→  @@index([deletedAt])
+  2224→  @@map("competitors")
+  2225→}
+  2226→
+  2227→model CompetitorSnapshot {
+  2228→  id              String   @id @default(uuid())
+  2229→  competitorId    String
+  2230→  // Page-level snapshot data
+  2231→  url             String
+  2232→  title           String?
+  2233→  headings        String?  // JSON array of headings
+  2234→  topics          String?  // JSON array of detected topics
+  2235→  services        String?  // JSON array of services
+  2236→  categories      String?  // JSON array of categories
+  2237→  locations       String?  // JSON array of locations
+  2238→  structuredData  String?  // JSON structured data
+  2239→  internalLinks   String?  // JSON count + key links
+  2240→  publicPrices    String?  // JSON price info
+  2241→  metaDescription String?
+  2242→  wordCount       Int      @default(0)
+  2243→  // Snapshot metadata
+  2244→  crawledAt       DateTime @default(now())
+  2245→  createdAt       DateTime @default(now())
+  2246→
+  2247→  competitor Competitor @relation(fields: [competitorId], references: [id], onDelete: Cascade)
+  2248→
+  2249→  @@index([competitorId])
+  2250→  @@index([url])
+  2251→  @@index([crawledAt])
+  2252→  @@map("competitor_snapshots")
+  2253→}
+  2254→
+  2255→model CompetitorChange {
+  2256→  id               String              @id @default(uuid())
+  2257→  competitorId     String
+  2258→  projectId        String
+  2259→  changeType       CompetitorChangeType
+  2260→  url              String?
+  2261→  // Change details
+  2262→  previousValue    String?             // previous content/value
+  2263→  newValue         String?             // new content/value
+  2264→  changeSummary    String              // Dutch summary of the change
+  2265→  impactSuggestion String?             // Dutch suggestion of impact
+  2266→  recommendedResponse String?          // Dutch recommended response
+  2267→  // Evidence
+  2268→  evidenceSnapshot  String?            // JSON evidence data
+  2269→  // Metadata
+  2270→  detectedAt       DateTime            @default(now())
+  2271→  dismissed        Boolean             @default(false)
+  2272→  dismissedBy      String?
+  2273→  dismissedAt      DateTime?
+  2274→  createdAt        DateTime            @default(now())
+  2275→
+  2276→  competitor Competitor @relation(fields: [competitorId], references: [id], onDelete: Cascade)
+  2277→
+  2278→  @@index([competitorId])
+  2279→  @@index([projectId])
+  2280→  @@index([changeType])
+  2281→  @@index([detectedAt])
+  2282→  @@index([dismissed])
+  2283→  @@map("competitor_changes")
+  2284→}
+  2285→
+  2286→// ============================================================================
+  2287→// Phase 6: Trends
+  2288→// ============================================================================
+  2289→
+  2290→model TrendRecord {
+  2291→  id              String          @id @default(uuid())
+  2292→  projectId       String
+  2293→  sourceType      TrendSourceType
+  2294→  sourceId        String?
+  2295→  // Trend data
+  2296→  keyword         String?
+  2297→  topic           String?
+  2298→  trendDirection  String          // rising, declining, stable, seasonal
+  2299→  magnitude       Float           @default(0)
+  2300→  // Dutch content
+  2301→  description     String          // Dutch description
+  2302→  evidence        String?         // JSON evidence
+  2303→  // Time context
+  2304→  observedAt      DateTime        @default(now())
+  2305→  expiresAt       DateTime?
+  2306→  createdAt       DateTime        @default(now())
+  2307→
+  2308→  @@index([projectId])
+  2309→  @@index([sourceType])
+  2310→  @@index([trendDirection])
+  2311→  @@index([keyword])
+  2312→  @@index([observedAt])
+  2313→  @@map("trend_records")
+  2314→}
+  2315→
+  2316→// ============================================================================
+  2317→// Phase 6: Authority (Provider-Neutral)
+  2318→// ============================================================================
+  2319→
+  2320→model AuthorityRecord {
+  2321→  id              String            @id @default(uuid())
+  2322→  projectId       String
+  2323→  type            AuthorityRecordType
+  2324→  // Link/mention details
+  2325→  sourceUrl       String?
+  2326→  targetUrl       String?
+  2327→  anchorText      String?
+  2328→  domain          String?
+  2329→  // Metadata
+  2330→  discoveredAt    DateTime          @default(now())
+  2331→  lostAt          DateTime?
+  2332→  // Quality metrics
+  2333→  domainAuthority Float?
+  2334→  pageAuthority   Float?
+  2335→  isNofollow      Boolean           @default(false)
+  2336→  // Dutch context
+  2337→  notes           String?           // Dutch notes
+  2338→  // Campaign tracking
+  2339→  campaignId      String?
+  2340→  status          String            @default("active") // active, lost, pending, outreached, acquired
+  2341→  // Provider-neutral: data from CSV import or API adapter
+  2342→  providerSource  String?           // e.g. "csv_import", "ahrefs_adapter", "moz_adapter"
+  2343→  importBatch     String?
+  2344→  deletedAt       DateTime?
+  2345→  createdAt       DateTime          @default(now())
+  2346→  updatedAt       DateTime          @updatedAt
+  2347→
+  2348→  @@index([projectId])
+  2349→  @@index([type])
+  2350→  @@index([domain])
+  2351→  @@index([status])
+  2352→  @@index([discoveredAt])
+  2353→  @@index([providerSource])
+  2354→  @@index([importBatch])
+  2355→  @@index([deletedAt])
+  2356→  @@map("authority_records")
+  2357→}
+  2358→
+  2359→model OutreachCampaign {
+  2360→  id              String   @id @default(uuid())
+  2361→  projectId       String
+  2362→  name            String
+  2363→  description     String?  // Dutch description
+  2364→  status          String   @default("draft") // draft, active, completed, paused
+  2365→  targetCount     Int      @default(0)
+  2366→  contactedCount  Int      @default(0)
+  2367→  responseCount   Int      @default(0)
+  2368→  acquiredCount   Int      @default(0)
+  2369→  startDate       DateTime?
+  2370→  endDate         DateTime?
+  2371→  deletedAt       DateTime?
+  2372→  createdAt       DateTime @default(now())
+  2373→  updatedAt       DateTime @updatedAt
+  2374→
+  2375→  @@index([projectId])
+  2376→  @@index([status])
+  2377→  @@index([deletedAt])
+  2378→  @@map("outreach_campaigns")
+  2379→}
+  2380→

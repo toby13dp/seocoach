@@ -39,6 +39,8 @@ import {
   BarChart3,
   Bell,
   Map,
+  Brain,
+  Users,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -562,6 +564,39 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
                     <div>
                       <p className="text-sm font-medium">Rapporten</p>
                       <p className="text-xs text-muted-foreground">SEO-rapportages</p>
+                    </div>
+                  </CardContent>
+                </Card>
+              </Link>
+              <Link href={`/projects/${id}/geo`}>
+                <Card className="hover:bg-accent/50 transition-colors cursor-pointer">
+                  <CardContent className="p-4 flex items-center gap-3">
+                    <Globe className="h-5 w-5 text-violet-600 shrink-0" />
+                    <div>
+                      <p className="text-sm font-medium">GEO-gereedheid</p>
+                      <p className="text-xs text-muted-foreground">AI-zoekgereedheid</p>
+                    </div>
+                  </CardContent>
+                </Card>
+              </Link>
+              <Link href={`/projects/${id}/ai-visibility`}>
+                <Card className="hover:bg-accent/50 transition-colors cursor-pointer">
+                  <CardContent className="p-4 flex items-center gap-3">
+                    <Brain className="h-5 w-5 text-purple-600 shrink-0" />
+                    <div>
+                      <p className="text-sm font-medium">AI-zichtbaarheid</p>
+                      <p className="text-xs text-muted-foreground">Meting & simulatie</p>
+                    </div>
+                  </CardContent>
+                </Card>
+              </Link>
+              <Link href={`/projects/${id}/competitors`}>
+                <Card className="hover:bg-accent/50 transition-colors cursor-pointer">
+                  <CardContent className="p-4 flex items-center gap-3">
+                    <Users className="h-5 w-5 text-orange-600 shrink-0" />
+                    <div>
+                      <p className="text-sm font-medium">Concurrentieanalyse</p>
+                      <p className="text-xs text-muted-foreground">Wijzigingen volgen</p>
                     </div>
                   </CardContent>
                 </Card>

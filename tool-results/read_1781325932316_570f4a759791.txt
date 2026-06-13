@@ -1,0 +1,897 @@
+     1→"use client";
+     2→
+     3→import { useState, useEffect, use } from "react";
+     4→import { useRouter } from "@/i18n/routing";
+     5→import { Link } from "@/i18n/routing";
+     6→import { useTranslations } from "@/i18n/client";
+     7→import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+     8→import { Button } from "@/components/ui/button";
+     9→import { Badge } from "@/components/ui/badge";
+    10→import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+    11→import { Input } from "@/components/ui/input";
+    12→import { Label } from "@/components/ui/label";
+    13→import { Textarea } from "@/components/ui/textarea";
+    14→import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+    15→import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+    16→import { motion } from "framer-motion";
+    17→import {
+    18→  ArrowLeft,
+    19→  Globe,
+    20→  Loader2,
+    21→  CheckCircle2,
+    22→  AlertCircle,
+    23→  Save,
+    24→  Clock,
+    25→  Search,
+    26→  FileText,
+    27→  AlertTriangle,
+    28→  Tag,
+    29→  GitBranch,
+    30→  PenTool,
+    31→  Cpu,
+    32→  TrendingDown,
+    33→  Workflow,
+    34→  Link2,
+    35→  Database,
+    36→  FileCode2,
+    37→  GitMerge,
+    38→  History,
+    39→  BarChart3,
+    40→  Bell,
+    41→  Map,
+    42→} from "lucide-react";
+    43→import { toast } from "sonner";
+    44→
+    45→interface Project {
+    46→  id: string;
+    47→  name: string;
+    48→  slug: string;
+    49→  websiteUrl: string | null;
+    50→  status: string;
+    51→  onboardingCompleted: boolean;
+    52→  description: string | null;
+    53→  createdAt: string;
+    54→}
+    55→
+    56→interface BrandProfile {
+    57→  id: string;
+    58→  brandName: string | null;
+    59→  description: string | null;
+    60→  toneOfVoice: string | null;
+    61→  products: string | null;
+    62→  services: string | null;
+    63→  audiences: string | null;
+    64→  regions: string | null;
+    65→  preferredTerminology: string | null;
+    66→  prohibitedTerminology: string | null;
+    67→  allowedClaims: string | null;
+    68→  prohibitedClaims: string | null;
+    69→  proofPoints: string | null;
+    70→  certifications: string | null;
+    71→  contactInformation: string | null;
+    72→  conversionGoals: string | null;
+    73→  editorialRules: string | null;
+    74→  disclaimers: string | null;
+    75→  addressPreference: string | null;
+    76→}
+    77→
+    78→interface ActionItem {
+    79→  id: string;
+    80→  title: string;
+    81→  description: string | null;
+    82→  priority: string;
+    83→  effort: string;
+    84→  status: string;
+    85→  deadline: string | null;
+    86→  createdAt: string;
+    87→}
+    88→
+    89→interface JobEntry {
+    90→  id: string;
+    91→  type: string;
+    92→  status: string;
+    93→  progress: number;
+    94→  createdAt: string;
+    95→}
+    96→
+    97→interface AuditLogEntry {
+    98→  id: string;
+    99→  action: string;
+   100→  entity: string;
+   101→  createdAt: string;
+   102→}
+   103→
+   104→export default function ProjectDetailPage({ params }: { params: Promise<{ id: string }> }) {
+   105→  const { id } = use(params);
+   106→  const router = useRouter();
+   107→  const t = useTranslations("project");
+   108→  const tBrand = useTranslations("brand");
+   109→  const tActions = useTranslations("actions");
+   110→  const tJobs = useTranslations("jobs");
+   111→  const tAudit = useTranslations("audit");
+   112→  const tCommon = useTranslations("common");
+   113→
+   114→  const [project, setProject] = useState<Project | null>(null);
+   115→  const [brandProfile, setBrandProfile] = useState<BrandProfile | null>(null);
+   116→  const [actionItems, setActionItems] = useState<ActionItem[]>([]);
+   117→  const [jobs, setJobs] = useState<JobEntry[]>([]);
+   118→  const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
+   119→  const [isLoading, setIsLoading] = useState(true);
+   120→  const [isSaving, setIsSaving] = useState(false);
+   121→
+   122→  // Brand profile form
+   123→  const [brandForm, setBrandForm] = useState<Partial<BrandProfile>>({});
+   124→
+   125→  useEffect(() => {
+   126→    async function fetchData() {
+   127→      try {
+   128→        const [projectRes, actionsRes, jobsRes, auditRes] = await Promise.all([
+   129→          fetch(`/api/projects/${id}`),
+   130→          fetch(`/api/actions?projectId=${id}`),
+   131→          fetch(`/api/jobs?projectId=${id}`),
+   132→          fetch(`/api/audit?projectId=${id}`),
+   133→        ]);
+   134→
+   135→        if (projectRes.ok) {
+   136→          const data = await projectRes.json();
+   137→          setProject(data.project);
+   138→          if (data.brandProfile) {
+   139→            setBrandProfile(data.brandProfile);
+   140→            setBrandForm(data.brandProfile);
+   141→          }
+   142→        }
+   143→        if (actionsRes.ok) {
+   144→          const data = await actionsRes.json();
+   145→          setActionItems(data.items || []);
+   146→        }
+   147→        if (jobsRes.ok) {
+   148→          const data = await jobsRes.json();
+   149→          setJobs(data.items || []);
+   150→        }
+   151→        if (auditRes.ok) {
+   152→          const data = await auditRes.json();
+   153→          setAuditLogs(data.items || []);
+   154→        }
+   155→      } catch {
+   156→        // silently fail
+   157→      } finally {
+   158→        setIsLoading(false);
+   159→      }
+   160→    }
+   161→    fetchData();
+   162→  }, [id]);
+   163→
+   164→  const handleSaveBrandProfile = async () => {
+   165→    setIsSaving(true);
+   166→    try {
+   167→      const res = await fetch(`/api/projects/${id}/brand-profile`, {
+   168→        method: "PUT",
+   169→        headers: { "Content-Type": "application/json" },
+   170→        body: JSON.stringify(brandForm),
+   171→      });
+   172→      if (res.ok) {
+   173→        toast.success(tBrand("saveSuccess"));
+   174→      } else {
+   175→        toast.error(tBrand("saveError"));
+   176→      }
+   177→    } catch {
+   178→      toast.error(tBrand("saveError"));
+   179→    } finally {
+   180→      setIsSaving(false);
+   181→    }
+   182→  };
+   183→
+   184→  const statusVariant = (status: string) => {
+   185→    switch (status) {
+   186→      case "ACTIVE": return "default";
+   187→      case "PAUSED": return "secondary";
+   188→      case "ARCHIVED": return "outline";
+   189→      default: return "secondary";
+   190→    }
+   191→  };
+   192→
+   193→  const statusLabel = (status: string) => {
+   194→    switch (status) {
+   195→      case "ACTIVE": return t("active");
+   196→      case "PAUSED": return t("paused");
+   197→      case "ARCHIVED": return t("archived");
+   198→      default: return status;
+   199→    }
+   200→  };
+   201→
+   202→  const priorityVariant = (priority: string) => {
+   203→    switch (priority) {
+   204→      case "CRITICAL": return "destructive";
+   205→      case "HIGH": return "default";
+   206→      case "MEDIUM": return "secondary";
+   207→      case "LOW": return "outline";
+   208→      default: return "secondary";
+   209→    }
+   210→  };
+   211→
+   212→  const actionStatusLabel = (status: string) => {
+   213→    switch (status) {
+   214→      case "PENDING": return tActions("pending");
+   215→      case "IN_PROGRESS": return tActions("inProgress");
+   216→      case "COMPLETED": return tActions("completed");
+   217→      case "SKIPPED": return tActions("skipped");
+   218→      default: return status;
+   219→    }
+   220→  };
+   221→
+   222→  const jobStatusLabel = (status: string) => {
+   223→    switch (status) {
+   224→      case "PENDING": return tJobs("pending");
+   225→      case "RUNNING": return tJobs("running");
+   226→      case "COMPLETED": return tJobs("completed");
+   227→      case "FAILED": return tJobs("failed");
+   228→      case "CANCELLED": return tJobs("cancelled");
+   229→      default: return status;
+   230→    }
+   231→  };
+   232→
+   233→  if (isLoading) {
+   234→    return (
+   235→      <div className="flex items-center justify-center min-h-[calc(100vh-3.5rem)]">
+   236→        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+   237→      </div>
+   238→    );
+   239→  }
+   240→
+   241→  if (!project) {
+   242→    return (
+   243→      <div className="p-4 md:p-6">
+   244→        <Button variant="ghost" onClick={() => router.push("/projects")}>
+   245→          <ArrowLeft className="mr-2 h-4 w-4" />
+   246→          {tCommon("back")}
+   247→        </Button>
+   248→        <p className="text-muted-foreground mt-4">{tCommon("noResults")}</p>
+   249→      </div>
+   250→    );
+   251→  }
+   252→
+   253→  return (
+   254→    <motion.div
+   255→      initial={{ opacity: 0 }}
+   256→      animate={{ opacity: 1 }}
+   257→      className="p-4 md:p-6 space-y-6"
+   258→    >
+   259→      {/* Header */}
+   260→      <div className="flex items-center gap-4">
+   261→        <Button variant="ghost" size="icon" onClick={() => router.push("/projects")}>
+   262→          <ArrowLeft className="h-4 w-4" />
+   263→        </Button>
+   264→        <div className="flex-1">
+   265→          <div className="flex items-center gap-3">
+   266→            <h1 className="text-2xl font-bold tracking-tight">{project.name}</h1>
+   267→            <Badge variant={statusVariant(project.status) as "default" | "secondary" | "outline"}>
+   268→              {statusLabel(project.status)}
+   269→            </Badge>
+   270→            {project.onboardingCompleted ? (
+   271→              <Badge variant="default" className="bg-emerald-600 text-xs">
+   272→                <CheckCircle2 className="mr-1 h-3 w-3" />
+   273→                {t("onboardingComplete")}
+   274→              </Badge>
+   275→            ) : (
+   276→              <Badge variant="outline" className="text-xs">
+   277→                <AlertCircle className="mr-1 h-3 w-3" />
+   278→                {t("onboardingIncomplete")}
+   279→              </Badge>
+   280→            )}
+   281→          </div>
+   282→          {project.websiteUrl && (
+   283→            <p className="text-muted-foreground text-sm mt-1 flex items-center gap-1">
+   284→              <Globe className="h-3 w-3" />
+   285→              {project.websiteUrl}
+   286→            </p>
+   287→          )}
+   288→        </div>
+   289→      </div>
+   290→
+   291→      {/* Tabs */}
+   292→      <Tabs defaultValue="overview" className="space-y-4">
+   293→        <TabsList>
+   294→          <TabsTrigger value="overview">{t("overview")}</TabsTrigger>
+   295→          <TabsTrigger value="brand">{t("brandProfile")}</TabsTrigger>
+   296→          <TabsTrigger value="actions">{t("actionItems")}</TabsTrigger>
+   297→          <TabsTrigger value="jobs">{t("jobs")}</TabsTrigger>
+   298→          <TabsTrigger value="audit">{t("auditLog")}</TabsTrigger>
+   299→        </TabsList>
+   300→
+   301→        {/* Overview Tab */}
+   302→        <TabsContent value="overview">
+   303→          <div className="grid gap-4 md:grid-cols-2">
+   304→            <Card>
+   305→              <CardHeader>
+   306→                <CardTitle className="text-base">{t("projectInfo")}</CardTitle>
+   307→              </CardHeader>
+   308→              <CardContent className="space-y-3">
+   309→                <div>
+   310→                  <span className="text-sm text-muted-foreground">{t("name")}:</span>
+   311→                  <p className="text-sm font-medium">{project.name}</p>
+   312→                </div>
+   313→                {project.websiteUrl && (
+   314→                  <div>
+   315→                    <span className="text-sm text-muted-foreground">{t("website")}:</span>
+   316→                    <p className="text-sm font-medium">{project.websiteUrl}</p>
+   317→                  </div>
+   318→                )}
+   319→                <div>
+   320→                  <span className="text-sm text-muted-foreground">{t("status")}:</span>
+   321→                  <Badge variant={statusVariant(project.status) as "default" | "secondary" | "outline"} className="ml-2">
+   322→                    {statusLabel(project.status)}
+   323→                  </Badge>
+   324→                </div>
+   325→                {project.description && (
+   326→                  <div>
+   327→                    <span className="text-sm text-muted-foreground">{tCommon("description")}:</span>
+   328→                    <p className="text-sm">{project.description}</p>
+   329→                  </div>
+   330→                )}
+   331→              </CardContent>
+   332→            </Card>
+   333→            <Card>
+   334→              <CardHeader>
+   335→                <CardTitle className="text-base">{t("quickStats")}</CardTitle>
+   336→              </CardHeader>
+   337→              <CardContent className="space-y-3">
+   338→                <div className="flex justify-between">
+   339→                  <span className="text-sm text-muted-foreground">{t("actionItems")}:</span>
+   340→                  <span className="text-sm font-medium">{actionItems.length}</span>
+   341→                </div>
+   342→                <div className="flex justify-between">
+   343→                  <span className="text-sm text-muted-foreground">{t("jobs")}:</span>
+   344→                  <span className="text-sm font-medium">{jobs.length}</span>
+   345→                </div>
+   346→                <div className="flex justify-between">
+   347→                  <span className="text-sm text-muted-foreground">Aangemaakt:</span>
+   348→                  <span className="text-sm font-medium">
+   349→                    {new Date(project.createdAt).toLocaleDateString("nl-NL")}
+   350→                  </span>
+   351→                </div>
+   352→              </CardContent>
+   353→            </Card>
+   354→          </div>
+   355→
+   356→          {/* Module Navigation */}
+   357→          <div className="mt-6">
+   358→            <h3 className="text-sm font-medium text-muted-foreground mb-3">Modules</h3>
+   359→            <div className="grid gap-3 grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
+   360→              <Link href={`/projects/${id}/crawls`}>
+   361→                <Card className="hover:bg-accent/50 transition-colors cursor-pointer">
+   362→                  <CardContent className="p-4 flex items-center gap-3">
+   363→                    <Search className="h-5 w-5 text-emerald-600 shrink-0" />
+   364→                    <div>
+   365→                      <p className="text-sm font-medium">Crawls</p>
+   366→                      <p className="text-xs text-muted-foreground">Website scannen</p>
+   367→                    </div>
+   368→                  </CardContent>
+   369→                </Card>
+   370→              </Link>
+   371→              <Link href={`/projects/${id}/inventory`}>
+   372→                <Card className="hover:bg-accent/50 transition-colors cursor-pointer">
+   373→                  <CardContent className="p-4 flex items-center gap-3">
+   374→                    <FileText className="h-5 w-5 text-blue-600 shrink-0" />
+   375→                    <div>
+   376→                      <p className="text-sm font-medium">Inventaris</p>
+   377→                      <p className="text-xs text-muted-foreground">Pagina-overzicht</p>
+   378→                    </div>
+   379→                  </CardContent>
+   380→                </Card>
+   381→              </Link>
+   382→              <Link href={`/projects/${id}/issues`}>
+   383→                <Card className="hover:bg-accent/50 transition-colors cursor-pointer">
+   384→                  <CardContent className="p-4 flex items-center gap-3">
+   385→                    <AlertTriangle className="h-5 w-5 text-orange-600 shrink-0" />
+   386→                    <div>
+   387→                      <p className="text-sm font-medium">Technische problemen</p>
+   388→                      <p className="text-xs text-muted-foreground">SEO-aanbevelingen</p>
+   389→                    </div>
+   390→                  </CardContent>
+   391→                </Card>
+   392→              </Link>
+   393→              <Link href={`/projects/${id}/keywords`}>
+   394→                <Card className="hover:bg-accent/50 transition-colors cursor-pointer">
+   395→                  <CardContent className="p-4 flex items-center gap-3">
+   396→                    <Tag className="h-5 w-5 text-purple-600 shrink-0" />
+   397→                    <div>
+   398→                      <p className="text-sm font-medium">Trefwoorden</p>
+   399→                      <p className="text-xs text-muted-foreground">Zoekwoordbeheer</p>
+   400→                    </div>
+   401→                  </CardContent>
+   402→                </Card>
+   403→              </Link>
+   404→              <Link href={`/projects/${id}/topics`}>
+   405→                <Card className="hover:bg-accent/50 transition-colors cursor-pointer">
+   406→                  <CardContent className="p-4 flex items-center gap-3">
+   407→                    <GitBranch className="h-5 w-5 text-teal-600 shrink-0" />
+   408→                    <div>
+   409→                      <p className="text-sm font-medium">Onderwerpen</p>
+   410→                      <p className="text-xs text-muted-foreground">Clusters & structuur</p>
+   411→                    </div>
+   412→                  </CardContent>
+   413→                </Card>
+   414→              </Link>
+   415→              <Link href={`/projects/${id}/briefs`}>
+   416→                <Card className="hover:bg-accent/50 transition-colors cursor-pointer">
+   417→                  <CardContent className="p-4 flex items-center gap-3">
+   418→                    <PenTool className="h-5 w-5 text-rose-600 shrink-0" />
+   419→                    <div>
+   420→                      <p className="text-sm font-medium">Contentstudio</p>
+   421→                      <p className="text-xs text-muted-foreground">Briefs & concepten</p>
+   422→                    </div>
+   423→                  </CardContent>
+   424→                </Card>
+   425→              </Link>
+   426→              <Link href={`/projects/${id}/ai-providers`}>
+   427→                <Card className="hover:bg-accent/50 transition-colors cursor-pointer">
+   428→                  <CardContent className="p-4 flex items-center gap-3">
+   429→                    <Cpu className="h-5 w-5 text-indigo-600 shrink-0" />
+   430→                    <div>
+   431→                      <p className="text-sm font-medium">AI-instellingen</p>
+   432→                      <p className="text-xs text-muted-foreground">Providers & modellen</p>
+   433→                    </div>
+   434→                  </CardContent>
+   435→                </Card>
+   436→              </Link>
+   437→              <Link href={`/projects/${id}/decay`}>
+   438→                <Card className="hover:bg-accent/50 transition-colors cursor-pointer">
+   439→                  <CardContent className="p-4 flex items-center gap-3">
+   440→                    <TrendingDown className="h-5 w-5 text-red-600 shrink-0" />
+   441→                    <div>
+   442→                      <p className="text-sm font-medium">Contentverval</p>
+   443→                      <p className="text-xs text-muted-foreground">Snoei-aanbevelingen</p>
+   444→                    </div>
+   445→                  </CardContent>
+   446→                </Card>
+   447→              </Link>
+   448→              <Link href={`/projects/${id}/studio`}>
+   449→                <Card className="hover:bg-accent/50 transition-colors cursor-pointer">
+   450→                  <CardContent className="p-4 flex items-center gap-3">
+   451→                    <Workflow className="h-5 w-5 text-emerald-600 shrink-0" />
+   452→                    <div>
+   453→                      <p className="text-sm font-medium">Contentwizard</p>
+   454→                      <p className="text-xs text-muted-foreground">Stap-voor-stap maken</p>
+   455→                    </div>
+   456→                  </CardContent>
+   457→                </Card>
+   458→              </Link>
+   459→              <Link href={`/projects/${id}/links`}>
+   460→                <Card className="hover:bg-accent/50 transition-colors cursor-pointer">
+   461→                  <CardContent className="p-4 flex items-center gap-3">
+   462→                    <Link2 className="h-5 w-5 text-cyan-600 shrink-0" />
+   463→                    <div>
+   464→                      <p className="text-sm font-medium">Interne links</p>
+   465→                      <p className="text-xs text-muted-foreground">Suggesties & goedkeuring</p>
+   466→                    </div>
+   467→                  </CardContent>
+   468→                </Card>
+   469→              </Link>
+   470→              <Link href={`/projects/${id}/structured-data`}>
+   471→                <Card className="hover:bg-accent/50 transition-colors cursor-pointer">
+   472→                  <CardContent className="p-4 flex items-center gap-3">
+   473→                    <Database className="h-5 w-5 text-amber-600 shrink-0" />
+   474→                    <div>
+   475→                      <p className="text-sm font-medium">Gestructureerde data</p>
+   476→                      <p className="text-xs text-muted-foreground">JSON-LD schema</p>
+   477→                    </div>
+   478→                  </CardContent>
+   479→                </Card>
+   480→              </Link>
+   481→              <Link href={`/projects/${id}/programmatic`}>
+   482→                <Card className="hover:bg-accent/50 transition-colors cursor-pointer">
+   483→                  <CardContent className="p-4 flex items-center gap-3">
+   484→                    <FileCode2 className="h-5 w-5 text-violet-600 shrink-0" />
+   485→                    <div>
+   486→                      <p className="text-sm font-medium">Programmatische SEO</p>
+   487→                      <p className="text-xs text-muted-foreground">Sjablonen & bulkpagina's</p>
+   488→                    </div>
+   489→                  </CardContent>
+   490→                </Card>
+   491→              </Link>
+   492→              <Link href={`/projects/${id}/cms`}>
+   493→                <Card className="hover:bg-accent/50 transition-colors cursor-pointer">
+   494→                  <CardContent className="p-4 flex items-center gap-3">
+   495→                    <GitMerge className="h-5 w-5 text-sky-600 shrink-0" />
+   496→                    <div>
+   497→                      <p className="text-sm font-medium">CMS-verbindingen</p>
+   498→                      <p className="text-xs text-muted-foreground">WordPress & WooCommerce</p>
+   499→                    </div>
+   500→                  </CardContent>
+   501→                </Card>
+   502→              </Link>
+   503→              <Link href={`/projects/${id}/decay-workflow`}>
+   504→                <Card className="hover:bg-accent/50 transition-colors cursor-pointer">
+   505→                  <CardContent className="p-4 flex items-center gap-3">
+   506→                    <TrendingDown className="h-5 w-5 text-orange-600 shrink-0" />
+   507→                    <div>
+   508→                      <p className="text-sm font-medium">Verval-workflow</p>
+   509→                      <p className="text-xs text-muted-foreground">Update & snoeien</p>
+   510→                    </div>
+   511→                  </CardContent>
+   512→                </Card>
+   513→              </Link>
+   514→              <Link href={`/projects/${id}/history`}>
+   515→                <Card className="hover:bg-accent/50 transition-colors cursor-pointer">
+   516→                  <CardContent className="p-4 flex items-center gap-3">
+   517→                    <History className="h-5 w-5 text-slate-600 shrink-0" />
+   518→                    <div>
+   519→                      <p className="text-sm font-medium">Wijzigingsgeschiedenis</p>
+   520→                      <p className="text-xs text-muted-foreground">Alle contentwijzigingen</p>
+   521→                    </div>
+   522→                  </CardContent>
+   523→                </Card>
+   524→              </Link>
+   525→              <Link href={`/projects/${id}/analytics`}>
+   526→                <Card className="hover:bg-accent/50 transition-colors cursor-pointer">
+   527→                  <CardContent className="p-4 flex items-center gap-3">
+   528→                    <BarChart3 className="h-5 w-5 text-emerald-600 shrink-0" />
+   529→                    <div>
+   530→                      <p className="text-sm font-medium">Zoekprestaties</p>
+   531→                      <p className="text-xs text-muted-foreground">Analytics &amp; monitoring</p>
+   532→                    </div>
+   533→                  </CardContent>
+   534→                </Card>
+   535→              </Link>
+   536→              <Link href={`/projects/${id}/alerts`}>
+   537→                <Card className="hover:bg-accent/50 transition-colors cursor-pointer">
+   538→                  <CardContent className="p-4 flex items-center gap-3">
+   539→                    <Bell className="h-5 w-5 text-red-500 shrink-0" />
+   540→                    <div>
+   541→                      <p className="text-sm font-medium">Meldingen</p>
+   542→                      <p className="text-xs text-muted-foreground">SEO-waarschuwingen</p>
+   543→                    </div>
+   544→                  </CardContent>
+   545→                </Card>
+   546→              </Link>
+   547→              <Link href={`/projects/${id}/roadmap`}>
+   548→                <Card className="hover:bg-accent/50 transition-colors cursor-pointer">
+   549→                  <CardContent className="p-4 flex items-center gap-3">
+   550→                    <Map className="h-5 w-5 text-teal-600 shrink-0" />
+   551→                    <div>
+   552→                      <p className="text-sm font-medium">Roadmap</p>
+   553→                      <p className="text-xs text-muted-foreground">Geprioriteerde acties</p>
+   554→                    </div>
+   555→                  </CardContent>
+   556→                </Card>
+   557→              </Link>
+   558→              <Link href={`/projects/${id}/reports`}>
+   559→                <Card className="hover:bg-accent/50 transition-colors cursor-pointer">
+   560→                  <CardContent className="p-4 flex items-center gap-3">
+   561→                    <FileText className="h-5 w-5 text-sky-600 shrink-0" />
+   562→                    <div>
+   563→                      <p className="text-sm font-medium">Rapporten</p>
+   564→                      <p className="text-xs text-muted-foreground">SEO-rapportages</p>
+   565→                    </div>
+   566→                  </CardContent>
+   567→                </Card>
+   568→              </Link>
+   569→            </div>
+   570→          </div>
+   571→        </TabsContent>
+   572→
+   573→        {/* Brand Profile Tab */}
+   574→        <TabsContent value="brand">
+   575→          <Card>
+   576→            <CardHeader>
+   577→              <CardTitle className="text-base">{tBrand("title")}</CardTitle>
+   578→              <CardDescription>
+   579→                Beheer het merkprofiel voor dit project
+   580→              </CardDescription>
+   581→            </CardHeader>
+   582→            <CardContent className="space-y-4">
+   583→              <div className="grid gap-4 md:grid-cols-2">
+   584→                <div className="space-y-2">
+   585→                  <Label>{tBrand("brandName")}</Label>
+   586→                  <Input
+   587→                    value={brandForm.brandName || ""}
+   588→                    onChange={(e) => setBrandForm({ ...brandForm, brandName: e.target.value })}
+   589→                  />
+   590→                </div>
+   591→                <div className="space-y-2">
+   592→                  <Label>{tBrand("toneOfVoice")}</Label>
+   593→                  <Select
+   594→                    value={brandForm.addressPreference || ""}
+   595→                    onValueChange={(val) => setBrandForm({ ...brandForm, addressPreference: val })}
+   596→                  >
+   597→                    <SelectTrigger>
+   598→                      <SelectValue placeholder={tBrand("addressPreference")} />
+   599→                    </SelectTrigger>
+   600→                    <SelectContent>
+   601→                      <SelectItem value="formal">{tBrand("formal")}</SelectItem>
+   602→                      <SelectItem value="informal">{tBrand("informal")}</SelectItem>
+   603→                    </SelectContent>
+   604→                  </Select>
+   605→                </div>
+   606→              </div>
+   607→              <div className="space-y-2">
+   608→                <Label>{tBrand("description")}</Label>
+   609→                <Textarea
+   610→                  value={brandForm.description || ""}
+   611→                  onChange={(e) => setBrandForm({ ...brandForm, description: e.target.value })}
+   612→                  rows={3}
+   613→                />
+   614→              </div>
+   615→              <div className="grid gap-4 md:grid-cols-2">
+   616→                <div className="space-y-2">
+   617→                  <Label>{tBrand("products")}</Label>
+   618→                  <Textarea
+   619→                    value={brandForm.products || ""}
+   620→                    onChange={(e) => setBrandForm({ ...brandForm, products: e.target.value })}
+   621→                    rows={3}
+   622→                    placeholder="Eén per regel"
+   623→                  />
+   624→                </div>
+   625→                <div className="space-y-2">
+   626→                  <Label>{tBrand("services")}</Label>
+   627→                  <Textarea
+   628→                    value={brandForm.services || ""}
+   629→                    onChange={(e) => setBrandForm({ ...brandForm, services: e.target.value })}
+   630→                    rows={3}
+   631→                    placeholder="Eén per regel"
+   632→                  />
+   633→                </div>
+   634→              </div>
+   635→              <div className="grid gap-4 md:grid-cols-2">
+   636→                <div className="space-y-2">
+   637→                  <Label>{tBrand("audiences")}</Label>
+   638→                  <Textarea
+   639→                    value={brandForm.audiences || ""}
+   640→                    onChange={(e) => setBrandForm({ ...brandForm, audiences: e.target.value })}
+   641→                    rows={3}
+   642→                    placeholder="Eén per regel"
+   643→                  />
+   644→                </div>
+   645→                <div className="space-y-2">
+   646→                  <Label>{tBrand("regions")}</Label>
+   647→                  <Textarea
+   648→                    value={brandForm.regions || ""}
+   649→                    onChange={(e) => setBrandForm({ ...brandForm, regions: e.target.value })}
+   650→                    rows={3}
+   651→                    placeholder="Eén per regel"
+   652→                  />
+   653→                </div>
+   654→              </div>
+   655→              <div className="grid gap-4 md:grid-cols-2">
+   656→                <div className="space-y-2">
+   657→                  <Label>{tBrand("preferredTerms")}</Label>
+   658→                  <Textarea
+   659→                    value={brandForm.preferredTerminology || ""}
+   660→                    onChange={(e) => setBrandForm({ ...brandForm, preferredTerminology: e.target.value })}
+   661→                    rows={2}
+   662→                    placeholder="Eén per regel"
+   663→                  />
+   664→                </div>
+   665→                <div className="space-y-2">
+   666→                  <Label>{tBrand("prohibitedTerms")}</Label>
+   667→                  <Textarea
+   668→                    value={brandForm.prohibitedTerminology || ""}
+   669→                    onChange={(e) => setBrandForm({ ...brandForm, prohibitedTerminology: e.target.value })}
+   670→                    rows={2}
+   671→                    placeholder="Eén per regel"
+   672→                  />
+   673→                </div>
+   674→              </div>
+   675→              <div className="grid gap-4 md:grid-cols-2">
+   676→                <div className="space-y-2">
+   677→                  <Label>{tBrand("allowedClaims")}</Label>
+   678→                  <Textarea
+   679→                    value={brandForm.allowedClaims || ""}
+   680→                    onChange={(e) => setBrandForm({ ...brandForm, allowedClaims: e.target.value })}
+   681→                    rows={2}
+   682→                    placeholder="Eén per regel"
+   683→                  />
+   684→                </div>
+   685→                <div className="space-y-2">
+   686→                  <Label>{tBrand("prohibitedClaims")}</Label>
+   687→                  <Textarea
+   688→                    value={brandForm.prohibitedClaims || ""}
+   689→                    onChange={(e) => setBrandForm({ ...brandForm, prohibitedClaims: e.target.value })}
+   690→                    rows={2}
+   691→                    placeholder="Eén per regel"
+   692→                  />
+   693→                </div>
+   694→              </div>
+   695→              <div className="grid gap-4 md:grid-cols-2">
+   696→                <div className="space-y-2">
+   697→                  <Label>{tBrand("proofPoints")}</Label>
+   698→                  <Textarea
+   699→                    value={brandForm.proofPoints || ""}
+   700→                    onChange={(e) => setBrandForm({ ...brandForm, proofPoints: e.target.value })}
+   701→                    rows={2}
+   702→                    placeholder="Eén per regel"
+   703→                  />
+   704→                </div>
+   705→                <div className="space-y-2">
+   706→                  <Label>{tBrand("certifications")}</Label>
+   707→                  <Textarea
+   708→                    value={brandForm.certifications || ""}
+   709→                    onChange={(e) => setBrandForm({ ...brandForm, certifications: e.target.value })}
+   710→                    rows={2}
+   711→                    placeholder="Eén per regel"
+   712→                  />
+   713→                </div>
+   714→              </div>
+   715→              <div className="grid gap-4 md:grid-cols-2">
+   716→                <div className="space-y-2">
+   717→                  <Label>{tBrand("conversionGoals")}</Label>
+   718→                  <Textarea
+   719→                    value={brandForm.conversionGoals || ""}
+   720→                    onChange={(e) => setBrandForm({ ...brandForm, conversionGoals: e.target.value })}
+   721→                    rows={2}
+   722→                    placeholder="Eén per regel"
+   723→                  />
+   724→                </div>
+   725→                <div className="space-y-2">
+   726→                  <Label>{tBrand("editorialRules")}</Label>
+   727→                  <Textarea
+   728→                    value={brandForm.editorialRules || ""}
+   729→                    onChange={(e) => setBrandForm({ ...brandForm, editorialRules: e.target.value })}
+   730→                    rows={2}
+   731→                    placeholder="Eén per regel"
+   732→                  />
+   733→                </div>
+   734→              </div>
+   735→              <div className="space-y-2">
+   736→                <Label>{tBrand("disclaimers")}</Label>
+   737→                <Textarea
+   738→                  value={brandForm.disclaimers || ""}
+   739→                  onChange={(e) => setBrandForm({ ...brandForm, disclaimers: e.target.value })}
+   740→                  rows={2}
+   741→                />
+   742→              </div>
+   743→              <div className="flex justify-end">
+   744→                <Button onClick={handleSaveBrandProfile} disabled={isSaving}>
+   745→                  {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+   746→                  <Save className="mr-2 h-4 w-4" />
+   747→                  {tCommon("save")}
+   748→                </Button>
+   749→              </div>
+   750→            </CardContent>
+   751→          </Card>
+   752→        </TabsContent>
+   753→
+   754→        {/* Actions Tab */}
+   755→        <TabsContent value="actions">
+   756→          <Card>
+   757→            <CardHeader>
+   758→              <CardTitle className="text-base">{t("actionItems")}</CardTitle>
+   759→            </CardHeader>
+   760→            <CardContent>
+   761→              {actionItems.length > 0 ? (
+   762→                <Table>
+   763→                  <TableHeader>
+   764→                    <TableRow>
+   765→                      <TableHead>Titel</TableHead>
+   766→                      <TableHead>{tActions("priority")}</TableHead>
+   767→                      <TableHead>{tActions("status")}</TableHead>
+   768→                      <TableHead>{tActions("effort")}</TableHead>
+   769→                      <TableHead>{tActions("deadline")}</TableHead>
+   770→                    </TableRow>
+   771→                  </TableHeader>
+   772→                  <TableBody>
+   773→                    {actionItems.map((action) => (
+   774→                      <TableRow key={action.id}>
+   775→                        <TableCell className="font-medium">{action.title}</TableCell>
+   776→                        <TableCell>
+   777→                          <Badge variant={priorityVariant(action.priority) as "destructive" | "default" | "secondary" | "outline"} className="text-xs">
+   778→                            {tActions(action.priority.toLowerCase() as "critical" | "high" | "medium" | "low")}
+   779→                          </Badge>
+   780→                        </TableCell>
+   781→                        <TableCell>{actionStatusLabel(action.status)}</TableCell>
+   782→                        <TableCell>{tActions(action.effort.toLowerCase() as "minimal" | "low" | "medium" | "high")}</TableCell>
+   783→                        <TableCell>
+   784→                          {action.deadline
+   785→                            ? new Date(action.deadline).toLocaleDateString("nl-NL")
+   786→                            : "-"}
+   787→                        </TableCell>
+   788→                      </TableRow>
+   789→                    ))}
+   790→                  </TableBody>
+   791→                </Table>
+   792→              ) : (
+   793→                <div className="flex flex-col items-center justify-center py-8 text-center">
+   794→                  <AlertCircle className="h-10 w-10 text-muted-foreground/30 mb-2" />
+   795→                  <p className="text-sm text-muted-foreground">{t("noActionItems")}</p>
+   796→                </div>
+   797→              )}
+   798→            </CardContent>
+   799→          </Card>
+   800→        </TabsContent>
+   801→
+   802→        {/* Jobs Tab */}
+   803→        <TabsContent value="jobs">
+   804→          <Card>
+   805→            <CardHeader>
+   806→              <CardTitle className="text-base">{t("jobs")}</CardTitle>
+   807→            </CardHeader>
+   808→            <CardContent>
+   809→              {jobs.length > 0 ? (
+   810→                <Table>
+   811→                  <TableHeader>
+   812→                    <TableRow>
+   813→                      <TableHead>{tCommon("type")}</TableHead>
+   814→                      <TableHead>{tJobs("status")}</TableHead>
+   815→                      <TableHead>{tJobs("progress")}</TableHead>
+   816→                      <TableHead>{tCommon("date")}</TableHead>
+   817→                    </TableRow>
+   818→                  </TableHeader>
+   819→                  <TableBody>
+   820→                    {jobs.map((job) => (
+   821→                      <TableRow key={job.id}>
+   822→                        <TableCell className="font-medium">{job.type}</TableCell>
+   823→                        <TableCell>
+   824→                          <Badge variant="secondary" className="text-xs">
+   825→                            {jobStatusLabel(job.status)}
+   826→                          </Badge>
+   827→                        </TableCell>
+   828→                        <TableCell>
+   829→                          <div className="flex items-center gap-2">
+   830→                            <div className="w-20 bg-muted rounded-full h-2">
+   831→                              <div
+   832→                                className="bg-primary h-2 rounded-full transition-all"
+   833→                                style={{ width: `${job.progress}%` }}
+   834→                              />
+   835→                            </div>
+   836→                            <span className="text-xs">{job.progress}%</span>
+   837→                          </div>
+   838→                        </TableCell>
+   839→                        <TableCell>
+   840→                          {new Date(job.createdAt).toLocaleDateString("nl-NL")}
+   841→                        </TableCell>
+   842→                      </TableRow>
+   843→                    ))}
+   844→                  </TableBody>
+   845→                </Table>
+   846→              ) : (
+   847→                <div className="flex flex-col items-center justify-center py-8 text-center">
+   848→                  <Clock className="h-10 w-10 text-muted-foreground/30 mb-2" />
+   849→                  <p className="text-sm text-muted-foreground">{t("noJobs")}</p>
+   850→                </div>
+   851→              )}
+   852→            </CardContent>
+   853→          </Card>
+   854→        </TabsContent>
+   855→
+   856→        {/* Audit Tab */}
+   857→        <TabsContent value="audit">
+   858→          <Card>
+   859→            <CardHeader>
+   860→              <CardTitle className="text-base">{t("auditLog")}</CardTitle>
+   861→            </CardHeader>
+   862→            <CardContent>
+   863→              {auditLogs.length > 0 ? (
+   864→                <Table>
+   865→                  <TableHeader>
+   866→                    <TableRow>
+   867→                      <TableHead>{tCommon("date")}</TableHead>
+   868→                      <TableHead>{tAudit("action")}</TableHead>
+   869→                      <TableHead>{tAudit("entity")}</TableHead>
+   870→                    </TableRow>
+   871→                  </TableHeader>
+   872→                  <TableBody>
+   873→                    {auditLogs.map((log) => (
+   874→                      <TableRow key={log.id}>
+   875→                        <TableCell>
+   876→                          {new Date(log.createdAt).toLocaleDateString("nl-NL")}
+   877→                        </TableCell>
+   878→                        <TableCell>{log.action}</TableCell>
+   879→                        <TableCell>{log.entity}</TableCell>
+   880→                      </TableRow>
+   881→                    ))}
+   882→                  </TableBody>
+   883→                </Table>
+   884→              ) : (
+   885→                <div className="flex flex-col items-center justify-center py-8 text-center">
+   886→                  <AlertCircle className="h-10 w-10 text-muted-foreground/30 mb-2" />
+   887→                  <p className="text-sm text-muted-foreground">{t("noAuditLogs")}</p>
+   888→                </div>
+   889→              )}
+   890→            </CardContent>
+   891→          </Card>
+   892→        </TabsContent>
+   893→      </Tabs>
+   894→    </motion.div>
+   895→  );
+   896→}
+   897→
