@@ -634,3 +634,121 @@ Stage Summary:
 - Cookieless mode for privacy-friendly analytics
 - Forecasts always show uncertainty ranges and confidence levels
 - Budget allocation validates percentages sum to 100%
+---
+Task ID: 10
+Agent: Main Agent
+Task: Build Phase 10 - Agency & Client Operations
+
+Work Log:
+- Read Phase 10 spec from 07_agency_client_portal_copilot_agents_migrations_deployments.txt
+- Designed 11 new Prisma enums: ClientPortalAccessType, DeliverableStatus, RecurringTaskFrequency, SLAStatus, PMIntegrationProvider, PMIntegrationStatus, BenchmarkCategory, ClientHealthStatus, ApprovalQueueStatus
+- Created 12 new Prisma models: ClientExtension, ClientPortalAccess, ClientNotificationPreference, Deliverable, TimeEntry, MonthlyWorkSummary, RecurringTask, ApprovalQueueItem, InternalNote, PMIntegration, PMTaskExport, BenchmarkResult, BenchmarkConsent, AgencyAlert
+- Added reverse relations to Client, Organization, and Project models
+- Pushed schema to SQLite database, generated Prisma client
+- Created 4 backend library modules:
+  - client-portal (types.ts, portal-manager.ts, index.ts): Portal access control, data filtering, notification preferences
+  - agency (types.ts, agency-manager.ts, index.ts): Client health scoring, SLA tracking, deliverables, time tracking, approval queue, internal notes, agency dashboard
+  - benchmarking (types.ts, benchmark-calculator.ts, index.ts): 10 benchmark categories with score calculation, anonymised peer comparison with consent
+  - pm-integrations (types.ts, pm-manager.ts, adapters/jira.ts, adapters/trello.ts, adapters/asana.ts, adapters/generic-webhook.ts, index.ts): 8 PM providers with adapter pattern
+- Created 22 API route files:
+  - Client portal: portal-access, notification-preferences, extension (4 files)
+  - Agency operations: deliverables, time-entries, monthly-summaries, recurring-tasks, approval-queue, internal-notes (10 files)
+  - Benchmarking: benchmarks, benchmarks/consent (2 files)
+  - PM integrations: pm-integrations, pm-integrations/[id], pm-integrations/[id]/test, pm-integrations/[id]/export, pm-integrations/[id]/sync (5 files)
+  - Agency alerts (1 file)
+- Created 5 frontend pages:
+  - /projects/[id]/benchmarks - Benchmark visualization with consent management
+  - /organizations/[id]/agency - Agency dashboard with 8 alert categories
+  - /organizations/[id]/deliverables - Deliverables management
+  - /organizations/[id]/integrations - PM integration management
+  - /organizations/[id]/approvals - Approval queue
+- Added Benchmarks navigation card to project detail page
+- Wrote 126 tests across 4 test files (228 assertions):
+  - client-portal: 36 tests (portal access, data filtering, restricted fields)
+  - agency: 36 tests (health scoring, status mapping, recurring task scheduling, Dutch labels)
+  - benchmarking: 40 tests (all 10 categories, score boundaries, constants)
+  - pm-integrations: 14 tests (provider labels, validation rules)
+- Updated IMPLEMENTATION_STATUS.md: Phase 10 marked complete, 184/218 requirements (84%)
+
+Stage Summary:
+- Phase 10 (Agency & Client Operations) fully implemented
+- 12 new database models with full CRUD
+- Client portal with permission-based access control and data filtering
+- Agency dashboard with 8 alert categories
+- Benchmarking with 10 categories and anonymised peer comparison (requires consent, min 5 peers)
+- PM integration with adapter pattern for 8 providers (Jira, Trello, Asana, ClickUp, Monday, Linear, GitHub Issues, Generic Webhook)
+- 126 tests passing, 0 failures
+- Current progress: 184/218 requirements (84%)
+---
+Task ID: 11
+Agent: Main Agent
+Task: Build Phase 11 - AI Copilots & Agents
+
+Work Log:
+- Read Phase 11 spec (sections 5-7): Dutch copilot, specialised agents, automation rules
+- Designed 7 new Prisma enums: AgentType (15 types), AgentRunStatus (6), AutomationTriggerType (11), AutomationActionType (11), AutomationRuleStatus (4)
+- Created 5 new Prisma models: CopilotConversation, CopilotMessage, AgentRun, AutomationRule, AutomationExecution
+- Added reverse relations to Organization and Project models
+- Pushed schema to SQLite, generated Prisma client
+- Created 3 backend library modules:
+  - copilot (types.ts, copilot-manager.ts, index.ts): Prompt injection detection (12 patterns), input sanitization, conversation management, tool execution with approval workflow, response building with citations
+  - agent-framework (types.ts, agent-manager.ts, index.ts): 15 specialised agents with tool allowlists, run lifecycle management, approval gates, cost tracking, human-readable summaries
+  - automation-rules (types.ts, rule-manager.ts, index.ts): 11 trigger types, 11 action types, condition evaluation engine, high-risk action detection, rule CRUD, execution tracking
+- Created 10 API route files:
+  - Copilot: conversations, messages, tools (3 files)
+  - Agent runs: list/create, details/cancel, approve (3 files)
+  - Automation: rules CRUD, trigger, execution history (4 files)
+- Created 3 frontend pages:
+  - /projects/[id]/copilot - Chat interface with citations and quick questions
+  - /projects/[id]/agents - 15 agent cards with run management
+  - /organizations/[id]/automation - Rule builder with conditions/actions
+- Added Copilot and Agents navigation cards to project detail page
+- Wrote 89 tests across 3 test files (198 assertions):
+  - copilot: 25 tests (prompt injection, sanitization, response building, constants)
+  - agent-framework: 33 tests (tool allowlists, configs, execution summary, labels)
+  - automation-rules: 31 tests (condition evaluation, high-risk detection, labels)
+- Updated IMPLEMENTATION_STATUS.md: Phase 11 marked complete, 192/218 requirements (88%)
+
+Stage Summary:
+- Phase 11 (AI Copilots & Agents) fully implemented
+- Dutch copilot with prompt injection protection and citation support
+- 15 specialised agents with tool allowlists and approval gates
+- Automation rules with 11 triggers and 11 actions
+- High-risk actions automatically require approval
+- 89 tests passing, 0 failures
+- Current progress: 192/218 requirements (88%)
+---
+Task ID: 12
+Agent: Main Agent
+Task: Build Phase 12 - Migrations & Deployments
+
+Work Log:
+- Read Phase 12 spec (sections 8-9): Website migration module and deployment monitoring
+- Designed 7 new Prisma enums: MigrationCheckStatus (5 Dutch-named statuses), MigrationProjectStatus (8), DeploymentProvider (3), DeploymentCheckType (11), DeploymentCheckStatus (4)
+- Created 6 new Prisma models: MigrationProject, MigrationUrlMapping, MigrationPreLaunchCheck, MigrationLaunchBlocker, DeploymentRecord, DeploymentCheck
+- Added reverse relations to Organization and Project models
+- Pushed schema to SQLite, generated Prisma client
+- Created 2 backend library modules:
+  - migration (migration-manager.ts, index.ts): Migration project CRUD, URL mapping with bulk create, pre-launch checks, launch blockers, launch readiness check, redirect validation with Dutch warnings
+  - deployment (deployment-manager.ts, index.ts): Deployment records with before/after comparison, 11 check types, regression detection, severity classification, optional blocking, unblock workflow
+- Created 10 API route files:
+  - Migrations: CRUD, URL mappings, launch check, blockers (6 files)
+  - Deployments: CRUD, checks, unblock (4 files)
+- Created 3 frontend pages:
+  - /projects/[id]/migrations - Migration projects with status badges
+  - /projects/[id]/migrations/[migrationId] - Migration detail with tabs (URL-mapping, pre-launch, blockers)
+  - /projects/[id]/deployments - Deployment monitoring with expandable checks
+- Added Migrations and Deployments navigation cards to project detail page
+- Wrote 39 tests across 2 test files (55 assertions):
+  - migration: 20 tests (redirect validation, Dutch status labels)
+  - deployment: 19 tests (provider labels, check type labels, completeness)
+- Updated IMPLEMENTATION_STATUS.md: Phase 12 marked complete, 200/218 requirements (92%)
+
+Stage Summary:
+- Phase 12 (Migrations & Deployments) fully implemented
+- Dutch migration statuses: Nog te controleren, Klaar, Probleem gevonden, Blokkeert lancering, Goedgekeurd
+- All redirect changes require approval (automatic approval queue item creation)
+- Deployment monitoring with 11 check types and regression detection
+- Blocking must be explicitly enabled per deployment
+- 39 tests passing, 0 failures
+- Current progress: 200/218 requirements (92%)

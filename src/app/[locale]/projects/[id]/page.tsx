@@ -673,6 +673,61 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
                   </CardContent>
                 </Card>
               </Link>
+              <Link href={`/projects/${id}/benchmarks`}>
+                <Card className="hover:bg-accent/50 transition-colors cursor-pointer">
+                  <CardContent className="p-4 flex items-center gap-3">
+                    <BarChart3 className="h-5 w-5 text-purple-600 shrink-0" />
+                    <div>
+                      <p className="text-sm font-medium">Benchmarks</p>
+                      <p className="text-xs text-muted-foreground">Prestatievergelijking</p>
+                    </div>
+                  </CardContent>
+                </Card>
+              </Link>
+              <Link href={`/projects/${id}/copilot`}>
+                <Card className="hover:bg-accent/50 transition-colors cursor-pointer">
+                  <CardContent className="p-4 flex items-center gap-3">
+                    <Brain className="h-5 w-5 text-violet-600 shrink-0" />
+                    <div>
+                      <p className="text-sm font-medium">Copilot</p>
+                      <p className="text-xs text-muted-foreground">AI-assistent</p>
+                    </div>
+                  </CardContent>
+                </Card>
+              </Link>
+              <Link href={`/projects/${id}/agents`}>
+                <Card className="hover:bg-accent/50 transition-colors cursor-pointer">
+                  <CardContent className="p-4 flex items-center gap-3">
+                    <Cpu className="h-5 w-5 text-sky-600 shrink-0" />
+                    <div>
+                      <p className="text-sm font-medium">Agents</p>
+                      <p className="text-xs text-muted-foreground">Gespecialiseerde AI</p>
+                    </div>
+                  </CardContent>
+                </Card>
+              </Link>
+              <Link href={`/projects/${id}/migrations`}>
+                <Card className="hover:bg-accent/50 transition-colors cursor-pointer">
+                  <CardContent className="p-4 flex items-center gap-3">
+                    <GitMerge className="h-5 w-5 text-lime-600 shrink-0" />
+                    <div>
+                      <p className="text-sm font-medium">Migraties</p>
+                      <p className="text-xs text-muted-foreground">Websitemigratie</p>
+                    </div>
+                  </CardContent>
+                </Card>
+              </Link>
+              <Link href={`/projects/${id}/deployments`}>
+                <Card className="hover:bg-accent/50 transition-colors cursor-pointer">
+                  <CardContent className="p-4 flex items-center gap-3">
+                    <History className="h-5 w-5 text-slate-600 shrink-0" />
+                    <div>
+                      <p className="text-sm font-medium">Deployments</p>
+                      <p className="text-xs text-muted-foreground">Deployment-monitoring</p>
+                    </div>
+                  </CardContent>
+                </Card>
+              </Link>
             </div>
           </div>
         </TabsContent>

@@ -5,7 +5,7 @@ import { logAuditEvent } from '@/lib/audit';
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ clientId: string }> }
 ) {
   try {
     const user = await getAuthenticatedUser();
@@ -13,9 +13,9 @@ export async function GET(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { id } = await params;
+    const { clientId } = await params;
     const client = await db.client.findUnique({
-      where: { id, deletedAt: null },
+      where: { id: clientId, deletedAt: null },
       include: {
         organization: {
           select: { id: true, name: true },
@@ -60,7 +60,7 @@ export async function GET(
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ clientId: string }> }
 ) {
   try {
     const user = await getAuthenticatedUser();
@@ -68,9 +68,9 @@ export async function PUT(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { id } = await params;
+    const { clientId } = await params;
     const client = await db.client.findUnique({
-      where: { id, deletedAt: null },
+      where: { id: clientId, deletedAt: null },
     });
 
     if (!client) {
@@ -98,7 +98,7 @@ export async function PUT(
     const { name, description, website, industry, notes } = body;
 
     const updatedClient = await db.client.update({
-      where: { id },
+      where: { id: clientId },
       data: {
         ...(name !== undefined && { name }),
         ...(description !== undefined && { description }),
@@ -114,7 +114,7 @@ export async function PUT(
       userId: user.id,
       action: 'client_updated',
       entity: 'client',
-      entityId: id,
+      entityId: clientId,
       changes: { name, description, website, industry },
     });
 
@@ -130,7 +130,7 @@ export async function PUT(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ clientId: string }> }
 ) {
   try {
     const user = await getAuthenticatedUser();
@@ -138,9 +138,9 @@ export async function DELETE(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { id } = await params;
+    const { clientId } = await params;
     const client = await db.client.findUnique({
-      where: { id, deletedAt: null },
+      where: { id: clientId, deletedAt: null },
     });
 
     if (!client) {
@@ -166,7 +166,7 @@ export async function DELETE(
 
     // Soft-delete
     await db.client.update({
-      where: { id },
+      where: { id: clientId },
       data: { deletedAt: new Date() },
     });
 
@@ -176,7 +176,7 @@ export async function DELETE(
       userId: user.id,
       action: 'client_deleted',
       entity: 'client',
-      entityId: id,
+      entityId: clientId,
     });
 
     return NextResponse.json({ success: true });

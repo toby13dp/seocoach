@@ -1,0 +1,2002 @@
+     1→// ============================================================================
+     2→// Prisma Schema — AI-Driven SEO Automation Platform (Phase 1-10)
+     3→// ============================================================================
+     4→
+     5→generator client {
+     6→  provider = "prisma-client-js"
+     7→}
+     8→
+     9→datasource db {
+    10→  provider = "sqlite"
+    11→  url      = env("DATABASE_URL")
+    12→}
+    13→
+    14→// ============================================================================
+    15→// Enums
+    16→// ============================================================================
+    17→
+    18→enum Role {
+    19→  PLATFORM_ADMIN
+    20→  ORG_OWNER
+    21→  AGENCY_OWNER
+    22→  SEO_MANAGER
+    23→  CONTENT_MANAGER
+    24→  EDITOR
+    25→  DEVELOPER
+    26→  CLIENT
+    27→  READ_ONLY
+    28→}
+    29→
+    30→enum ProjectStatus {
+    31→  ACTIVE
+    32→  PAUSED
+    33→  ARCHIVED
+    34→}
+    35→
+    36→enum JobStatus {
+    37→  PENDING
+    38→  RUNNING
+    39→  COMPLETED
+    40→  FAILED
+    41→  CANCELLED
+    42→}
+    43→
+    44→enum ActionPriority {
+    45→  LOW
+    46→  MEDIUM
+    47→  HIGH
+    48→  CRITICAL
+    49→}
+    50→
+    51→enum ActionEffort {
+    52→  MINIMAL
+    53→  LOW
+    54→  MEDIUM
+    55→  HIGH
+    56→}
+    57→
+    58→enum ActionItemStatus {
+    59→  PENDING
+    60→  IN_PROGRESS
+    61→  COMPLETED
+    62→  SKIPPED
+    63→}
+    64→
+    65→enum PermissionCategory {
+    66→  MANAGE_USERS
+    67→  MANAGE_PROJECTS
+    68→  MANAGE_CONTENT
+    69→  MANAGE_SETTINGS
+    70→  VIEW_ANALYTICS
+    71→  MANAGE_INTEGRATIONS
+    72→  MANAGE_PUBLISHING
+    73→  VIEW_REPORTS
+    74→}
+    75→
+    76→enum CrawlStatus {
+    77→  PENDING
+    78→  RUNNING
+    79→  COMPLETED
+    80→  FAILED
+    81→  CANCELLED
+    82→  PAUSED
+    83→}
+    84→
+    85→enum PageStatus {
+    86→  OK
+    87→  REDIRECT
+    88→  CLIENT_ERROR
+    89→  SERVER_ERROR
+    90→  BLOCKED
+    91→  TIMEOUT
+    92→}
+    93→
+    94→enum Indexability {
+    95→  INDEXABLE
+    96→  NOINDEX
+    97→  BLOCKED_ROBOTS
+    98→  CANONICALIZED
+    99→  BLOCKED_META
+   100→  UNKNOWN
+   101→}
+   102→
+   103→enum ContentType {
+   104→  HTML
+   105→  PDF
+   106→  IMAGE
+   107→  VIDEO
+   108→  OTHER
+   109→}
+   110→
+   111→enum IssueSeverity {
+   112→  INFO
+   113→  WARNING
+   114→  ERROR
+   115→  CRITICAL
+   116→}
+   117→
+   118→enum SearchIntent {
+   119→  INFORMATIONAL
+   120→  NAVIGATIONAL
+   121→  TRANSACTIONAL
+   122→  COMMERCIAL_INVESTIGATION
+   123→  LOCAL
+   124→  BRANDED
+   125→  UNKNOWN
+   126→}
+   127→
+   128→enum FunnelStage {
+   129→  AWARENESS
+   130→  CONSIDERATION
+   131→  DECISION
+   132→  RETENTION
+   133→  UNKNOWN
+   134→}
+   135→
+   136→enum PruningAction {
+   137→  KEEP
+   138→  IMPROVE
+   139→  MERGE
+   140→  REDIRECT
+   141→  NOINDEX
+   142→  REMOVE
+   143→}
+   144→
+   145→enum ContentApprovalStatus {
+   146→  DRAFT
+   147→  IN_REVIEW
+   148→  APPROVED
+   149→  PUBLISHED
+   150→  ARCHIVED
+   151→}
+   152→
+   153→enum AIProviderType {
+   154→  OLLAMA
+   155→  OPENAI_COMPATIBLE
+   156→  CUSTOM
+   157→}
+   158→
+   159→// ============================================================================
+   160→// NextAuth.js v4 Models
+   161→// ============================================================================
+   162→
+   163→model Account {
+   164→  id                 String  @id @default(uuid())
+   165→  userId             String
+   166→  type               String
+   167→  provider           String
+   168→  providerAccountId  String
+   169→  refresh_token      String?
+   170→  access_token       String?
+   171→  expires_at         Int?
+   172→  token_type         String?
+   173→  scope              String?
+   174→  id_token           String?
+   175→  session_state      String?
+   176→  oauth_token_secret String?
+   177→  oauth_token        String?
+   178→
+   179→  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+   180→
+   181→  @@unique([provider, providerAccountId])
+   182→  @@map("accounts")
+   183→}
+   184→
+   185→model Session {
+   186→  id           String   @id @default(uuid())
+   187→  sessionToken String   @unique
+   188→  userId       String
+   189→  expires      DateTime
+   190→
+   191→  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+   192→
+   193→  @@map("sessions")
+   194→}
+   195→
+   196→model VerificationToken {
+   197→  identifier String
+   198→  token      String   @unique
+   199→  expires    DateTime
+   200→
+   201→  @@unique([identifier, token])
+   202→  @@map("verification_tokens")
+   203→}
+   204→
+   205→// ============================================================================
+   206→// User
+   207→// ============================================================================
+   208→
+   209→model User {
+   210→  id                      String    @id @default(uuid())
+   211→  email                   String    @unique
+   212→  name                    String?
+   213→  hashedPassword          String?
+   214→  emailVerified           DateTime?
+   215→  image                   String?
+   216→  locale                  String    @default("nl-NL")
+   217→  timezone                String?
+   218→  automationLevel         String?
+   219→  notificationPreferences String?
+   220→  privacyPreferences      String?
+   221→  deletedAt               DateTime?
+   222→  createdAt               DateTime  @default(now())
+   223→  updatedAt               DateTime  @updatedAt
+   224→
+   225→  accounts    Account[]
+   226→  sessions    Session[]
+   227→  memberships OrganizationMembership[]
+   228→  invitations Invitation[]             @relation("InvitedBy")
+   229→  settings    UserSettings?
+   230→  auditLogs   AuditLog[]
+   231→  jobs        Job[]
+   232→
+   233→  @@index([email])
+   234→  @@index([deletedAt])
+   235→  @@map("users")
+   236→}
+   237→
+   238→// ============================================================================
+   239→// Organization
+   240→// ============================================================================
+   241→
+   242→model Organization {
+   243→  id          String    @id @default(uuid())
+   244→  name        String
+   245→  slug        String    @unique
+   246→  description String?
+   247→  website     String?
+   248→  logoUrl     String?
+   249→  locale      String    @default("nl-NL")
+   250→  settings    String?
+   251→  deletedAt   DateTime?
+   252→  createdAt   DateTime  @default(now())
+   253→  updatedAt   DateTime  @updatedAt
+   254→
+   255→  memberships OrganizationMembership[]
+   256→  invitations Invitation[]
+   257→  clients     Client[]
+   258→  projects    Project[]
+   259→  auditLogs   AuditLog[]
+   260→  // Phase 10 relations
+   261→  deliverables      Deliverable[]
+   262→  timeEntries       TimeEntry[]
+   263→  recurringTasks    RecurringTask[]
+   264→  approvalItems     ApprovalQueueItem[]
+   265→  internalNotes     InternalNote[]
+   266→  pmIntegrations    PMIntegration[]
+   267→  benchmarkResults  BenchmarkResult[]
+   268→  benchmarkConsents BenchmarkConsent[]
+   269→  agencyAlerts      AgencyAlert[]
+   270→  monthlyWorkSummaries MonthlyWorkSummary[]
+   271→
+   272→  @@index([slug])
+   273→  @@index([deletedAt])
+   274→  @@map("organizations")
+   275→}
+   276→
+   277→// ============================================================================
+   278→// OrganizationMembership
+   279→// ============================================================================
+   280→
+   281→model OrganizationMembership {
+   282→  id             String    @id @default(uuid())
+   283→  userId         String
+   284→  organizationId String
+   285→  role           Role      @default(READ_ONLY)
+   286→  invitedAt      DateTime?
+   287→  acceptedAt     DateTime?
+   288→  deletedAt      DateTime?
+   289→
+   290→  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+   291→  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+   292→
+   293→  @@unique([userId, organizationId])
+   294→  @@index([organizationId])
+   295→  @@index([role])
+   296→  @@index([deletedAt])
+   297→  @@map("organization_memberships")
+   298→}
+   299→
+   300→// ============================================================================
+   301→// Invitation
+   302→// ============================================================================
+   303→
+   304→model Invitation {
+   305→  id             String    @id @default(uuid())
+   306→  organizationId String
+   307→  email          String
+   308→  role           Role      @default(READ_ONLY)
+   309→  token          String    @unique
+   310→  invitedBy      String
+   311→  expiresAt      DateTime
+   312→  acceptedAt     DateTime?
+   313→  deletedAt      DateTime?
+   314→  createdAt      DateTime  @default(now())
+   315→
+   316→  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+   317→  inviter      User         @relation("InvitedBy", fields: [invitedBy], references: [id], onDelete: Cascade)
+   318→
+   319→  @@index([email])
+   320→  @@index([organizationId])
+   321→  @@index([token])
+   322→  @@map("invitations")
+   323→}
+   324→
+   325→// ============================================================================
+   326→// Client
+   327→// ============================================================================
+   328→
+   329→model Client {
+   330→  id             String    @id @default(uuid())
+   331→  organizationId String
+   332→  name           String
+   333→  slug           String
+   334→  description    String?
+   335→  website        String?
+   336→  industry       String?
+   337→  notes          String?
+   338→  deletedAt      DateTime?
+   339→  createdAt      DateTime    @default(now())
+   340→  updatedAt      DateTime    @default(now()) @updatedAt
+   341→
+   342→  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+   343→  projects     Project[]
+   344→  // Phase 10 relations
+   345→  extension          ClientExtension?
+   346→  portalAccess       ClientPortalAccess[]
+   347→  notificationPrefs  ClientNotificationPreference?
+   348→  deliverables       Deliverable[]
+   349→  timeEntries        TimeEntry[]
+   350→  monthlyWorkSummaries MonthlyWorkSummary[]
+   351→  recurringTasks     RecurringTask[]
+   352→  approvalItems      ApprovalQueueItem[]
+   353→
+   354→  @@unique([organizationId, slug])
+   355→  @@index([organizationId])
+   356→  @@index([deletedAt])
+   357→  @@map("clients")
+   358→}
+   359→
+   360→// ============================================================================
+   361→// Project
+   362→// ============================================================================
+   363→
+   364→model Project {
+   365→  id                  String        @id @default(uuid())
+   366→  organizationId      String
+   367→  clientId            String?
+   368→  name                String
+   369→  slug                String
+   370→  description         String?
+   371→  websiteUrl          String?
+   372→  status              ProjectStatus @default(ACTIVE)
+   373→  settings            String?
+   374→  onboardingCompleted Boolean       @default(false)
+   375→  onboardingStep      Int           @default(0)
+   376→  deletedAt           DateTime?
+   377→  createdAt           DateTime      @default(now())
+   378→  updatedAt           DateTime      @default(now()) @updatedAt
+   379→
+   380→  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+   381→  client       Client?       @relation(fields: [clientId], references: [id], onDelete: SetNull)
+   382→  domains      Domain[]
+   383→  locations    Location[]
+   384→  brandProfile BrandProfile?
+   385→  jobs         Job[]
+   386→  auditLogs    AuditLog[]
+   387→  actionItems  ActionItem[]
+   388→  crawlSessions CrawlSession[]
+   389→  pages         Page[]
+   390→  keywords      Keyword[]
+   391→  topics        Topic[]
+   392→  aiProviders   AIProvider[]
+   393→  contentBriefs ContentBrief[]
+   394→  // Phase 10 relations
+   395→  deliverables      Deliverable[]
+   396→  timeEntries       TimeEntry[]
+   397→  recurringTasks    RecurringTask[]
+   398→  approvalItems     ApprovalQueueItem[]
+   399→  pmIntegrations    PMIntegration[]
+   400→  benchmarkResults  BenchmarkResult[]
+   401→  benchmarkConsents BenchmarkConsent[]
+   402→
+   403→  @@unique([organizationId, slug])
+   404→  @@index([organizationId])
+   405→  @@index([clientId])
+   406→  @@index([status])
+   407→  @@index([deletedAt])
+   408→  @@map("projects")
+   409→}
+   410→
+   411→// ============================================================================
+   412→// Domain
+   413→// ============================================================================
+   414→
+   415→model Domain {
+   416→  id                 String    @id @default(uuid())
+   417→  projectId          String
+   418→  domain             String
+   419→  isPrimary          Boolean   @default(false)
+   420→  verifiedAt         DateTime?
+   421→  verificationMethod String?
+   422→  deletedAt          DateTime?
+   423→
+   424→  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+   425→
+   426→  @@unique([projectId, domain])
+   427→  @@index([projectId])
+   428→  @@index([deletedAt])
+   429→  @@map("domains")
+   430→}
+   431→
+   432→// ============================================================================
+   433→// Location
+   434→// ============================================================================
+   435→
+   436→model Location {
+   437→  id         String    @id @default(uuid())
+   438→  projectId  String
+   439→  name       String
+   440→  // NAP (Name, Address, Phone)
+   441→  address    String?
+   442→  city       String?
+   443→  postalCode String?
+   444→  country    String?   @default("NL")
+   445→  phone      String?
+   446→  email      String?
+   447→  website    String?
+   448→  // Geo
+   449→  latitude   Float?
+   450→  longitude  Float?
+   451→  // Opening hours (JSON: {"mon":{"open":"09:00","close":"18:00"},...})
+   452→  openingHours  String?  // JSON object
+   453→  // Google Business Profile
+   454→  gbpAccountId String?
+   455→  gbpLocationId String?
+   456→  gbpStatus    String?  @default("not_connected") // not_connected, connected, error
+   457→  // Local SEO metadata
+   458→  businessType  String?  // e.g. "restaurant", "dentist"
+   459→  serviceArea   String?  // JSON array of served areas
+   460→  localKeywordIds String?  // JSON array of local keyword IDs
+   461→  // Health & scoring
+   462→  napConsistency Float?  @default(0) // 0-100 NAP consistency score
+   463→  localHealthScore Float? @default(0) // 0-100 overall local health
+   464→  // Review aggregate
+   465→  avgRating    Float?   @default(0)
+   466→  reviewCount  Int      @default(0)
+   467→  // Structured data
+   468→  localStructuredData String? // JSON-LD for LocalBusiness
+   469→  // Metadata
+   470→  notes       String?  // Dutch notes
+   471→  deletedAt   DateTime?
+   472→  createdAt   DateTime @default(now())
+   473→  updatedAt   DateTime @updatedAt
+   474→
+   475→  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+   476→
+   477→  localKeywords    LocalKeyword[]
+   478→  landingPages     LocalLandingPage[]
+   479→  localCompetitors LocalCompetitor[]
+   480→  healthChecks     LocationHealthCheck[]
+   481→  reviews          Review[]
+   482→  googleBusinessProfile GoogleBusinessProfile?
+   483→
+   484→  @@index([projectId])
+   485→  @@index([deletedAt])
+   486→  @@index([city])
+   487→  @@index([napConsistency])
+   488→  @@index([localHealthScore])
+   489→  @@index([avgRating])
+   490→  @@map("locations")
+   491→}
+   492→
+   493→// ============================================================================
+   494→// BrandProfile
+   495→// ============================================================================
+   496→
+   497→model BrandProfile {
+   498→  id                    String    @id @default(uuid())
+   499→  projectId             String
+   500→  brandName             String?
+   501→  description           String?
+   502→  products              String? // JSON
+   503→  services              String? // JSON
+   504→  audiences             String? // JSON
+   505→  regions               String? // JSON
+   506→  toneOfVoice           String?
+   507→  addressPreference     String?
+   508→  preferredTerminology  String? // JSON
+   509→  prohibitedTerminology String? // JSON
+   510→  allowedClaims         String? // JSON
+   511→  prohibitedClaims      String? // JSON
+   512→  proofPoints           String? // JSON
+   513→  certifications        String? // JSON
+   514→  contactInformation    String? // JSON
+   515→  conversionGoals       String? // JSON
+   516→  editorialRules        String? // JSON
+   517→  disclaimers           String? // JSON
+   518→  locale                String    @default("nl-NL")
+   519→  deletedAt             DateTime?
+   520→  createdAt             DateTime  @default(now())
+   521→  updatedAt             DateTime  @updatedAt
+   522→
+   523→  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+   524→
+   525→  @@unique([projectId])
+   526→  @@index([projectId])
+   527→  @@index([deletedAt])
+   528→  @@map("brand_profiles")
+   529→}
+   530→
+   531→// ============================================================================
+   532→// Permission
+   533→// ============================================================================
+   534→
+   535→model Permission {
+   536→  id          String             @id @default(uuid())
+   537→  name        String             @unique
+   538→  description String?
+   539→  category    PermissionCategory
+   540→
+   541→  rolePermissions RolePermission[]
+   542→
+   543→  @@index([category])
+   544→  @@map("permissions")
+   545→}
+   546→
+   547→// ============================================================================
+   548→// RolePermission
+   549→// ============================================================================
+   550→
+   551→model RolePermission {
+   552→  id           String @id @default(uuid())
+   553→  role         Role
+   554→  permissionId String
+   555→
+   556→  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+   557→
+   558→  @@unique([role, permissionId])
+   559→  @@index([role])
+   560→  @@index([permissionId])
+   561→  @@map("role_permissions")
+   562→}
+   563→
+   564→// ============================================================================
+   565→// Job
+   566→// ============================================================================
+   567→
+   568→model Job {
+   569→  id          String    @id @default(uuid())
+   570→  projectId   String
+   571→  type        String
+   572→  status      JobStatus @default(PENDING)
+   573→  progress    Int       @default(0)
+   574→  maxProgress Int?
+   575→  result      String? // JSON
+   576→  error       String?
+   577→  tenantId    String?
+   578→  userId      String?
+   579→  startedAt   DateTime?
+   580→  completedAt DateTime?
+   581→  cancelledAt DateTime?
+   582→  createdAt   DateTime  @default(now())
+   583→  updatedAt   DateTime  @updatedAt
+   584→
+   585→  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+   586→  user    User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+   587→
+   588→  @@index([projectId])
+   589→  @@index([tenantId])
+   590→  @@index([userId])
+   591→  @@index([status])
+   592→  @@index([createdAt])
+   593→  @@map("jobs")
+   594→}
+   595→
+   596→// ============================================================================
+   597→// AuditLog
+   598→// ============================================================================
+   599→
+   600→model AuditLog {
+   601→  id             String   @id @default(uuid())
+   602→  organizationId String?
+   603→  projectId      String?
+   604→  userId         String?
+   605→  action         String
+   606→  entity         String
+   607→  entityId       String?
+   608→  changes        String? // JSON
+   609→  ipAddress      String?
+   610→  userAgent      String?
+   611→  createdAt      DateTime @default(now())
+   612→
+   613→  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+   614→  project      Project?      @relation(fields: [projectId], references: [id], onDelete: SetNull)
+   615→  user         User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+   616→
+   617→  @@index([organizationId])
+   618→  @@index([projectId])
+   619→  @@index([userId])
+   620→  @@index([entity])
+   621→  @@index([entityId])
+   622→  @@index([createdAt])
+   623→  @@map("audit_logs")
+   624→}
+   625→
+   626→// ============================================================================
+   627→// ActionItem
+   628→// ============================================================================
+   629→
+   630→model ActionItem {
+   631→  id                  String           @id @default(uuid())
+   632→  projectId           String
+   633→  title               String
+   634→  description         String?
+   635→  businessImpact      String?
+   636→  seoImpact           String?
+   637→  priority            ActionPriority   @default(MEDIUM)
+   638→  effort              ActionEffort     @default(MEDIUM)
+   639→  owner               String?
+   640→  deadline            DateTime?
+   641→  status              ActionItemStatus @default(PENDING)
+   642→  automationAvailable Boolean          @default(false)
+   643→  approvalRequired    Boolean          @default(false)
+   644→  createdAt           DateTime         @default(now())
+   645→  updatedAt           DateTime         @updatedAt
+   646→
+   647→  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+   648→
+   649→  @@index([projectId])
+   650→  @@index([status])
+   651→  @@index([priority])
+   652→  @@index([createdAt])
+   653→  @@map("action_items")
+   654→}
+   655→
+   656→// ============================================================================
+   657→// UserSettings
+   658→// ============================================================================
+   659→
+   660→model UserSettings {
+   661→  id                      String   @id @default(uuid())
+   662→  userId                  String   @unique
+   663→  locale                  String   @default("nl-NL")
+   664→  timezone                String?
+   665→  automationLevel         String?
+   666→  notificationPreferences String? // JSON
+   667→  privacyPreferences      String? // JSON
+   668→  theme                   String   @default("system")
+   669→  createdAt               DateTime @default(now())
+   670→  updatedAt               DateTime @updatedAt
+   671→
+   672→  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+   673→
+   674→  @@index([userId])
+   675→  @@map("user_settings")
+   676→}
+   677→
+   678→// ============================================================================
+   679→// Phase 2: Crawling & Technical SEO
+   680→// ============================================================================
+   681→
+   682→model CrawlSession {
+   683→  id                String      @id @default(uuid())
+   684→  projectId         String
+   685→  status            CrawlStatus @default(PENDING)
+   686→  startUrl          String
+   687→  maxPages          Int         @default(500)
+   688→  maxDepth          Int         @default(10)
+   689→  crawlDelayMs      Int         @default(1000)
+   690→  respectRobotsTxt  Boolean     @default(true)
+   691→  followRedirects   Boolean     @default(true)
+   692→  includeSubdomains Boolean     @default(false)
+   693→  useRendering      Boolean     @default(false)
+   694→  pagesCrawled      Int         @default(0)
+   695→  pagesFound        Int         @default(0)
+   696→  issuesFound       Int         @default(0)
+   697→  errorCount        Int         @default(0)
+   698→  errorMessage      String?
+   699→  startedAt         DateTime?
+   700→  completedAt       DateTime?
+   701→  cancelledAt       DateTime?
+   702→  createdAt         DateTime    @default(now())
+   703→  updatedAt         DateTime    @updatedAt
+   704→
+   705→  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+   706→  pages   Page[]
+   707→  issues  TechnicalIssue[]
+   708→
+   709→  @@index([projectId])
+   710→  @@index([status])
+   711→  @@index([createdAt])
+   712→  @@map("crawl_sessions")
+   713→}
+   714→
+   715→model Page {
+   716→  id                String       @id @default(uuid())
+   717→  crawlSessionId    String
+   718→  projectId         String
+   719→  url               String
+   720→  normalizedUrl     String
+   721→  statusCode        Int?
+   722→  status            PageStatus   @default(OK)
+   723→  contentType       ContentType  @default(HTML)
+   724→  title             String?
+   725→  description       String?
+   726→  h1                String?
+   727→  wordCount         Int          @default(0)
+   728→  canonicalUrl      String?
+   729→  indexability       Indexability @default(INDEXABLE)
+   730→  language          String?
+   731→  publicationDate   DateTime?
+   732→  modificationDate  DateTime?
+   733→  internalLinkCount Int          @default(0)
+   734→  externalLinkCount Int          @default(0)
+   735→  imageCount        Int          @default(0)
+   736→  imagesWithoutAlt  Int          @default(0)
+   737→  structuredData    String? // JSON
+   738→  crawlDepth        Int          @default(0)
+   739→  isOrphan          Boolean      @default(false)
+   740→  redirectChain     String? // JSON array of URLs
+   741→  finalUrl          String?
+   742→  loadTimeMs        Int?
+   743→  htmlSizeBytes     Int?
+   744→  contentHash       String?
+   745→  mainContent       String?
+   746→  internalLinks     String? // JSON array
+   747→  externalLinks     String? // JSON array
+   748→  images            String? // JSON array
+   749→  duplicateGroup    String?
+   750→  similarityScore   Float?
+   751→  conversionElements String? // JSON
+   752→  metaRobots        String?
+   753→  renderDiffDetected Boolean    @default(false)
+   754→  deletedAt         DateTime?
+   755→  createdAt         DateTime     @default(now())
+   756→  updatedAt         DateTime     @updatedAt
+   757→
+   758→  crawlSession   CrawlSession      @relation(fields: [crawlSessionId], references: [id], onDelete: Cascade)
+   759→  project        Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+   760→  snapshots      PageSnapshot[]
+   761→  issues         TechnicalIssue[]
+   762→  renderedComparison RenderedComparison?
+   763→  keywordPages   KeywordPage[]
+   764→
+   765→  @@unique([crawlSessionId, normalizedUrl])
+   766→  @@index([projectId])
+   767→  @@index([crawlSessionId])
+   768→  @@index([statusCode])
+   769→  @@index([indexability])
+   770→  @@index([contentType])
+   771→  @@index([crawlDepth])
+   772→  @@index([duplicateGroup])
+   773→  @@index([contentHash])
+   774→  @@index([deletedAt])
+   775→  @@map("pages")
+   776→}
+   777→
+   778→model PageSnapshot {
+   779→  id         String   @id @default(uuid())
+   780→  pageId     String
+   781→  html       String
+   782→  source     String   @default("crawl") // crawl, render
+   783→  sizeBytes  Int?
+   784→  createdAt  DateTime @default(now())
+   785→
+   786→  page Page @relation(fields: [pageId], references: [id], onDelete: Cascade)
+   787→
+   788→  @@index([pageId])
+   789→  @@index([source])
+   790→  @@map("page_snapshots")
+   791→}
+   792→
+   793→model TechnicalIssue {
+   794→  id                String         @id @default(uuid())
+   795→  projectId         String
+   796→  pageId            String?
+   797→  crawlSessionId    String
+   798→  ruleId            String
+   799→  ruleName          String
+   800→  dutchExplanation  String
+   801→  technicalDetails  String?
+   802→  evidence          String? // JSON
+   803→  severity          IssueSeverity  @default(WARNING)
+   804→  priority          ActionPriority @default(MEDIUM)
+   805→  impact            String?
+   806→  effort            ActionEffort   @default(MEDIUM)
+   807→  affectedUrls      String? // JSON array
+   808→  recommendedAction String?
+   809→  autoFixAvailable  Boolean        @default(false)
+   810→  confidence        Float          @default(1.0)
+   811→  dismissed         Boolean        @default(false)
+   812→  dismissedBy       String?
+   813→  dismissedAt       DateTime?
+   814→  createdAt         DateTime       @default(now())
+   815→  updatedAt         DateTime       @updatedAt
+   816→
+   817→  page          Page?         @relation(fields: [pageId], references: [id], onDelete: SetNull)
+   818→  crawlSession  CrawlSession  @relation(fields: [crawlSessionId], references: [id], onDelete: Cascade)
+   819→
+   820→  @@index([projectId])
+   821→  @@index([crawlSessionId])
+   822→  @@index([ruleId])
+   823→  @@index([severity])
+   824→  @@index([priority])
+   825→  @@index([dismissed])
+   826→  @@index([createdAt])
+   827→  @@map("technical_issues")
+   828→}
+   829→
+   830→model RenderedComparison {
+   831→  id                 String   @id @default(uuid())
+   832→  pageId             String   @unique
+   833→  textDiff           String? // JSON diff
+   834→  linkDiff           String? // JSON diff
+   835→  canonicalDiff      String? // JSON diff
+   836→  robotsDiff         String? // JSON diff
+   837→  structuredDataDiff String? // JSON diff
+   838→  headingDiff        String? // JSON diff
+   839→  navigationDiff     String? // JSON diff
+   840→  hasSignificantDiff Boolean  @default(false)
+   841→  summary            String?
+   842→  createdAt          DateTime @default(now())
+   843→  updatedAt          DateTime @updatedAt
+   844→
+   845→  page Page @relation(fields: [pageId], references: [id], onDelete: Cascade)
+   846→
+   847→  @@index([hasSignificantDiff])
+   848→  @@map("rendered_comparisons")
+   849→}
+   850→
+   851→// ============================================================================
+   852→// Phase 3: Keywords & Content Intelligence
+   853→// ============================================================================
+   854→
+   855→model Keyword {
+   856→  id              String       @id @default(uuid())
+   857→  projectId       String
+   858→  keyword         String
+   859→  searchIntent    SearchIntent @default(UNKNOWN)
+   860→  funnelStage     FunnelStage  @default(UNKNOWN)
+   861→  searchVolume    Int?
+   862→  difficulty      Float?
+   863→  cpc             Float?
+   864→  currentRanking  Int?
+   865→  currentUrl      String?
+   866→  groupId         String?
+   867→  personaMapping  String?
+   868→  productMapping  String?
+   869→  serviceMapping  String?
+   870→  locationMapping String?
+   871→  seasonality     String? // JSON
+   872→  tags            String? // JSON array
+   873→  notes           String?
+   874→  source          String       @default("manual") // manual, csv, ai
+   875→  deletedAt       DateTime?
+   876→  createdAt       DateTime     @default(now())
+   877→  updatedAt       DateTime     @updatedAt
+   878→
+   879→  project      Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+   880→  opportunity  OpportunityScore?
+   881→  keywordPages KeywordPage[]
+   882→  topicKeywords TopicKeyword[]
+   883→  contentBriefs ContentBrief[]
+   884→
+   885→  @@index([projectId])
+   886→  @@index([searchIntent])
+   887→  @@index([funnelStage])
+   888→  @@index([groupId])
+   889→  @@index([keyword])
+   890→  @@index([deletedAt])
+   891→  @@map("keywords")
+   892→}
+   893→
+   894→model KeywordPage {
+   895→  id        String  @id @default(uuid())
+   896→  keywordId String
+   897→  pageId    String
+   898→  relevance Float   @default(0)
+   899→
+   900→  keyword Keyword @relation(fields: [keywordId], references: [id], onDelete: Cascade)
+   901→  page    Page    @relation(fields: [pageId], references: [id], onDelete: Cascade)
+   902→
+   903→  @@unique([keywordId, pageId])
+   904→  @@index([keywordId])
+   905→  @@index([pageId])
+   906→  @@map("keyword_pages")
+   907→}
+   908→
+   909→model OpportunityScore {
+   910→  id                  String   @id @default(uuid())
+   911→  keywordId           String   @unique
+   912→  totalScore          Float    @default(0)
+   913→  volumeScore         Float    @default(0)
+   914→  difficultyScore     Float    @default(0)
+   915→  relevanceScore      Float    @default(0)
+   916→  currentRankScore    Float    @default(0)
+   917→  intentScore         Float    @default(0)
+   918→  funnelScore         Float    @default(0)
+   919→  competitionScore    Float    @default(0)
+   920→  calculationDetails  String? // JSON - full calculation trace
+   921→  weightsVersion      String   @default("1.0")
+   922→  calculatedAt        DateTime @default(now())
+   923→
+   924→  keyword Keyword @relation(fields: [keywordId], references: [id], onDelete: Cascade)
+   925→
+   926→  @@index([totalScore])
+   927→  @@map("opportunity_scores")
+   928→}
+   929→
+   930→model Topic {
+   931→  id             String    @id @default(uuid())
+   932→  projectId      String
+   933→  name           String
+   934→  description    String?
+   935→  clusterId      String?
+   936→  isPillar       Boolean   @default(false)
+   937→  pillarPageId   String?
+   938→  suggestedUrl   String?
+   939→  searchIntent   SearchIntent @default(UNKNOWN)
+   940→  funnelStage    FunnelStage  @default(UNKNOWN)
+   941→  conversionGoal String?
+   942→  priority       ActionPriority @default(MEDIUM)
+   943→  impact         String?
+   944→  effort         ActionEffort   @default(MEDIUM)
+   945→  sortOrder      Int       @default(0)
+   946→  deletedAt      DateTime?
+   947→  createdAt      DateTime  @default(now())
+   948→  updatedAt      DateTime  @updatedAt
+   949→
+   950→  project      Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+   951→  cluster      TopicCluster? @relation(fields: [clusterId], references: [id], onDelete: SetNull)
+   952→  topicKeywords TopicKeyword[]
+   953→  outgoingRelations TopicRelation[] @relation("FromTopic")
+   954→  incomingRelations TopicRelation[] @relation("ToTopic")
+   955→  contentBriefs ContentBrief[]
+   956→
+   957→  @@index([projectId])
+   958→  @@index([clusterId])
+   959→  @@index([isPillar])
+   960→  @@index([deletedAt])
+   961→  @@map("topics")
+   962→}
+   963→
+   964→model TopicCluster {
+   965→  id          String   @id @default(uuid())
+   966→  projectId   String
+   967→  name        String
+   968→  description String?
+   969→  deletedAt   DateTime?
+   970→  createdAt   DateTime @default(now())
+   971→  updatedAt   DateTime @updatedAt
+   972→
+   973→  topics Topic[]
+   974→
+   975→  @@index([projectId])
+   976→  @@index([deletedAt])
+   977→  @@map("topic_clusters")
+   978→}
+   979→
+   980→model TopicKeyword {
+   981→  id        String  @id @default(uuid())
+   982→  topicId   String
+   983→  keywordId String
+   984→
+   985→  topic   Topic   @relation(fields: [topicId], references: [id], onDelete: Cascade)
+   986→  keyword Keyword @relation(fields: [keywordId], references: [id], onDelete: Cascade)
+   987→
+   988→  @@unique([topicId, keywordId])
+   989→  @@index([topicId])
+   990→  @@index([keywordId])
+   991→  @@map("topic_keywords")
+   992→}
+   993→
+   994→model TopicRelation {
+   995→  id          String   @id @default(uuid())
+   996→  fromTopicId String
+   997→  toTopicId   String
+   998→  relationType String  @default("supports") // supports, contradicts, related
+   999→  label       String?
+  1000→
+  1001→  fromTopic Topic @relation("FromTopic", fields: [fromTopicId], references: [id], onDelete: Cascade)
+  1002→  toTopic   Topic @relation("ToTopic", fields: [toTopicId], references: [id], onDelete: Cascade)
+  1003→
+  1004→  @@unique([fromTopicId, toTopicId, relationType])
+  1005→  @@index([fromTopicId])
+  1006→  @@index([toTopicId])
+  1007→  @@map("topic_relations")
+  1008→}
+  1009→
+  1010→// ============================================================================
+  1011→// Phase 3: AI Provider Layer
+  1012→// ============================================================================
+  1013→
+  1014→model AIProvider {
+  1015→  id              String         @id @default(uuid())
+  1016→  projectId       String
+  1017→  name            String
+  1018→  type            AIProviderType @default(OLLAMA)
+  1019→  baseUrl         String
+  1020→  apiKey          String? // encrypted at rest
+  1021→  defaultModel    String?
+  1022→  isActive        Boolean        @default(true)
+  1023→  isDefault       Boolean        @default(false)
+  1024→  maxTokens       Int            @default(4096)
+  1025→  temperature     Float          @default(0.7)
+  1026→  timeout         Int            @default(60000)
+  1027→  retryAttempts   Int            @default(3)
+  1028→  privacySettings String? // JSON
+  1029→  costPerToken    Float          @default(0) // zero for local providers
+  1030→  deletedAt       DateTime?
+  1031→  createdAt       DateTime       @default(now())
+  1032→  updatedAt       DateTime       @updatedAt
+  1033→
+  1034→  project  Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  1035→  callLogs AICallLog[]
+  1036→  promptTemplates PromptTemplate[]
+  1037→
+  1038→  @@index([projectId])
+  1039→  @@index([type])
+  1040→  @@index([isActive])
+  1041→  @@index([deletedAt])
+  1042→  @@map("ai_providers")
+  1043→}
+  1044→
+  1045→model AICallLog {
+  1046→  id              String    @id @default(uuid())
+  1047→  providerId      String
+  1048→  projectId       String
+  1049→  model           String
+  1050→  promptTemplateId String?
+  1051→  inputTokens     Int       @default(0)
+  1052→  outputTokens    Int       @default(0)
+  1053→  totalTokens     Int       @default(0)
+  1054→  cost            Float     @default(0)
+  1055→  durationMs      Int       @default(0)
+  1056→  success         Boolean   @default(true)
+  1057→  errorMessage    String?
+  1058→  purpose         String? // brief, draft, quality, intent, etc.
+  1059→  createdAt       DateTime  @default(now())
+  1060→
+  1061→  provider      AIProvider     @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  1062→  promptTemplate PromptTemplate? @relation(fields: [promptTemplateId], references: [id], onDelete: SetNull)
+  1063→
+  1064→  @@index([providerId])
+  1065→  @@index([projectId])
+  1066→  @@index([purpose])
+  1067→  @@index([createdAt])
+  1068→  @@map("ai_call_logs")
+  1069→}
+  1070→
+  1071→model PromptTemplate {
+  1072→  id          String   @id @default(uuid())
+  1073→  providerId  String
+  1074→  name        String
+  1075→  description String?
+  1076→  template    String
+  1077→  version     String   @default("1.0")
+  1078→  variables   String? // JSON array of variable names
+  1079→  category    String? // brief, draft, quality, intent, etc.
+  1080→  isActive    Boolean  @default(true)
+  1081→  createdAt   DateTime @default(now())
+  1082→  updatedAt   DateTime @updatedAt
+  1083→
+  1084→  provider AIProvider  @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  1085→  callLogs AICallLog[]
+  1086→
+  1087→  @@unique([providerId, name, version])
+  1088→  @@index([providerId])
+  1089→  @@index([category])
+  1090→  @@index([isActive])
+  1091→  @@map("prompt_templates")
+  1092→}
+  1093→
+  1094→// ============================================================================
+  1095→// Phase 3: Content Briefs & Studio
+  1096→// ============================================================================
+  1097→
+  1098→model ContentBrief {
+  1099→  id                String              @id @default(uuid())
+  1100→  projectId         String
+  1101→  keywordId         String?
+  1102→  topicId           String?
+  1103→  title             String
+  1104→  targetKeyword     String?
+  1105→  secondaryKeywords String? // JSON array
+  1106→  searchIntent      SearchIntent        @default(UNKNOWN)
+  1107→  funnelStage       FunnelStage         @default(UNKNOWN)
+  1108→  outline           String? // JSON outline structure
+  1109→  sources           String? // JSON array of source URLs
+  1110→  brandProfileUsed  Boolean             @default(true)
+  1111→  internalPages     String? // JSON array of page IDs to link to
+  1112→  targetWordCount   Int?
+  1113→  targetAudience    String?
+  1114→  toneOfVoice       String?
+  1115→  approvalStatus    ContentApprovalStatus @default(DRAFT)
+  1116→  approvedBy        String?
+  1117→  approvedAt        DateTime?
+  1118→  createdAt         DateTime            @default(now())
+  1119→  updatedAt         DateTime            @updatedAt
+  1120→
+  1121→  project  Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  1122→  keyword  Keyword?         @relation(fields: [keywordId], references: [id], onDelete: SetNull)
+  1123→  topic    Topic?           @relation(fields: [topicId], references: [id], onDelete: SetNull)
+  1124→  versions ContentVersion[]
+  1125→
+  1126→  @@index([projectId])
+  1127→  @@index([keywordId])
+  1128→  @@index([topicId])
+  1129→  @@index([approvalStatus])
+  1130→  @@index([createdAt])
+  1131→  @@map("content_briefs")
+  1132→}
+  1133→
+  1134→model ContentVersion {
+  1135→  id            String    @id @default(uuid())
+  1136→  briefId       String
+  1137→  version       Int       @default(1)
+  1138→  content       String
+  1139→  wordCount     Int       @default(0)
+  1140→  changeSummary String?
+  1141→  aiGenerated   Boolean   @default(false)
+  1142→  aiProviderId  String?
+  1143→  aiModel       String?
+  1144→  promptTemplateId String?
+  1145→  claimMarkers  String? // JSON array of claim markers
+  1146→  diffFromPrev  String? // JSON diff
+  1147→  createdBy     String?
+  1148→  createdAt     DateTime  @default(now())
+  1149→  updatedAt     DateTime  @updatedAt
+  1150→
+  1151→  brief ContentBrief @relation(fields: [briefId], references: [id], onDelete: Cascade)
+  1152→
+  1153→  @@unique([briefId, version])
+  1154→  @@index([briefId])
+  1155→  @@index([version])
+  1156→  @@map("content_versions")
+  1157→}
+  1158→
+  1159→model ContentQuality {
+  1160→  id                   String   @id @default(uuid())
+  1161→  contentVersionId     String   @unique
+  1162→  intentScore          Float    @default(0)
+  1163→  coverageScore        Float    @default(0)
+  1164→  readabilityScore     Float    @default(0)
+  1165→  originalityScore     Float    @default(0)
+  1166→  brandConsistencyScore Float   @default(0)
+  1167→  eeatScore            Float    @default(0)
+  1168→  internalLinkScore    Float    @default(0)
+  1169→  entityScore          Float    @default(0)
+  1170→  conversionScore      Float    @default(0)
+  1171→  geoReadinessScore    Float    @default(0)
+  1172→  publicationReadinessScore Float @default(0)
+  1173→  overallScore         Float    @default(0)
+  1174→  details              String? // JSON with detailed analysis per dimension
+  1175→  recommendations      String? // JSON array of recommendations
+  1176→  createdAt            DateTime @default(now())
+  1177→  updatedAt            DateTime @updatedAt
+  1178→
+  1179→  @@index([overallScore])
+  1180→  @@map("content_quality")
+  1181→}
+  1182→
+  1183→model ContentDecay {
+  1184→  id             String        @id @default(uuid())
+  1185→  projectId      String
+  1186→  pageId         String?
+  1187→  url            String
+  1188→  currentPage    Int           @default(1)
+  1189→  previousPage   Int?
+  1190→  currentClicks  Int?
+  1191→  previousClicks Int?
+  1192→  currentImpressions Int?
+  1193→  previousImpressions Int?
+  1194→  decayPercentage Float        @default(0)
+  1195→  pruningAction  PruningAction @default(KEEP)
+  1196→  riskAnalysis   String? // JSON
+  1197→  recommendations String? // JSON
+  1198→  dataAvailable  Boolean       @default(false)
+  1199→  dataNote       String?
+  1200→  detectedAt     DateTime      @default(now())
+  1201→  updatedAt      DateTime      @updatedAt
+  1202→
+  1203→  @@index([projectId])
+  1204→  @@index([pageId])
+  1205→  @@index([pruningAction])
+  1206→  @@index([detectedAt])
+  1207→  @@map("content_decay")
+  1208→}
+  1209→
+  1210→// ============================================================================
+  1211→// Phase 4: Additional Enums
+  1212→// ============================================================================
+  1213→
+  1214→enum CMSProviderType {
+  1215→  WORDPRESS
+  1216→  WOOCOMMERCE
+  1217→  SHOPIFY
+  1218→  CUSTOM
+  1219→}
+  1220→
+  1221→enum CMSConnectionStatus {
+  1222→  CONNECTED
+  1223→  DISCONNECTED
+  1224→  ERROR
+  1225→  PENDING
+  1226→}
+  1227→
+  1228→enum ContentWorkflowStep {
+  1229→  SELECT_OPPORTUNITY
+  1230→  SELECT_CONTENT_TYPE
+  1231→  GENERATE_BRIEF
+  1232→  EDIT_OUTLINE
+  1233→  SELECT_SOURCES
+  1234→  GENERATE_DRAFT
+  1235→  RUN_QUALITY_CHECKS
+  1236→  REVIEW_CLAIMS
+  1237→  ADD_INTERNAL_LINKS
+  1238→  PREVIEW
+  1239→  APPROVE
+  1240→  SAVE_CMS_DRAFT
+  1241→  SCHEDULE_OR_PUBLISH
+  1242→  MONITOR_STATUS
+  1243→}
+  1244→
+  1245→enum InternalLinkStatus {
+  1246→  PENDING
+  1247→  APPROVED
+  1248→  REJECTED
+  1249→  PUBLISHED
+  1250→  ROLLED_BACK
+  1251→}
+  1252→
+  1253→enum InternalLinkStrategy {
+  1254→  SEMANTIC
+  1255→  TOPIC_CLUSTER
+  1256→  ORPHAN_PAGE
+  1257→  STRONG_PAGE
+  1258→  BROKEN_REPLACEMENT
+  1259→}
+  1260→
+  1261→enum StructuredDataType {
+  1262→  ORGANIZATION
+  1263→  LOCAL_BUSINESS
+  1264→  PRODUCT
+  1265→  OFFER
+  1266→  REVIEW
+  1267→  BREADCRUMB_LIST
+  1268→  ARTICLE
+  1269→  FAQ_PAGE
+  1270→  HOW_TO
+  1271→  PERSON
+  1272→  EVENT
+  1273→  JOB_POSTING
+  1274→  SERVICE
+  1275→  WEB_SITE
+  1276→  WEB_PAGE
+  1277→}
+  1278→
+  1279→enum ProgrammaticTemplateType {
+  1280→  SERVICE_LOCATION
+  1281→  PRODUCT_USE_CASE
+  1282→  PRODUCT_AUDIENCE
+  1283→  PRODUCT_FEATURE
+  1284→  CATEGORY_FEATURE
+  1285→  INDUSTRY_SERVICE
+  1286→  INTEGRATION_PLATFORM
+  1287→  COMPARISON
+  1288→  GLOSSARY
+  1289→}
+  1290→
+  1291→enum ProgrammaticPageStatus {
+  1292→  PENDING
+  1293→  GENERATING
+  1294→  QUALITY_CHECK
+  1295→  APPROVED
+  1296→  REJECTED
+  1297→  PUBLISHED
+  1298→}
+  1299→
+  1300→enum ContentChangeType {
+  1301→  CREATE
+  1302→  UPDATE
+  1303→  DELETE
+  1304→  PUBLISH
+  1305→  UNPUBLISH
+  1306→  SCHEDULE
+  1307→  APPROVE
+  1308→  REJECT
+  1309→  ROLLBACK
+  1310→}
+  1311→
+  1312→// ============================================================================
+  1313→// Phase 4: CMS Connections
+  1314→// ============================================================================
+  1315→
+  1316→model CMSConnection {
+  1317→  id              String              @id @default(uuid())
+  1318→  projectId       String
+  1319→  name            String
+  1320→  providerType    CMSProviderType
+  1321→  status          CMSConnectionStatus @default(PENDING)
+  1322→  baseUrl         String
+  1323→  apiKey          String? // encrypted at rest
+  1324→  apiSecret      String? // encrypted at rest
+  1325→  username       String?
+  1326→  capabilities    String? // JSON array of detected capabilities
+  1327→  lastTestedAt    DateTime?
+  1328→  lastError       String?
+  1329→  metadata        String? // JSON for provider-specific settings
+  1330→  deletedAt       DateTime?
+  1331→  createdAt       DateTime            @default(now())
+  1332→  updatedAt       DateTime            @updatedAt
+  1333→
+  1334→  @@index([projectId])
+  1335→  @@index([providerType])
+  1336→  @@index([status])
+  1337→  @@index([deletedAt])
+  1338→  @@map("cms_connections")
+  1339→}
+  1340→
+  1341→// ============================================================================
+  1342→// Phase 4: Internal Linking
+  1343→// ============================================================================
+  1344→
+  1345→model InternalLink {
+  1346→  id              String              @id @default(uuid())
+  1347→  projectId       String
+  1348→  sourcePageId    String?
+  1349→  targetPageId    String?
+  1350→  sourceUrl       String
+  1351→  targetUrl       String
+  1352→  anchorText      String
+  1353→  surroundingText String? // context snippet
+  1354→  strategy        InternalLinkStrategy @default(SEMANTIC)
+  1355→  status          InternalLinkStatus   @default(PENDING)
+  1356→  confidence      Float               @default(0)
+  1357→  isExisting      Boolean             @default(false)
+  1358→  isBroken        Boolean             @default(false)
+  1359→  replacesLinkId  String?
+  1360→  approvedBy      String?
+  1361→  approvedAt      DateTime?
+  1362→  publishedAt     DateTime?
+  1363→  rolledBackAt    DateTime?
+  1364→  rollbackMeta    String? // JSON
+  1365→  cmsResult       String? // JSON result from CMS publishing
+  1366→  deletedAt       DateTime?
+  1367→  createdAt       DateTime            @default(now())
+  1368→  updatedAt       DateTime            @updatedAt
+  1369→
+  1370→  @@index([projectId])
+  1371→  @@index([sourcePageId])
+  1372→  @@index([targetPageId])
+  1373→  @@index([status])
+  1374→  @@index([strategy])
+  1375→  @@index([deletedAt])
+  1376→  @@map("internal_links")
+  1377→}
+  1378→
+  1379→// ============================================================================
+  1380→// Phase 4: Structured Data
+  1381→// ============================================================================
+  1382→
+  1383→model StructuredData {
+  1384→  id              String            @id @default(uuid())
+  1385→  projectId       String
+  1386→  pageId          String?
+  1387→  url             String?
+  1388→  type            StructuredDataType
+  1389→  data            String            // JSON-LD content
+  1390→  isValid         Boolean           @default(true)
+  1391→  validationErrors String?          // JSON array of validation errors
+  1392→  missingFields   String?           // JSON array of missing required fields
+  1393→  isAutoGenerated Boolean           @default(false)
+  1394→  approvedBy      String?
+  1395→  approvedAt      DateTime?
+  1396→  createdAt       DateTime          @default(now())
+  1397→  updatedAt       DateTime          @updatedAt
+  1398→
+  1399→  @@index([projectId])
+  1400→  @@index([pageId])
+  1401→  @@index([type])
+  1402→  @@index([isValid])
+  1403→  @@map("structured_data")
+  1404→}
+  1405→
+  1406→// ============================================================================
+  1407→// Phase 4: Programmatic SEO
+  1408→// ============================================================================
+  1409→
+  1410→model ProgrammaticTemplate {
+  1411→  id              String                     @id @default(uuid())
+  1412→  projectId       String
+  1413→  name            String
+  1414→  description     String?
+  1415→  templateType    ProgrammaticTemplateType
+  1416→  contentTemplate String                     // JSON template with variables
+  1417→  variables       String                     // JSON array of variable definitions
+  1418→  targetKeyword   String?
+  1419→  dataRows        String?                    // JSON array of data rows
+  1420→  qualityGates    String?                    // JSON quality gate config
+  1421→  maxPages        Int                        @default(100)
+  1422→  publishedCount  Int                        @default(0)
+  1423→  isActive        Boolean                    @default(true)
+  1424→  deletedAt       DateTime?
+  1425→  createdAt       DateTime                   @default(now())
+  1426→  updatedAt       DateTime                   @updatedAt
+  1427→
+  1428→  pages ProgrammaticPage[]
+  1429→
+  1430→  @@index([projectId])
+  1431→  @@index([templateType])
+  1432→  @@index([isActive])
+  1433→  @@index([deletedAt])
+  1434→  @@map("programmatic_templates")
+  1435→}
+  1436→
+  1437→model ProgrammaticPage {
+  1438→  id               String                @id @default(uuid())
+  1439→  templateId       String
+  1440→  projectId        String
+  1441→  rowData          String                // JSON data for this specific page
+  1442→  generatedContent String?               // generated HTML/MD content
+  1443→  title            String?
+  1444→  slug             String?
+  1445→  metaTitle        String?
+  1446→  metaDescription  String?
+  1447→  status           ProgrammaticPageStatus @default(PENDING)
+  1448→  qualityScore     Float                 @default(0)
+  1449→  qualityResults   String?               // JSON quality gate results
+  1450→  rejectionReasons String?               // JSON array of rejection reasons
+  1451→  approvedBy       String?
+  1452→  approvedAt       DateTime?
+  1453→  publishedAt      DateTime?
+  1454→  cmsResult        String?               // JSON
+  1455→  deletedAt        DateTime?
+  1456→  createdAt        DateTime              @default(now())
+  1457→  updatedAt        DateTime              @updatedAt
+  1458→
+  1459→  template ProgrammaticTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  1460→
+  1461→  @@index([templateId])
+  1462→  @@index([projectId])
+  1463→  @@index([status])
+  1464→  @@index([qualityScore])
+  1465→  @@index([deletedAt])
+  1466→  @@map("programmatic_pages")
+  1467→}
+  1468→
+  1469→// ============================================================================
+  1470→// Phase 4: Content Change History
+  1471→// ============================================================================
+  1472→
+  1473→model ContentChange {
+  1474→  id              String             @id @default(uuid())
+  1475→  projectId       String
+  1476→  briefId         String?
+  1477→  versionId       String?
+  1478→  pageId          String?
+  1479→  changeType      ContentChangeType
+  1480→  previousContent String?            // previous content snapshot
+  1481→  newContent      String?            // new content snapshot
+  1482→  userId          String?
+  1483→  aiAgentId       String?            // ID of the AI agent if change was AI-initiated
+  1484→  aiProviderId    String?
+  1485→  summary         String?            // Dutch summary of the change
+  1486→  cmsResult       String?            // JSON result from CMS
+  1487→  rollbackData    String?            // JSON data needed for rollback
+  1488→  approvalId      String?            // ID of the approval record
+  1489→  approvedBy      String?
+  1490→  approvedAt      DateTime?
+  1491→  createdAt       DateTime           @default(now())
+  1492→
+  1493→  @@index([projectId])
+  1494→  @@index([briefId])
+  1495→  @@index([pageId])
+  1496→  @@index([changeType])
+  1497→  @@index([userId])
+  1498→  @@index([createdAt])
+  1499→  @@map("content_changes")
+  1500→}
+  1501→
+  1502→// ============================================================================
+  1503→// Phase 4: Source Grounding
+  1504→// ============================================================================
+  1505→
+  1506→model ContentSource {
+  1507→  id          String   @id @default(uuid())
+  1508→  projectId   String
+  1509→  briefId     String?
+  1510→  name        String
+  1511→  type        String   // PAGE, BRAND_PROFILE, DOCUMENT, PRODUCT_DATA, APPROVED_FACT, EXTERNAL_SOURCE
+  1512→  url         String?
+  1513→  content     String?  // extracted text or reference
+  1514→  metadata    String?  // JSON
+  1515→  approvedAt  DateTime?
+  1516→  deletedAt   DateTime?
+  1517→  createdAt   DateTime @default(now())
+  1518→  updatedAt   DateTime @updatedAt
+  1519→
+  1520→  @@index([projectId])
+  1521→  @@index([briefId])
+  1522→  @@index([type])
+  1523→  @@index([deletedAt])
+  1524→  @@map("content_sources")
+  1525→}
+  1526→
+  1527→// ============================================================================
+  1528→// Phase 4: Quality Findings (blocking/non-blocking)
+  1529→// ============================================================================
+  1530→
+  1531→model QualityFinding {
+  1532→  id              String   @id @default(uuid())
+  1533→  projectId       String
+  1534→  versionId       String?
+  1535→  briefId         String?
+  1536→  checkType       String   // DUPLICATE, NEAR_DUPLICATE, BRAND_CONSISTENCY, PROHIBITED_CLAIM, etc.
+  1537→  severity        String   // BLOCKING, WARNING, INFO
+  1538→  title           String   // Dutch title
+  1539→  description     String   // Dutch description
+  1540→  evidence        String?  // JSON evidence
+  1541→  recommendation  String?  // Dutch recommendation
+  1542→  dismissed       Boolean  @default(false)
+  1543→  dismissedBy     String?
+  1544→  dismissedAt     DateTime?
+  1545→  createdAt       DateTime @default(now())
+  1546→  updatedAt       DateTime @updatedAt
+  1547→
+  1548→  @@index([projectId])
+  1549→  @@index([versionId])
+  1550→  @@index([briefId])
+  1551→  @@index([checkType])
+  1552→  @@index([severity])
+  1553→  @@index([dismissed])
+  1554→  @@map("quality_findings")
+  1555→}
+  1556→
+  1557→// ============================================================================
+  1558→// Phase 5: Analytics & Monitoring — Enums
+  1559→// ============================================================================
+  1560→
+  1561→enum DataConnectionType {
+  1562→  GOOGLE_SEARCH_CONSOLE
+  1563→  GOOGLE_ANALYTICS_4
+  1564→  CSV_SEARCH_PERFORMANCE
+  1565→  CSV_ANALYTICS
+  1566→  CSV_CONVERSIONS
+  1567→  CSV_REVENUE
+  1568→  GOOGLE_BUSINESS_PROFILE
+  1569→}
+  1570→
+  1571→enum DataConnectionStatus {
+  1572→  CONNECTED
+  1573→  DISCONNECTED
+  1574→  ERROR
+  1575→  PENDING
+  1576→  EXPIRED
+  1577→}
+  1578→
+  1579→enum AlertType {
+  1580→  RANKING_DROP
+  1581→  CLICK_DROP
+  1582→  IMPRESSION_DROP
+  1583→  CTR_DROP
+  1584→  CONVERSION_DROP
+  1585→  REVENUE_DROP
+  1586→  INDEXING_ISSUE
+  1587→  NEW_404
+  1588→  UNEXPECTED_NOINDEX
+  1589→  BROKEN_INTEGRATION
+  1590→  PUBLISHING_FAILURE
+  1591→  CONTENT_DECAY
+  1592→  COMPETITOR_CHANGE
+  1593→  LOST_AI_MENTION
+  1594→  NEGATIVE_REVIEW_TREND
+  1595→  DEPLOYMENT_REGRESSION
+  1596→}
+  1597→
+  1598→enum AlertSeverity {
+  1599→  CRITICAL
+  1600→  HIGH
+  1601→  MEDIUM
+  1602→  LOW
+  1603→  INFO
+  1604→}
+  1605→
+  1606→enum AlertStatus {
+  1607→  ACTIVE
+  1608→  ACKNOWLEDGED
+  1609→  SNOOZED
+  1610→  RESOLVED
+  1611→  DISMISSED
+  1612→}
+  1613→
+  1614→enum RoadmapView {
+  1615→  TODAY
+  1616→  THIS_WEEK
+  1617→  THIS_MONTH
+  1618→  NINETY_DAYS
+  1619→  LATER
+  1620→}
+  1621→
+  1622→enum RoadmapItemType {
+  1623→  TECHNICAL_ISSUE
+  1624→  CONTENT_GAP
+  1625→  KEYWORD_OPPORTUNITY
+  1626→  DECAY
+  1627→  INTERNAL_LINK
+  1628→  COMPETITOR
+  1629→  GEO
+  1630→  LOCAL_SEO
+  1631→  ECOMMERCE
+  1632→  CRO
+  1633→  REVENUE
+  1634→}
+  1635→
+  1636→enum ReportType {
+  1637→  MONTHLY
+  1638→  QUARTERLY
+  1639→  TECHNICAL_AUDIT
+  1640→  CONTENT
+  1641→  KEYWORDS
+  1642→  COMPETITORS
+  1643→  LOCAL_SEO
+  1644→  GEO
+  1645→  WOOCOMMERCE
+  1646→  CRO
+  1647→  REVENUE
+  1648→  EXECUTIVE
+  1649→  HOLISTIC
+  1650→  CUSTOM
+  1651→}
+  1652→
+  1653→enum ReportStatus {
+  1654→  DRAFT
+  1655→  IN_REVIEW
+  1656→  APPROVED
+  1657→  PUBLISHED
+  1658→  ARCHIVED
+  1659→}
+  1660→
+  1661→enum ReportSectionType {
+  1662→  KPI_CARDS
+  1663→  CHART
+  1664→  TABLE
+  1665→  TEXT
+  1666→  RECOMMENDATIONS
+  1667→  ROADMAP
+  1668→  PAGE_BREAK
+  1669→}
+  1670→
+  1671→// ============================================================================
+  1672→// Phase 5: Data Connections (Search Console, GA4, CSV)
+  1673→// ============================================================================
+  1674→
+  1675→model DataConnection {
+  1676→  id               String              @id @default(uuid())
+  1677→  projectId        String
+  1678→  name             String
+  1679→  type             DataConnectionType
+  1680→  status           DataConnectionStatus @default(PENDING)
+  1681→  // Connection config (JSON): OAuth tokens, API keys, file references, etc.
+  1682→  config           String?
+  1683→  // Last sync tracking
+  1684→  lastSyncAt       DateTime?
+  1685→  lastSyncStatus   String?             // success, partial, failed
+  1686→  lastSyncError    String?
+  1687→  nextSyncAt       DateTime?
+  1688→  syncIntervalMinutes Int              @default(1440) // 24h default
+  1689→  // Data freshness
+  1690→  dataStartDate    DateTime?
+  1691→  dataEndDate      DateTime?
+  1692→  dataNote         String?             // Dutch explanation for missing data
+  1693→  // Metadata
+  1694→  metadata         String?             // JSON: account info, property info, etc.
+  1695→  deletedAt        DateTime?
+  1696→  createdAt        DateTime            @default(now())
+  1697→  updatedAt        DateTime            @updatedAt
+  1698→
+  1699→  @@index([projectId])
+  1700→  @@index([type])
+  1701→  @@index([status])
+  1702→  @@index([deletedAt])
+  1703→  @@map("data_connections")
+  1704→}
+  1705→
+  1706→// ============================================================================
+  1707→// Phase 5: Daily Metrics (time-series data from GSC/GA4/CSV)
+  1708→// ============================================================================
+  1709→
+  1710→model DailyMetric {
+  1711→  id               String   @id @default(uuid())
+  1712→  projectId        String
+  1713→  connectionId     String
+  1714→  date             DateTime
+  1715→  // Search metrics
+  1716→  clicks           Int      @default(0)
+  1717→  impressions      Int      @default(0)
+  1718→  ctr              Float    @default(0)
+  1719→  averagePosition  Float    @default(0)
+  1720→  // Analytics metrics
+  1721→  sessions         Int      @default(0)
+  1722→  users            Int      @default(0)
+  1723→  newUsers         Int      @default(0)
+  1724→  pageViews        Int      @default(0)
+  1725→  bounceRate       Float?
+  1726→  avgSessionDuration Float?  // seconds
+  1727→  // Conversion metrics
+  1728→  conversions      Int      @default(0)
+  1729→  conversionRate   Float?
+  1730→  // Revenue metrics
+  1731→  revenue          Float?
+  1732→  productRevenue   Float?
+  1733→  // Segmentation
+  1734→  source           String?  // organic, paid, social, direct, referral, etc.
+  1735→  medium           String?
+  1736→  campaign         String?
+  1737→  device           String?  // desktop, mobile, tablet
+  1738→  country          String?
+  1739→  landingPage      String?  // URL
+  1740→  // Metadata
+  1741→  importBatch      String?  // batch ID for bulk imports
+  1742→  createdAt        DateTime @default(now())
+  1743→
+  1744→  @@unique([projectId, connectionId, date, source, medium, device, country, landingPage])
+  1745→  @@index([projectId])
+  1746→  @@index([connectionId])
+  1747→  @@index([date])
+  1748→  @@index([source])
+  1749→  @@index([device])
+  1750→  @@index([country])
+  1751→  @@index([landingPage])
+  1752→  @@index([importBatch])
+  1753→  @@map("daily_metrics")
+  1754→}
+  1755→
+  1756→// ============================================================================
+  1757→// Phase 5: Query Performance (GSC query-level data)
+  1758→// ============================================================================
+  1759→
+  1760→model QueryPerformance {
+  1761→  id               String   @id @default(uuid())
+  1762→  projectId        String
+  1763→  connectionId     String
+  1764→  date             DateTime
+  1765→  query            String
+  1766→  // Metrics
+  1767→  clicks           Int      @default(0)
+  1768→  impressions      Int      @default(0)
+  1769→  ctr              Float    @default(0)
+  1770→  position         Float    @default(0)
+  1771→  // Segmentation
+  1772→  country          String?
+  1773→  device           String?
+  1774→  page             String?  // landing page URL
+  1775→  // Metadata
+  1776→  importBatch      String?
+  1777→  createdAt        DateTime @default(now())
+  1778→
+  1779→  @@unique([projectId, connectionId, date, query, country, device, page])
+  1780→  @@index([projectId])
+  1781→  @@index([connectionId])
+  1782→  @@index([date])
+  1783→  @@index([query])
+  1784→  @@index([position])
+  1785→  @@index([clicks])
+  1786→  @@map("query_performance")
+  1787→}
+  1788→
+  1789→// ============================================================================
+  1790→// Phase 5: Alerts
+  1791→// ============================================================================
+  1792→
+  1793→model Alert {
+  1794→  id               String        @id @default(uuid())
+  1795→  projectId        String
+  1796→  type             AlertType
+  1797→  severity         AlertSeverity @default(MEDIUM)
+  1798→  status           AlertStatus   @default(ACTIVE)
+  1799→  // Alert content
+  1800→  title            String        // Dutch title
+  1801→  message          String        // Dutch explanation
+  1802→  evidence         String?       // JSON evidence data
+  1803→  metricValue      Float?
+  1804→  previousValue    Float?
+  1805→  changePercentage Float?
+  1806→  threshold        Float?
+  1807→  // Minimum data volume check
+  1808→  dataPointsUsed   Int           @default(0)
+  1809→  dataSufficient   Boolean       @default(true)
+  1810→  dataNote         String?       // Dutch explanation if data insufficient
+  1811→  // Grouping and deduplication
+  1812→  alertGroup       String?       // group key for related alerts
+  1813→  // Lifecycle
+  1814→  acknowledgedBy   String?
+  1815→  acknowledgedAt   DateTime?
+  1816→  snoozedUntil     DateTime?
+  1817→  snoozedBy        String?
+  1818→  resolvedBy       String?
+  1819→  resolvedAt       DateTime?
+  1820→  dismissedBy      String?
+  1821→  dismissedAt      DateTime?
+  1822→  assignedTo       String?
+  1823→  resolution       String?       // Dutch resolution note
+  1824→  // Notification
+  1825→  notifiedChannels String?       // JSON array: email, in_app, webhook
+  1826→  // Anomaly detection metadata
+  1827→  anomalyScore     Float?
+  1828→  anomalyMethod    String?       // statistical, threshold, trend
+  1829→  // Metadata
+  1830→  createdAt        DateTime      @default(now())
+  1831→  updatedAt        DateTime      @updatedAt
+  1832→
+  1833→  @@index([projectId])
+  1834→  @@index([type])
+  1835→  @@index([severity])
+  1836→  @@index([status])
+  1837→  @@index([alertGroup])
+  1838→  @@index([assignedTo])
+  1839→  @@index([createdAt])
+  1840→  @@map("alerts")
+  1841→}
+  1842→
+  1843→// ============================================================================
+  1844→// Phase 5: Alert Notification Preferences
+  1845→// ============================================================================
+  1846→
+  1847→model AlertPreference {
+  1848→  id               String     @id @default(uuid())
+  1849→  projectId        String
+  1850→  userId           String
+  1851→  alertType        AlertType?
+  1852→  severity         AlertSeverity?
+  1853→  channel          String     // email, in_app, webhook
+  1854→  isEnabled        Boolean    @default(true)
+  1855→  digestFrequency  String?    // none, daily, weekly
+  1856→  quietHoursStart  String?    // "22:00"
+  1857→  quietHoursEnd    String?    // "08:00"
+  1858→  createdAt        DateTime   @default(now())
+  1859→  updatedAt        DateTime   @updatedAt
+  1860→
+  1861→  @@unique([projectId, userId, alertType, severity, channel])
+  1862→  @@index([projectId])
+  1863→  @@index([userId])
+  1864→  @@map("alert_preferences")
+  1865→}
+  1866→
+  1867→// ============================================================================
+  1868→// Phase 5: Roadmap Items
+  1869→// ============================================================================
+  1870→
+  1871→model RoadmapItem {
+  1872→  id               String           @id @default(uuid())
+  1873→  projectId        String
+  1874→  type             RoadmapItemType
+  1875→  title            String           // Dutch title
+  1876→  description      String?          // Dutch description
+  1877→  // Source reference
+  1878→  sourceType       String?          // technical_issue, keyword, decay, etc.
+  1879→  sourceId         String?          // ID of the source entity
+  1880→  // Priority & scheduling
+  1881→  priority         ActionPriority   @default(MEDIUM)
+  1882→  effort           ActionEffort     @default(MEDIUM)
+  1883→  impact           String?          // Dutch impact description
+  1884→  scheduledDate    DateTime?
+  1885→  dueDate          DateTime?
+  1886→  view             RoadmapView      @default(LATER)
+  1887→  sortOrder        Int              @default(0)
+  1888→  // Status
+  1889→  status           ActionItemStatus @default(PENDING)
+  1890→  assignedTo       String?
+  1891→  completedAt      DateTime?
+  1892→  // AI-generated recommendation
+  1893→  recommendation   String?          // Dutch recommendation
+  1894→  autoGenerated    Boolean          @default(false)
+  1895→  // Metadata
+  1896→  createdAt        DateTime         @default(now())
+  1897→  updatedAt        DateTime         @updatedAt
+  1898→
+  1899→  @@index([projectId])
+  1900→  @@index([type])
+  1901→  @@index([priority])
+  1902→  @@index([status])
+  1903→  @@index([view])
+  1904→  @@index([scheduledDate])
+  1905→  @@index([assignedTo])
+  1906→  @@index([sortOrder])
+  1907→  @@map("roadmap_items")
+  1908→}
+  1909→
+  1910→// ============================================================================
+  1911→// Phase 5: White-Label Profile
+  1912→// ============================================================================
+  1913→
+  1914→model WhiteLabelProfile {
+  1915→  id                String    @id @default(uuid())
+  1916→  organizationId    String
+  1917→  name              String
+  1918→  // Branding
+  1919→  logoUrl           String?
+  1920→  primaryColor      String?   @default("#059669") // emerald-600
+  1921→  secondaryColor    String?
+  1922→  accentColor       String?
+  1923→  fontFamily        String?
+  1924→  // Organization details shown in reports
+  1925→  companyName       String?
+  1926→  companyTagline    String?
+  1927→  companyAddress    String?
+  1928→  companyPhone      String?
+  1929→  companyEmail      String?
+  1930→  companyWebsite    String?
+  1931→  companyKvk        String?   // KvK number
+  1932→  // Report content
+  1933→  introductionText  String?   // Dutch intro for reports
+  1934→  closingText       String?   // Dutch closing for reports
+  1935→  footerText        String?   // Dutch footer text
+  1936→  senderIdentity    String?   // "Van: [name]"
+  1937→  // Custom domain architecture (URL prefix pattern)
+  1938→  customDomainReady Boolean   @default(false)
+  1939→  customDomainPattern String?
+  1940→  // Metadata
+  1941→  isDefault         Boolean   @default(false)
+  1942→  deletedAt         DateTime?
+  1943→  createdAt         DateTime  @default(now())
+  1944→  updatedAt         DateTime  @updatedAt
+  1945→
+  1946→  @@index([organizationId])
+  1947→  @@index([deletedAt])
+  1948→  @@map("white_label_profiles")
+  1949→}
+  1950→
+  1951→// ============================================================================
+  1952→// Phase 5: Reports
+  1953→// ============================================================================
+  1954→
+  1955→model Report {
+  1956→  id                String         @id @default(uuid())
+  1957→  projectId         String
+  1958→  whiteLabelId      String?
+  1959→  type              ReportType
+  1960→  status            ReportStatus   @default(DRAFT)
+  1961→  title             String         // Dutch title
+  1962→  description       String?        // Dutch description
+  1963→  // Date range
+  1964→  startDate         DateTime
+  1965→  endDate           DateTime
+  1966→  comparisonStartDate DateTime?     // for period comparison
+  1967→  comparisonEndDate DateTime?
+  1968→  // Sections (JSON array of section definitions)
+  1969→  sections          String         // JSON
+  1970→  // Snapshot data (frozen at generation time)
+  1971→  snapshotData      String?        // JSON - frozen data so reports don't change
+  1972→  snapshotGeneratedAt DateTime?
+  1973→  // Output
+  1974→  htmlOutput        String?        // generated HTML
+  1975→  pdfPath           String?        // path to generated PDF
+  1976→  // Approval
+  1977→  approvedBy        String?
+  1978→  approvedAt        DateTime?
+  1979→  // Sharing
+  1980→  shareToken        String?        @unique
+  1981→  sharePassword     String?        // hashed password for shared reports
+  1982→  shareExpiresAt    DateTime?
+  1983→  shareAccessCount  Int            @default(0)
+  1984→  // Scheduling
+  1985→  scheduledAt       DateTime?
+  1986→  // Version tracking
+  1987→  version           Int            @default(1)
+  1988→  parentReportId    String?        // for version history
+  1989→  // Metadata
+  1990→  createdById       String?
+  1991→  deletedAt         DateTime?
+  1992→  createdAt         DateTime       @default(now())
+  1993→  updatedAt         DateTime       @updatedAt
+  1994→
+  1995→  @@index([projectId])
+  1996→  @@index([type])
+  1997→  @@index([status])
+  1998→  @@index([whiteLabelId])
+  1999→  @@index([shareToken])
+  2000→  @@index([scheduledAt])
+
+[showing lines 1-2000 of 3980; use offset=2001 with limit to continue reading]

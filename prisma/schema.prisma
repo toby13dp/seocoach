@@ -1,5 +1,5 @@
 // ============================================================================
-// Prisma Schema — AI-Driven SEO Automation Platform (Phase 1-9)
+// Prisma Schema — AI-Driven SEO Automation Platform (Phase 1-12)
 // ============================================================================
 
 generator client {
@@ -257,6 +257,24 @@ model Organization {
   clients     Client[]
   projects    Project[]
   auditLogs   AuditLog[]
+  // Phase 10 relations
+  deliverables      Deliverable[]
+  timeEntries       TimeEntry[]
+  recurringTasks    RecurringTask[]
+  approvalItems     ApprovalQueueItem[]
+  internalNotes     InternalNote[]
+  pmIntegrations    PMIntegration[]
+  benchmarkResults  BenchmarkResult[]
+  benchmarkConsents BenchmarkConsent[]
+  agencyAlerts      AgencyAlert[]
+  monthlyWorkSummaries MonthlyWorkSummary[]
+  // Phase 11 relations
+  copilotConversations CopilotConversation[]
+  agentRuns          AgentRun[]
+  automationRules    AutomationRule[]
+  // Phase 12 relations
+  migrationProjects  MigrationProject[]
+  deploymentRecords  DeploymentRecord[]
 
   @@index([slug])
   @@index([deletedAt])
@@ -330,6 +348,15 @@ model Client {
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   projects     Project[]
+  // Phase 10 relations
+  extension          ClientExtension?
+  portalAccess       ClientPortalAccess[]
+  notificationPrefs  ClientNotificationPreference?
+  deliverables       Deliverable[]
+  timeEntries        TimeEntry[]
+  monthlyWorkSummaries MonthlyWorkSummary[]
+  recurringTasks     RecurringTask[]
+  approvalItems      ApprovalQueueItem[]
 
   @@unique([organizationId, slug])
   @@index([organizationId])
@@ -371,6 +398,21 @@ model Project {
   topics        Topic[]
   aiProviders   AIProvider[]
   contentBriefs ContentBrief[]
+  // Phase 10 relations
+  deliverables      Deliverable[]
+  timeEntries       TimeEntry[]
+  recurringTasks    RecurringTask[]
+  approvalItems     ApprovalQueueItem[]
+  pmIntegrations    PMIntegration[]
+  benchmarkResults  BenchmarkResult[]
+  benchmarkConsents BenchmarkConsent[]
+  // Phase 11 relations
+  copilotConversations CopilotConversation[]
+  agentRuns          AgentRun[]
+  automationRules    AutomationRule[]
+  // Phase 12 relations
+  migrationProjects  MigrationProject[]
+  deploymentRecords  DeploymentRecord[]
 
   @@unique([organizationId, slug])
   @@index([organizationId])
@@ -3355,4 +3397,1118 @@ model BudgetAllocation {
   @@index([isActive])
   @@index([deletedAt])
   @@map("budget_allocations")
+}
+
+// ============================================================================
+// Phase 10: Enums — Agency & Client Operations
+// ============================================================================
+
+enum ClientPortalAccessType {
+  REPORTS
+  KPI_SUMMARIES
+  ROADMAP
+  TASKS
+  CONTENT_DRAFTS
+  CONTENT_APPROVAL
+  TECH_ACTION_APPROVAL
+  COMMENTS
+  DOCUMENTS
+  MEETING_NOTES
+  APPROVAL_REQUESTS
+}
+
+enum DeliverableStatus {
+  PENDING
+  IN_PROGRESS
+  SUBMITTED
+  APPROVED
+  REJECTED
+  OVERDUE
+}
+
+enum RecurringTaskFrequency {
+  DAILY
+  WEEKLY
+  BIWEEKLY
+  MONTHLY
+  QUARTERLY
+}
+
+enum SLAStatus {
+  ON_TRACK
+  AT_RISK
+  BREACHED
+}
+
+enum PMIntegrationProvider {
+  JIRA
+  TRELLO
+  ASANA
+  CLICKUP
+  MONDAY
+  LINEAR
+  GITHUB_ISSUES
+  GENERIC_WEBHOOK
+}
+
+enum PMIntegrationStatus {
+  CONNECTED
+  DISCONNECTED
+  ERROR
+}
+
+enum BenchmarkCategory {
+  CTR
+  TECHNICAL_HEALTH
+  PUBLISHING_FREQUENCY
+  CONTENT_GROWTH
+  CONVERSION_RATE
+  ISSUE_RESOLUTION_SPEED
+  GEO_READINESS
+  AI_VISIBILITY
+  ORGANIC_GROWTH
+  PUBLICATION_SPEED
+}
+
+enum ClientHealthStatus {
+  EXCELLENT
+  GOOD
+  NEEDS_ATTENTION
+  CRITICAL
+}
+
+enum ApprovalQueueStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+// ============================================================================
+// Phase 10: Client Model Extensions
+// ============================================================================
+
+// Client model extended with agency fields (add columns to existing Client)
+// We add these as a separate related model to avoid migration issues
+
+model ClientExtension {
+  id              String            @id @default(uuid())
+  clientId        String            @unique
+  // Contract & limits
+  contractStart   DateTime?
+  contractEnd     DateTime?
+  contractType    String?           // "monthly", "quarterly", "yearly", "project"
+  monthlyHours    Float?            // Contracted hours per month
+  maxProjects     Int?              // Maximum projects allowed
+  maxKeywords     Int?              // Maximum keywords tracked
+  maxPages        Int?              // Maximum pages crawled
+  // Financials (restricted permissions)
+  monthlyFee      Float?            // Monthly fee in EUR
+  currency        String            @default("EUR")
+  costRate        Float?            // Internal cost rate
+  profitability   Float?            // Computed: (fee - cost) / fee
+  billingNotes    String?           // Internal billing notes (NOT client-visible)
+  // Health
+  healthStatus    ClientHealthStatus @default(GOOD)
+  healthScore     Float             @default(50) // 0-100
+  healthNotes     String?           // JSON: Dutch health notes (internal)
+  // SLA
+  slaResponseHours Int?             // Response SLA in hours
+  slaDeliveryHours Int?             // Delivery SLA in hours
+  slaStatus       SLAStatus         @default(ON_TRACK)
+  // Metadata
+  lastHealthCheck DateTime?
+  deletedAt       DateTime?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([clientId])
+  @@index([healthStatus])
+  @@index([slaStatus])
+  @@index([deletedAt])
+  @@map("client_extensions")
+}
+
+// ============================================================================
+// Phase 10: Client Portal Access
+// ============================================================================
+
+model ClientPortalAccess {
+  id             String                  @id @default(uuid())
+  clientId       String
+  accessType     ClientPortalAccessType
+  granted        Boolean                 @default(false)
+  grantedBy      String?                 // userId
+  grantedAt      DateTime?
+  // Per-access restrictions
+  restrictions   String?                 // JSON: { "maxItems": 10, "readOnly": true, etc. }
+  // Metadata
+  deletedAt      DateTime?
+  createdAt      DateTime                @default(now())
+  updatedAt      DateTime                @updatedAt
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@unique([clientId, accessType])
+  @@index([clientId])
+  @@index([accessType])
+  @@index([deletedAt])
+  @@map("client_portal_access")
+}
+
+model ClientNotificationPreference {
+  id              String    @id @default(uuid())
+  clientId        String
+  // Notification channels
+  emailEnabled    Boolean   @default(true)
+  portalEnabled   Boolean   @default(true)
+  // Notification types
+  reportPublished Boolean   @default(true)
+  contentApproval Boolean   @default(true)
+  taskAssigned    Boolean   @default(true)
+  commentAdded    Boolean   @default(true)
+  slaWarning      Boolean   @default(true)
+  // Frequency
+  digestFrequency String    @default("weekly") // "daily", "weekly", "monthly", "none"
+  // Metadata
+  deletedAt       DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@unique([clientId])
+  @@index([clientId])
+  @@index([deletedAt])
+  @@map("client_notification_preferences")
+}
+
+// ============================================================================
+// Phase 10: Deliverables & Time Tracking
+// ============================================================================
+
+model Deliverable {
+  id              String            @id @default(uuid())
+  organizationId  String
+  clientId        String?
+  projectId       String?
+  // Details
+  title           String            // Dutch title
+  description     String?           // Dutch description
+  type            String            // "report", "content", "technical_fix", "audit", etc.
+  // Schedule
+  dueDate         DateTime?
+  completedDate   DateTime?
+  // Assignment
+  assignedTo      String?           // userId
+  // Status
+  status          DeliverableStatus @default(PENDING)
+  // Tracking
+  hoursSpent      Float             @default(0)
+  hoursBudgeted   Float?
+  // Client visibility
+  isClientVisible Boolean           @default(false)
+  clientNotes     String?           // Dutch notes visible to client
+  // Internal (NOT client-visible)
+  internalNotes   String?           // Dutch internal notes
+  // Metadata
+  deletedAt       DateTime?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  client       Client?      @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  project      Project?     @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([clientId])
+  @@index([projectId])
+  @@index([status])
+  @@index([dueDate])
+  @@index([assignedTo])
+  @@index([deletedAt])
+  @@map("deliverables")
+}
+
+model TimeEntry {
+  id              String    @id @default(uuid())
+  organizationId  String
+  projectId       String?
+  clientId        String?
+  // Details
+  userId          String
+  date            DateTime
+  hours           Float
+  description     String    // Dutch description
+  // Category
+  category        String    // "technical_seo", "content", "reporting", "meeting", "admin", etc.
+  // Billing
+  isBillable      Boolean   @default(true)
+  hourlyRate      Float?    // Override rate for this entry
+  // Metadata
+  deletedAt       DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project      Project?     @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  client       Client?      @relation(fields: [clientId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([projectId])
+  @@index([clientId])
+  @@index([userId])
+  @@index([date])
+  @@index([category])
+  @@index([deletedAt])
+  @@map("time_entries")
+}
+
+model MonthlyWorkSummary {
+  id              String    @id @default(uuid())
+  organizationId  String
+  clientId        String
+  year            Int
+  month           Int       // 1-12
+  // Summary data
+  totalHours      Float     @default(0)
+  billableHours   Float     @default(0)
+  deliverablesCompleted Int  @default(0)
+  deliverablesPending   Int  @default(0)
+  // Content
+  summary         String?   // JSON: Dutch monthly summary
+  highlights      String?   // JSON: Dutch highlights
+  concerns        String?   // JSON: Dutch concerns
+  // Status
+  status          String    @default("draft") // "draft", "review", "approved", "shared"
+  // Metadata
+  deletedAt       DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  client       Client       @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@unique([clientId, year, month])
+  @@index([organizationId])
+  @@index([clientId])
+  @@index([year, month])
+  @@index([deletedAt])
+  @@map("monthly_work_summaries")
+}
+
+// ============================================================================
+// Phase 10: Recurring Tasks
+// ============================================================================
+
+model RecurringTask {
+  id              String                  @id @default(uuid())
+  organizationId  String
+  projectId       String?
+  clientId        String?
+  // Task details
+  title           String                  // Dutch title
+  description     String?                 // Dutch description
+  // Schedule
+  frequency       RecurringTaskFrequency
+  dayOfWeek       Int?                    // 0=Sunday, 1=Monday, etc.
+  dayOfMonth      Int?                    // 1-31
+  // Assignment
+  assignedTo      String?                 // userId
+  // Tracking
+  lastRunAt       DateTime?
+  nextRunAt       DateTime?
+  // Status
+  isActive        Boolean                 @default(true)
+  // Metadata
+  deletedAt       DateTime?
+  createdAt       DateTime                @default(now())
+  updatedAt       DateTime                @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project      Project?     @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  client       Client?      @relation(fields: [clientId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([projectId])
+  @@index([clientId])
+  @@index([nextRunAt])
+  @@index([isActive])
+  @@index([deletedAt])
+  @@map("recurring_tasks")
+}
+
+// ============================================================================
+// Phase 10: Approval Queue
+// ============================================================================
+
+model ApprovalQueueItem {
+  id              String              @id @default(uuid())
+  organizationId  String
+  projectId       String?
+  clientId        String?
+  // Item details
+  itemType        String              // "content", "technical_action", "report", "redirect", etc.
+  itemId          String?             // ID of the item requiring approval
+  title           String              // Dutch title
+  description     String?             // Dutch description
+  evidence        String?             // JSON: supporting evidence
+  // Submitter
+  submittedBy     String?             // userId
+  submittedAt     DateTime?
+  // Reviewer
+  reviewedBy      String?             // userId
+  reviewedAt      DateTime?
+  reviewNotes     String?             // Dutch review notes
+  // Status
+  status          ApprovalQueueStatus @default(PENDING)
+  // Risk level
+  riskLevel       String              @default("low") // "low", "medium", "high", "critical"
+  // Client visibility
+  isClientVisible Boolean             @default(false)
+  // Metadata
+  deletedAt       DateTime?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project      Project?     @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  client       Client?      @relation(fields: [clientId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([projectId])
+  @@index([clientId])
+  @@index([status])
+  @@index([itemType])
+  @@index([submittedBy])
+  @@index([deletedAt])
+  @@map("approval_queue_items")
+}
+
+// ============================================================================
+// Phase 10: Internal Notes
+// ============================================================================
+
+model InternalNote {
+  id              String    @id @default(uuid())
+  organizationId  String
+  // Polymorphic reference
+  entityType      String    // "client", "project", "deliverable", "task", etc.
+  entityId        String    // ID of the referenced entity
+  // Note content
+  content         String    // Dutch content (NEVER client-visible)
+  // Author
+  authorId        String
+  // Metadata
+  isPinned        Boolean   @default(false)
+  deletedAt       DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([entityType, entityId])
+  @@index([authorId])
+  @@index([deletedAt])
+  @@map("internal_notes")
+}
+
+// ============================================================================
+// Phase 10: Project Management Integrations
+// ============================================================================
+
+model PMIntegration {
+  id              String                 @id @default(uuid())
+  organizationId  String
+  projectId       String?
+  // Provider
+  provider        PMIntegrationProvider
+  status          PMIntegrationStatus    @default(DISCONNECTED)
+  // Connection
+  apiEndpoint     String?
+  apiKeyEncrypted String?                // Encrypted API key
+  // Configuration
+  projectMapping  String?                // JSON: { externalProjectId, externalProjectKey }
+  ownerMapping    String?                // JSON: { userId: externalUserId }
+  fieldMapping    String?                // JSON: custom field mappings
+  // Sync
+  lastSyncAt      DateTime?
+  syncErrors      String?                // JSON: recent sync errors
+  // Metadata
+  deletedAt       DateTime?
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project      Project?     @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  taskExports  PMTaskExport[]
+
+  @@index([organizationId])
+  @@index([projectId])
+  @@index([provider])
+  @@index([status])
+  @@index([deletedAt])
+  @@map("pm_integrations")
+}
+
+model PMTaskExport {
+  id              String    @id @default(uuid())
+  integrationId   String
+  // SEO Task reference
+  taskId          String?   // Internal action item ID
+  taskType        String    // "action_item", "technical_issue", "content_brief", etc.
+  // Exported task details
+  externalId      String?   // ID in external system
+  externalUrl     String?   // Link to task in external system
+  // Task content
+  plainSummary    String    // Dutch plain-language summary
+  technicalDetail String?   // Dutch technical detail
+  priority        String    // "low", "medium", "high", "critical"
+  evidence        String?   // JSON: supporting evidence
+  urls            String?   // JSON: array of relevant URLs
+  deadline        DateTime?
+  owner           String?   // Assigned user
+  sourceLink      String?   // Link back to SEOCoach
+  // Status
+  exportStatus    String    @default("pending") // "pending", "exported", "synced", "error"
+  lastSyncAt      DateTime?
+  syncError       String?   // Error message
+  // Metadata
+  deletedAt       DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  integration PMIntegration @relation(fields: [integrationId], references: [id], onDelete: Cascade)
+
+  @@index([integrationId])
+  @@index([taskId])
+  @@index([exportStatus])
+  @@index([externalId])
+  @@index([deletedAt])
+  @@map("pm_task_exports")
+}
+
+// ============================================================================
+// Phase 10: Benchmarking
+// ============================================================================
+
+model BenchmarkResult {
+  id              String            @id @default(uuid())
+  organizationId  String
+  projectId       String
+  // Category
+  category        BenchmarkCategory
+  // Score
+  score           Float             // 0-100
+  previousScore   Float?            // Previous period score
+  // Period
+  periodStart     DateTime
+  periodEnd       DateTime
+  // Details
+  details         String?           // JSON: detailed breakdown
+  // Cross-client comparison (requires explicit permission)
+  percentile      Float?            // Position among anonymised peers
+  peerCount       Int?              // Number of anonymised peers (minimum 5 for privacy)
+  isAnonymised    Boolean           @default(false)
+  // Metadata
+  deletedAt       DateTime?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project      Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, category, periodStart])
+  @@index([organizationId])
+  @@index([projectId])
+  @@index([category])
+  @@index([periodStart, periodEnd])
+  @@index([deletedAt])
+  @@map("benchmark_results")
+}
+
+model BenchmarkConsent {
+  id              String    @id @default(uuid())
+  organizationId  String
+  projectId       String
+  // Consent for cross-client aggregated benchmarking
+  category        BenchmarkCategory
+  isConsented     Boolean   @default(false)
+  consentedBy     String?   // userId
+  consentedAt     DateTime?
+  // Metadata
+  deletedAt       DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project      Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, category])
+  @@index([organizationId])
+  @@index([projectId])
+  @@index([isConsented])
+  @@index([deletedAt])
+  @@map("benchmark_consents")
+}
+
+// ============================================================================
+// Phase 10: Agency Dashboard Data
+// ============================================================================
+
+model AgencyAlert {
+  id              String    @id @default(uuid())
+  organizationId  String
+  // Alert details
+  type            String    // "client_attention", "report_due", "pending_approval", "capacity_risk",
+                           // "missing_deliverable", "seo_alert", "integration_failure", "growth_opportunity"
+  severity        String    @default("medium") // "info", "low", "medium", "high", "critical"
+  title           String    // Dutch title
+  description     String?   // Dutch description
+  // Reference
+  entityType      String?   // "client", "project", "deliverable", etc.
+  entityId        String?   // ID of the referenced entity
+  // Status
+  isRead          Boolean   @default(false)
+  isResolved      Boolean   @default(false)
+  resolvedBy      String?   // userId
+  resolvedAt      DateTime?
+  // Metadata
+  deletedAt       DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([type])
+  @@index([severity])
+  @@index([isRead])
+  @@index([isResolved])
+  @@index([deletedAt])
+  @@map("agency_alerts")
+}
+
+// ============================================================================
+// Phase 11: Enums — AI Copilots & Agents
+// ============================================================================
+
+enum AgentType {
+  STRATEGY
+  TECHNICAL_SEO
+  CONTENT_RESEARCH
+  CONTENT_WRITER
+  CONTENT_QUALITY
+  INTERNAL_LINKING
+  LOCAL_SEO
+  ECOMMERCE
+  GEO
+  COMPETITOR
+  CRO
+  REPORTING
+  PUBLISHING
+  MIGRATION
+  QUALITY_ASSURANCE
+}
+
+enum AgentRunStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+  CANCELLED
+  AWAITING_APPROVAL
+}
+
+enum AutomationTriggerType {
+  NEW_TECHNICAL_ISSUE
+  METRIC_DROP
+  NEW_CONTENT_OPPORTUNITY
+  CONTENT_DECAY
+  NEW_COMPETITOR_PAGE
+  NEW_NEGATIVE_REVIEW
+  SCHEDULED_DATE
+  NEW_AI_VISIBILITY_RESULT
+  NEW_WORDPRESS_DRAFT
+  PRODUCT_FEED_ERROR
+  DEPLOYMENT_EVENT
+}
+
+enum AutomationActionType {
+  CREATE_TASK
+  CREATE_ALERT
+  GENERATE_BRIEF
+  GENERATE_CONTENT_DRAFT
+  GENERATE_REPORT
+  NOTIFY_USER
+  PREPARE_CMS_UPDATE
+  RUN_CRAWL
+  RUN_QUALITY_CHECK
+  CREATE_APPROVAL_REQUEST
+  CALL_WEBHOOK
+}
+
+enum AutomationRuleStatus {
+  ACTIVE
+  PAUSED
+  DRAFT
+  DISABLED
+}
+
+// ============================================================================
+// Phase 11: Copilot Models
+// ============================================================================
+
+model CopilotConversation {
+  id              String    @id @default(uuid())
+  organizationId  String
+  projectId       String
+  userId          String
+  // Conversation metadata
+  title           String    // Dutch title
+  // Context
+  contextData     String?   // JSON: project context for retrieval
+  // Metadata
+  deletedAt       DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project      Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  messages     CopilotMessage[]
+
+  @@index([organizationId])
+  @@index([projectId])
+  @@index([userId])
+  @@index([deletedAt])
+  @@map("copilot_conversations")
+}
+
+model CopilotMessage {
+  id              String    @id @default(uuid())
+  conversationId  String
+  // Message content
+  role            String    // "user", "assistant", "system"
+  content         String    // Dutch content
+  // Evidence & citations
+  citations       String?   // JSON: [{ recordType, recordId, url, snippet }]
+  // Tool usage
+  toolsUsed       String?   // JSON: [{ tool, input, output }]
+  // Safety
+  hasWarning      Boolean   @default(false)
+  warningType     String?   // "missing_data", "uncertainty", "no_access"
+  // Metadata
+  tokenCount      Int?
+  modelUsed       String?
+  createdAt       DateTime  @default(now())
+
+  conversation CopilotConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId])
+  @@index([role])
+  @@index([createdAt])
+  @@map("copilot_messages")
+}
+
+// ============================================================================
+// Phase 11: Agent Framework Models
+// ============================================================================
+
+model AgentRun {
+  id              String          @id @default(uuid())
+  organizationId  String
+  projectId       String
+  // Agent identification
+  agentType       AgentType
+  // Objective
+  objective       String          // Dutch objective
+  // Model configuration
+  model           String          // "gpt-4", "claude-3", etc.
+  // Inputs & outputs
+  inputs          String          // JSON: agent inputs
+  retrievedSources String?        // JSON: sources used for grounding
+  proposedActions  String?        // JSON: proposed but not yet executed
+  completedActions String?        // JSON: actions that were executed
+  // Approvals
+  approvals       String?         // JSON: approval records [{ action, approvedBy, approvedAt }]
+  // Execution
+  status          AgentRunStatus  @default(PENDING)
+  maxSteps        Int             @default(10)
+  currentStep     Int             @default(0)
+  timeoutMs       Int             @default(300000) // 5 minutes
+  // Results
+  result          String?         // JSON: final result
+  errors          String?         // JSON: error records
+  confidence      Float?          // 0-1
+  // Cost tracking
+  inputTokens     Int             @default(0)
+  outputTokens    Int             @default(0)
+  costEur         Float           @default(0)
+  // Duration
+  startedAt       DateTime?
+  completedAt     DateTime?
+  durationMs      Int?
+  // Metadata
+  cancellationRequested Boolean    @default(false)
+  deletedAt       DateTime?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project      Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([projectId])
+  @@index([agentType])
+  @@index([status])
+  @@index([startedAt])
+  @@index([deletedAt])
+  @@map("agent_runs")
+}
+
+// ============================================================================
+// Phase 11: Automation Rules
+// ============================================================================
+
+model AutomationRule {
+  id              String                @id @default(uuid())
+  organizationId  String
+  projectId       String?
+  // Rule definition
+  name            String                // Dutch name
+  description     String?               // Dutch description
+  // Trigger
+  triggerType     AutomationTriggerType
+  triggerConfig   String?               // JSON: trigger-specific config
+  // Conditions (AND-combined)
+  conditions      String?               // JSON: [{ field, operator, value }]
+  // Actions
+  actions         String                // JSON: [{ type: AutomationActionType, config: {} }]
+  // Safety
+  requiresApproval Boolean              @default(false)
+  approvalConfig  String?               // JSON: { approvers: [], riskThreshold: string }
+  isHighRisk      Boolean               @default(false)
+  // Status
+  status          AutomationRuleStatus  @default(DRAFT)
+  // Execution tracking
+  lastTriggeredAt DateTime?
+  triggerCount    Int                   @default(0)
+  // Metadata
+  createdBy       String?               // userId
+  deletedAt       DateTime?
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project      Project?     @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([projectId])
+  @@index([triggerType])
+  @@index([status])
+  @@index([isHighRisk])
+  @@index([deletedAt])
+  executions AutomationExecution[]
+  @@map("automation_rules")
+}
+
+model AutomationExecution {
+  id              String    @id @default(uuid())
+  ruleId          String
+  organizationId  String
+  // Trigger data
+  triggerType     AutomationTriggerType
+  triggerData     String?   // JSON: data that triggered the rule
+  // Actions executed
+  actionsExecuted String?   // JSON: [{ type, result, error }]
+  // Result
+  status          String    @default("running") // "running", "completed", "failed", "awaiting_approval"
+  error           String?   // Error message (Dutch)
+  // Duration
+  startedAt       DateTime  @default(now())
+  completedAt     DateTime?
+  durationMs      Int?
+  // Metadata
+  deletedAt       DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  rule AutomationRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+
+  @@index([ruleId])
+  @@index([organizationId])
+  @@index([status])
+  @@index([startedAt])
+  @@index([deletedAt])
+  @@map("automation_executions")
+}
+
+// ============================================================================
+// Phase 12: Enums — Migrations & Deployments
+// ============================================================================
+
+enum MigrationCheckStatus {
+  NOG_TE_CONTROLEREN
+  KLAAR
+  PROBLEEM_GEVONDEN
+  BLOKKEERT_LANCERING
+  GOEDGEKEURD
+}
+
+enum MigrationProjectStatus {
+  PLANNING
+  CRAWLING_OLD
+  CRAWLING_NEW
+  MAPPING
+  PRE_LAUNCH
+  LIVE
+  POST_LAUNCH
+  COMPLETED
+}
+
+enum DeploymentProvider {
+  GITHUB
+  GITLAB
+  GENERIC_CICD
+}
+
+enum DeploymentCheckType {
+  ROBOTS_TXT
+  CANONICALS
+  TITLES
+  META_ROBOTS
+  SITEMAPS
+  STATUS_CODES
+  STRUCTURED_DATA
+  INTERNAL_LINKS
+  RENDERING
+  PERFORMANCE
+  CRITICAL_URLS
+}
+
+enum DeploymentCheckStatus {
+  PASSING
+  FAILING
+  WARNING
+  NOT_CHECKED
+}
+
+// ============================================================================
+// Phase 12: Migration Models
+// ============================================================================
+
+model MigrationProject {
+  id              String                @id @default(uuid())
+  organizationId  String
+  projectId       String
+  // Details
+  name            String                // Dutch name
+  description     String?               // Dutch description
+  // URLs
+  oldSiteUrl      String
+  newSiteUrl      String
+  // Status
+  status          MigrationProjectStatus @default(PLANNING)
+  // Progress tracking
+  oldUrlCount     Int                   @default(0)
+  newUrlCount     Int                   @default(0)
+  mappedCount     Int                   @default(0)
+  redirectCount   Int                   @default(0)
+  issueCount      Int                   @default(0)
+  blockerCount    Int                   @default(0)
+  // Dates
+  plannedLaunchDate DateTime?
+  actualLaunchDate  DateTime?
+  // Metadata
+  deletedAt       DateTime?
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project      Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  urlMappings     MigrationUrlMapping[]
+  preLaunchChecks MigrationPreLaunchCheck[]
+  launchBlockers  MigrationLaunchBlocker[]
+
+  @@index([organizationId])
+  @@index([projectId])
+  @@index([status])
+  @@index([deletedAt])
+  @@map("migration_projects")
+}
+
+model MigrationUrlMapping {
+  id                String              @id @default(uuid())
+  migrationProjectId String
+  // URLs
+  oldUrl            String
+  newUrl            String?
+  // Redirect
+  redirectType      Int                 @default(301) // 301, 302, 307, 308
+  // Comparison checks
+  metadataStatus    MigrationCheckStatus @default(NOG_TE_CONTROLEREN)
+  headingsStatus    MigrationCheckStatus @default(NOG_TE_CONTROLEREN)
+  contentStatus     MigrationCheckStatus @default(NOG_TE_CONTROLEREN)
+  canonicalStatus   MigrationCheckStatus @default(NOG_TE_CONTROLEREN)
+  robotsStatus      MigrationCheckStatus @default(NOG_TE_CONTROLEREN)
+  structuredDataStatus MigrationCheckStatus @default(NOG_TE_CONTROLEREN)
+  internalLinksStatus  MigrationCheckStatus @default(NOG_TE_CONTROLEREN)
+  // Comparison details
+  metadataDiff      String?             // JSON: { old: {}, new: {}, changes: [] }
+  headingsDiff      String?             // JSON
+  contentDiff       String?             // JSON: similarity score + differences
+  canonicalDiff     String?             // JSON
+  robotsDiff        String?             // JSON
+  structuredDataDiff String?            // JSON
+  internalLinksDiff String?             // JSON
+  // Metadata
+  notes             String?             // Dutch notes
+  deletedAt         DateTime?
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  migrationProject MigrationProject @relation(fields: [migrationProjectId], references: [id], onDelete: Cascade)
+
+  @@index([migrationProjectId])
+  @@index([oldUrl])
+  @@index([newUrl])
+  @@index([metadataStatus])
+  @@index([deletedAt])
+  @@map("migration_url_mappings")
+}
+
+model MigrationPreLaunchCheck {
+  id                String              @id @default(uuid())
+  migrationProjectId String
+  // Check details
+  category          String              // "redirects", "metadata", "content", etc.
+  title             String              // Dutch title
+  description       String?             // Dutch description
+  status            MigrationCheckStatus @default(NOG_TE_CONTROLEREN)
+  // Result
+  details           String?             // JSON: check result details
+  // Metadata
+  checkedBy         String?             // userId
+  checkedAt         DateTime?
+  deletedAt         DateTime?
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  migrationProject MigrationProject @relation(fields: [migrationProjectId], references: [id], onDelete: Cascade)
+
+  @@index([migrationProjectId])
+  @@index([category])
+  @@index([status])
+  @@index([deletedAt])
+  @@map("migration_pre_launch_checks")
+}
+
+model MigrationLaunchBlocker {
+  id                String    @id @default(uuid())
+  migrationProjectId String
+  // Blocker details
+  title             String    // Dutch title
+  description       String    // Dutch description
+  severity          String    @default("high") // "medium", "high", "critical"
+  entityType        String?   // "url_mapping", "redirect", "check"
+  entityId          String?
+  // Resolution
+  isResolved        Boolean   @default(false)
+  resolvedBy        String?   // userId
+  resolvedAt        DateTime?
+  resolutionNotes   String?   // Dutch resolution notes
+  // Metadata
+  deletedAt         DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  migrationProject MigrationProject @relation(fields: [migrationProjectId], references: [id], onDelete: Cascade)
+
+  @@index([migrationProjectId])
+  @@index([isResolved])
+  @@index([severity])
+  @@index([deletedAt])
+  @@map("migration_launch_blockers")
+}
+
+// ============================================================================
+// Phase 12: Deployment Monitoring Models
+// ============================================================================
+
+model DeploymentRecord {
+  id              String    @id @default(uuid())
+  organizationId  String
+  projectId       String
+  // Provider
+  provider        DeploymentProvider
+  // Deployment details
+  commitSha       String?
+  branch          String?
+  environment     String?   // "production", "staging", etc.
+  deployedAt      DateTime
+  deployedBy      String?   // userId or external name
+  // Before-and-after
+  preDeploymentSnapshot String? // JSON: snapshot of key SEO metrics before
+  postDeploymentSnapshot String? // JSON: snapshot after
+  // Regression
+  regressionFound Boolean   @default(false)
+  regressionDetails String? // JSON: list of regression findings
+  // Severity & action
+  severity        String    @default("none") // "none", "low", "medium", "high", "critical"
+  suggestedRollback Boolean @default(false)
+  rollbackReason  String?   // Dutch reason
+  // Blocking
+  isBlocking      Boolean   @default(false) // Must be explicitly enabled
+  blockingEnabled Boolean   @default(false)
+  // Notification
+  isNotified      Boolean   @default(false)
+  // Metadata
+  deletedAt       DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project      Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  checks       DeploymentCheck[]
+
+  @@index([organizationId])
+  @@index([projectId])
+  @@index([provider])
+  @@index([deployedAt])
+  @@index([regressionFound])
+  @@index([isBlocking])
+  @@index([deletedAt])
+  @@map("deployment_records")
+}
+
+model DeploymentCheck {
+  id              String                @id @default(uuid())
+  deploymentId    String
+  // Check type
+  checkType       DeploymentCheckType
+  // Result
+  status          DeploymentCheckStatus @default(NOT_CHECKED)
+  beforeValue     String?               // JSON: value before deployment
+  afterValue      String?               // JSON: value after deployment
+  diff            String?               // JSON: differences found
+  // Finding
+  finding         String?               // Dutch description of finding
+  severity        String                @default("none") // "none", "info", "warning", "error", "critical"
+  // Metadata
+  checkedAt       DateTime?
+  deletedAt       DateTime?
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+
+  deployment DeploymentRecord @relation(fields: [deploymentId], references: [id], onDelete: Cascade)
+
+  @@index([deploymentId])
+  @@index([checkType])
+  @@index([status])
+  @@index([severity])
+  @@index([deletedAt])
+  @@map("deployment_checks")
 }

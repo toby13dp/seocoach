@@ -1,0 +1,724 @@
+     1→"use client";
+     2→
+     3→import { useState, useEffect, use, useCallback } from "react";
+     4→import { useRouter } from "@/i18n/routing";
+     5→import { useTranslations } from "@/i18n/client";
+     6→import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+     7→import { Button } from "@/components/ui/button";
+     8→import { Badge } from "@/components/ui/badge";
+     9→import {
+    10→  Select,
+    11→  SelectContent,
+    12→  SelectItem,
+    13→  SelectTrigger,
+    14→  SelectValue,
+    15→} from "@/components/ui/select";
+    16→import { Switch } from "@/components/ui/switch";
+    17→import { Label } from "@/components/ui/label";
+    18→import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+    19→import { motion } from "framer-motion";
+    20→import {
+    21→  ArrowLeft,
+    22→  Loader2,
+    23→  AlertTriangle,
+    24→  CheckCircle2,
+    25→  XCircle,
+    26→  Info,
+    27→  ChevronDown,
+    28→  Eye,
+    29→  EyeOff,
+    30→  ShieldAlert,
+    31→  Bug,
+    32→  AlertOctagon,
+    33→  ArrowRight,
+    34→} from "lucide-react";
+    35→import { toast } from "sonner";
+    36→
+    37→interface IssuePage {
+    38→  id: string;
+    39→  url: string;
+    40→  title: string | null;
+    41→}
+    42→
+    43→interface TechnicalIssue {
+    44→  id: string;
+    45→  projectId: string;
+    46→  pageId: string | null;
+    47→  crawlSessionId: string;
+    48→  ruleId: string;
+    49→  ruleName: string;
+    50→  dutchExplanation: string;
+    51→  technicalDetails: string | null;
+    52→  evidence: string | null;
+    53→  severity: string;
+    54→  priority: string;
+    55→  impact: string | null;
+    56→  effort: string;
+    57→  affectedUrls: string | null;
+    58→  recommendedAction: string | null;
+    59→  autoFixAvailable: boolean;
+    60→  confidence: number;
+    61→  dismissed: boolean;
+    62→  dismissedBy: string | null;
+    63→  dismissedAt: string | null;
+    64→  createdAt: string;
+    65→  page: IssuePage | null;
+    66→}
+    67→
+    68→interface SeverityCounts {
+    69→  CRITICAL?: number;
+    70→  ERROR?: number;
+    71→  WARNING?: number;
+    72→  INFO?: number;
+    73→  [key: string]: number | undefined;
+    74→}
+    75→
+    76→const CATEGORY_MAP: Record<string, string> = {
+    77→  "status-codes": "categoryStatusCodes",
+    78→  "redirect": "categoryRedirects",
+    79→  "canonical": "categoryCanonical",
+    80→  "meta": "categoryMeta",
+    81→  "heading": "categoryHeadings",
+    82→  "broken-link": "categoryLinks",
+    83→  "orphan": "categoryLinks",
+    84→  "deep-page": "categoryLinks",
+    85→  "thin-content": "categoryContent",
+    86→  "duplicate-content": "categoryContent",
+    87→  "image": "categoryImages",
+    88→  "https": "categorySecurity",
+    89→  "structured-data": "categoryStructuredData",
+    90→  "hreflang": "categoryHreflang",
+    91→  "sitemap": "categorySitemap",
+    92→};
+    93→
+    94→function getCategoryFromRuleId(ruleId: string): string {
+    95→  const prefix = ruleId.split("-")[0] + "-" + ruleId.split("-")[1];
+    96→  // Try matching the first two segments
+    97→  for (const [key, val] of Object.entries(CATEGORY_MAP)) {
+    98→    if (ruleId.startsWith(key)) return val;
+    99→  }
+   100→  // Try matching just the first segment
+   101→  const firstSegment = ruleId.split("-")[0];
+   102→  for (const [key, val] of Object.entries(CATEGORY_MAP)) {
+   103→    if (key.startsWith(firstSegment)) return val;
+   104→  }
+   105→  return "categoryContent";
+   106→}
+   107→
+   108→export default function IssuesPage({ params }: { params: Promise<{ id: string }> }) {
+   109→  const { id } = use(params);
+   110→  const router = useRouter();
+   111→  const t = useTranslations("issues");
+   112→  const tCommon = useTranslations("common");
+   113→
+   114→  const [issues, setIssues] = useState<TechnicalIssue[]>([]);
+   115→  const [isLoading, setIsLoading] = useState(true);
+   116→  const [severityCounts, setSeverityCounts] = useState<SeverityCounts>({});
+   117→  const [totalIssues, setTotalIssues] = useState(0);
+   118→  const [currentPage, setCurrentPage] = useState(1);
+   119→  const [totalPages, setTotalPages] = useState(1);
+   120→  const [hasCrawl, setHasCrawl] = useState(true);
+   121→
+   122→  // Filters
+   123→  const [severityFilter, setSeverityFilter] = useState<string>("all");
+   124→  const [priorityFilter, setPriorityFilter] = useState<string>("all");
+   125→  const [categoryFilter, setCategoryFilter] = useState<string>("all");
+   126→  const [showDismissed, setShowDismissed] = useState(false);
+   127→  const [groupByCategory, setGroupByCategory] = useState(false);
+   128→
+   129→  // Expanded issues
+   130→  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+   131→
+   132→  const fetchIssues = useCallback(async () => {
+   133→    setIsLoading(true);
+   134→    try {
+   135→      const params = new URLSearchParams();
+   136→      params.set("page", currentPage.toString());
+   137→      params.set("limit", "20");
+   138→      if (severityFilter !== "all") params.set("severity", severityFilter);
+   139→      if (priorityFilter !== "all") params.set("priority", priorityFilter);
+   140→      if (categoryFilter !== "all") params.set("category", categoryFilter);
+   141→      if (showDismissed) params.set("dismissed", "true");
+   142→      else params.set("dismissed", "false");
+   143→
+   144→      const res = await fetch(`/api/projects/${id}/issues?${params.toString()}`);
+   145→      if (res.ok) {
+   146→        const data = await res.json();
+   147→        setIssues(data.data || []);
+   148→        setTotalIssues(data.meta?.total || 0);
+   149→        setTotalPages(data.meta?.totalPages || 1);
+   150→        setSeverityCounts(data.meta?.severityCounts || {});
+   151→        if (data.data?.length === 0 && data.meta?.total === 0 && !data.meta?.severityCounts) {
+   152→          // Check if there's no crawl at all
+   153→          setHasCrawl(false);
+   154→        }
+   155→      }
+   156→    } catch {
+   157→      // silently fail
+   158→    } finally {
+   159→      setIsLoading(false);
+   160→    }
+   161→  }, [id, currentPage, severityFilter, priorityFilter, categoryFilter, showDismissed]);
+   162→
+   163→  useEffect(() => {
+   164→    fetchIssues();
+   165→  }, [fetchIssues]);
+   166→
+   167→  // Reset page when filters change
+   168→  useEffect(() => {
+   169→    setCurrentPage(1);
+   170→  }, [severityFilter, priorityFilter, categoryFilter, showDismissed]);
+   171→
+   172→  const handleDismiss = async (issueId: string, currentDismissed: boolean) => {
+   173→    try {
+   174→      const res = await fetch(`/api/projects/${id}/issues/${issueId}`, {
+   175→        method: "PATCH",
+   176→        headers: { "Content-Type": "application/json" },
+   177→        body: JSON.stringify({ dismissed: !currentDismissed }),
+   178→      });
+   179→      if (res.ok) {
+   180→        toast.success(!currentDismissed ? t("dismissSuccess") : t("undismissSuccess"));
+   181→        fetchIssues();
+   182→      } else {
+   183→        toast.error(t("dismissError"));
+   184→      }
+   185→    } catch {
+   186→      toast.error(t("dismissError"));
+   187→    }
+   188→  };
+   189→
+   190→  const toggleExpanded = (issueId: string) => {
+   191→    const next = new Set(expandedIds);
+   192→    if (next.has(issueId)) {
+   193→      next.delete(issueId);
+   194→    } else {
+   195→      next.add(issueId);
+   196→    }
+   197→    setExpandedIds(next);
+   198→  };
+   199→
+   200→  const severityIcon = (severity: string) => {
+   201→    switch (severity) {
+   202→      case "CRITICAL": return <AlertOctagon className="h-4 w-4 text-red-600 dark:text-red-400" />;
+   203→      case "ERROR": return <XCircle className="h-4 w-4 text-red-500" />;
+   204→      case "WARNING": return <AlertTriangle className="h-4 w-4 text-yellow-500" />;
+   205→      case "INFO": return <Info className="h-4 w-4 text-blue-500" />;
+   206→      default: return <Bug className="h-4 w-4 text-gray-400" />;
+   207→    }
+   208→  };
+   209→
+   210→  const severityVariant = (severity: string): "default" | "secondary" | "destructive" | "outline" => {
+   211→    switch (severity) {
+   212→      case "CRITICAL": return "destructive";
+   213→      case "ERROR": return "destructive";
+   214→      case "WARNING": return "secondary";
+   215→      case "INFO": return "outline";
+   216→      default: return "secondary";
+   217→    }
+   218→  };
+   219→
+   220→  const severityLabel = (severity: string) => {
+   221→    switch (severity) {
+   222→      case "CRITICAL": return t("critical");
+   223→      case "ERROR": return "Fout";
+   224→      case "WARNING": return t("warnings").replace(/s$/, "");
+   225→      case "INFO": return t("info");
+   226→      default: return severity;
+   227→    }
+   228→  };
+   229→
+   230→  const priorityLabel = (priority: string) => {
+   231→    switch (priority) {
+   232→      case "CRITICAL": return "Kritiek";
+   233→      case "HIGH": return "Hoog";
+   234→      case "MEDIUM": return "Gemiddeld";
+   235→      case "LOW": return "Laag";
+   236→      case "MINIMAL": return "Minimaal";
+   237→      default: return priority;
+   238→    }
+   239→  };
+   240→
+   241→  const priorityVariant = (priority: string): "default" | "secondary" | "destructive" | "outline" => {
+   242→    switch (priority) {
+   243→      case "CRITICAL": return "destructive";
+   244→      case "HIGH": return "default";
+   245→      case "MEDIUM": return "secondary";
+   246→      case "LOW": return "outline";
+   247→      default: return "outline";
+   248→    }
+   249→  };
+   250→
+   251→  const parseAffectedUrls = (jsonStr: string | null): string[] => {
+   252→    if (!jsonStr) return [];
+   253→    try {
+   254→      const parsed = JSON.parse(jsonStr);
+   255→      return Array.isArray(parsed) ? parsed : [];
+   256→    } catch {
+   257→      return [];
+   258→    }
+   259→  };
+   260→
+   261→  const parseEvidence = (jsonStr: string | null): Record<string, unknown>[] | Record<string, unknown> | string | null => {
+   262→    if (!jsonStr) return null;
+   263→    try {
+   264→      return JSON.parse(jsonStr) as Record<string, unknown>[] | Record<string, unknown>;
+   265→    } catch {
+   266→      return jsonStr;
+   267→    }
+   268→  };
+   269→
+   270→  // Group issues by category
+   271→  const groupedIssues = (): Record<string, TechnicalIssue[]> => {
+   272→    const groups: Record<string, TechnicalIssue[]> = {};
+   273→    for (const issue of issues) {
+   274→      const catKey = getCategoryFromRuleId(issue.ruleId);
+   275→      if (!groups[catKey]) groups[catKey] = [];
+   276→      groups[catKey].push(issue);
+   277→    }
+   278→    return groups;
+   279→  };
+   280→
+   281→  // Available categories from current issues
+   282→  const availableCategories = Array.from(
+   283→    new Set(issues.map((i) => getCategoryFromRuleId(i.ruleId)))
+   284→  );
+   285→
+   286→  // No crawl yet state
+   287→  if (!isLoading && !hasCrawl && issues.length === 0 && Object.keys(severityCounts).length === 0) {
+   288→    return (
+   289→      <div className="min-h-screen bg-background">
+   290→        <div className="max-w-6xl mx-auto p-4 sm:p-6 lg:p-8">
+   291→          <motion.div
+   292→            initial={{ opacity: 0, y: -10 }}
+   293→            animate={{ opacity: 1, y: 0 }}
+   294→            className="flex items-center gap-4 mb-6"
+   295→          >
+   296→            <Button
+   297→              variant="ghost"
+   298→              size="icon"
+   299→              onClick={() => router.push(`/projects/${id}`)}
+   300→            >
+   301→              <ArrowLeft className="h-5 w-5" />
+   302→            </Button>
+   303→            <h1 className="text-2xl font-bold">{t("title")}</h1>
+   304→          </motion.div>
+   305→          <Card>
+   306→            <CardContent className="flex flex-col items-center justify-center py-16">
+   307→              <ShieldAlert className="h-12 w-12 text-muted-foreground mb-4" />
+   308→              <p className="text-muted-foreground text-center max-w-md">
+   309→                {t("noCrawlYet")}
+   310→              </p>
+   311→              <Button
+   312→                className="mt-4 bg-emerald-600 hover:bg-emerald-700"
+   313→                onClick={() => router.push(`/projects/${id}/crawls`)}
+   314→              >
+   315→                <ArrowRight className="h-4 w-4 mr-2" />
+   316→                Naar crawls
+   317→              </Button>
+   318→            </CardContent>
+   319→          </Card>
+   320→        </div>
+   321→      </div>
+   322→    );
+   323→  }
+   324→
+   325→  return (
+   326→    <div className="min-h-screen bg-background">
+   327→      <div className="max-w-6xl mx-auto p-4 sm:p-6 lg:p-8">
+   328→        {/* Header */}
+   329→        <motion.div
+   330→          initial={{ opacity: 0, y: -10 }}
+   331→          animate={{ opacity: 1, y: 0 }}
+   332→          className="flex items-center gap-4 mb-6"
+   333→        >
+   334→          <Button
+   335→            variant="ghost"
+   336→            size="icon"
+   337→            onClick={() => router.push(`/projects/${id}`)}
+   338→          >
+   339→            <ArrowLeft className="h-5 w-5" />
+   340→          </Button>
+   341→          <h1 className="text-2xl font-bold">{t("title")}</h1>
+   342→        </motion.div>
+   343→
+   344→        {/* Summary stats */}
+   345→        <motion.div
+   346→          initial={{ opacity: 0, y: 10 }}
+   347→          animate={{ opacity: 1, y: 0 }}
+   348→          transition={{ delay: 0.05 }}
+   349→          className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6"
+   350→        >
+   351→          <Card>
+   352→            <CardContent className="p-4 text-center">
+   353→              <p className="text-3xl font-bold">{totalIssues}</p>
+   354→              <p className="text-sm text-muted-foreground">{t("total")}</p>
+   355→            </CardContent>
+   356→          </Card>
+   357→          <Card>
+   358→            <CardContent className="p-4 text-center">
+   359→              <p className="text-3xl font-bold text-red-600 dark:text-red-400">
+   360→                {(severityCounts.CRITICAL || 0) + (severityCounts.ERROR || 0)}
+   361→              </p>
+   362→              <p className="text-sm text-muted-foreground">{t("critical")}</p>
+   363→            </CardContent>
+   364→          </Card>
+   365→          <Card>
+   366→            <CardContent className="p-4 text-center">
+   367→              <p className="text-3xl font-bold text-yellow-600 dark:text-yellow-400">
+   368→                {severityCounts.WARNING || 0}
+   369→              </p>
+   370→              <p className="text-sm text-muted-foreground">{t("warnings")}</p>
+   371→            </CardContent>
+   372→          </Card>
+   373→          <Card>
+   374→            <CardContent className="p-4 text-center">
+   375→              <p className="text-3xl font-bold text-blue-600 dark:text-blue-400">
+   376→                {severityCounts.INFO || 0}
+   377→              </p>
+   378→              <p className="text-sm text-muted-foreground">{t("info")}</p>
+   379→            </CardContent>
+   380→          </Card>
+   381→        </motion.div>
+   382→
+   383→        {/* Filters */}
+   384→        <motion.div
+   385→          initial={{ opacity: 0, y: 10 }}
+   386→          animate={{ opacity: 1, y: 0 }}
+   387→          transition={{ delay: 0.1 }}
+   388→          className="mb-4"
+   389→        >
+   390→          <Card>
+   391→            <CardContent className="p-4">
+   392→              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 items-center">
+   393→                <Select value={severityFilter} onValueChange={setSeverityFilter}>
+   394→                  <SelectTrigger>
+   395→                    <SelectValue placeholder={t("filterSeverity")} />
+   396→                  </SelectTrigger>
+   397→                  <SelectContent>
+   398→                    <SelectItem value="all">{t("filterSeverity")}</SelectItem>
+   399→                    <SelectItem value="CRITICAL">{t("critical")}</SelectItem>
+   400→                    <SelectItem value="ERROR">Fout</SelectItem>
+   401→                    <SelectItem value="WARNING">{t("warnings")}</SelectItem>
+   402→                    <SelectItem value="INFO">{t("info")}</SelectItem>
+   403→                  </SelectContent>
+   404→                </Select>
+   405→                <Select value={priorityFilter} onValueChange={setPriorityFilter}>
+   406→                  <SelectTrigger>
+   407→                    <SelectValue placeholder={t("filterPriority")} />
+   408→                  </SelectTrigger>
+   409→                  <SelectContent>
+   410→                    <SelectItem value="all">{t("filterPriority")}</SelectItem>
+   411→                    <SelectItem value="CRITICAL">Kritiek</SelectItem>
+   412→                    <SelectItem value="HIGH">Hoog</SelectItem>
+   413→                    <SelectItem value="MEDIUM">Gemiddeld</SelectItem>
+   414→                    <SelectItem value="LOW">Laag</SelectItem>
+   415→                  </SelectContent>
+   416→                </Select>
+   417→                <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+   418→                  <SelectTrigger>
+   419→                    <SelectValue placeholder={t("filterCategory")} />
+   420→                  </SelectTrigger>
+   421→                  <SelectContent>
+   422→                    <SelectItem value="all">{t("filterCategory")}</SelectItem>
+   423→                    {availableCategories.map((catKey) => (
+   424→                      <SelectItem key={catKey} value={catKey}>
+   425→                        {t(catKey as never)}
+   426→                      </SelectItem>
+   427→                    ))}
+   428→                  </SelectContent>
+   429→                </Select>
+   430→                <div className="flex items-center gap-2">
+   431→                  <Switch
+   432→                    id="showDismissed"
+   433→                    checked={showDismissed}
+   434→                    onCheckedChange={setShowDismissed}
+   435→                  />
+   436→                  <Label htmlFor="showDismissed" className="text-sm">
+   437→                    {t("showDismissed")}
+   438→                  </Label>
+   439→                </div>
+   440→                <div className="flex items-center gap-2">
+   441→                  <Switch
+   442→                    id="groupByCategory"
+   443→                    checked={groupByCategory}
+   444→                    onCheckedChange={setGroupByCategory}
+   445→                  />
+   446→                  <Label htmlFor="groupByCategory" className="text-sm">
+   447→                    {t("groupByCategory")}
+   448→                  </Label>
+   449→                </div>
+   450→              </div>
+   451→            </CardContent>
+   452→          </Card>
+   453→        </motion.div>
+   454→
+   455→        {/* Issues list */}
+   456→        {isLoading ? (
+   457→          <div className="flex items-center justify-center py-16">
+   458→            <Loader2 className="h-8 w-8 animate-spin text-emerald-600" />
+   459→          </div>
+   460→        ) : issues.length === 0 ? (
+   461→          <Card>
+   462→            <CardContent className="flex flex-col items-center justify-center py-16">
+   463→              <CheckCircle2 className="h-12 w-12 text-emerald-500 mb-4" />
+   464→              <h3 className="text-lg font-semibold mb-2">{t("noIssues")}</h3>
+   465→              <p className="text-sm text-muted-foreground">{t("noIssuesDesc")}</p>
+   466→            </CardContent>
+   467→          </Card>
+   468→        ) : groupByCategory ? (
+   469→          // Grouped view
+   470→          <div className="space-y-6">
+   471→            {Object.entries(groupedIssues()).map(([catKey, catIssues]) => (
+   472→              <div key={catKey}>
+   473→                <h3 className="text-lg font-semibold mb-3">
+   474→                  {t(catKey as never)} ({catIssues.length})
+   475→                </h3>
+   476→                <div className="space-y-3">
+   477→                  {catIssues.map((issue, index) => (
+   478→                    <IssueCard
+   479→                      key={issue.id}
+   480→                      issue={issue}
+   481→                      index={index}
+   482→                      expanded={expandedIds.has(issue.id)}
+   483→                      onToggleExpand={() => toggleExpanded(issue.id)}
+   484→                      onDismiss={() => handleDismiss(issue.id, issue.dismissed)}
+   485→                      t={t}
+   486→                      severityIcon={severityIcon}
+   487→                      severityVariant={severityVariant}
+   488→                      severityLabel={severityLabel}
+   489→                      priorityLabel={priorityLabel}
+   490→                      priorityVariant={priorityVariant}
+   491→                      parseAffectedUrls={parseAffectedUrls}
+   492→                      parseEvidence={parseEvidence}
+   493→                    />
+   494→                  ))}
+   495→                </div>
+   496→              </div>
+   497→            ))}
+   498→          </div>
+   499→        ) : (
+   500→          // Flat list view
+   501→          <div className="space-y-3">
+   502→            {issues.map((issue, index) => (
+   503→              <IssueCard
+   504→                key={issue.id}
+   505→                issue={issue}
+   506→                index={index}
+   507→                expanded={expandedIds.has(issue.id)}
+   508→                onToggleExpand={() => toggleExpanded(issue.id)}
+   509→                onDismiss={() => handleDismiss(issue.id, issue.dismissed)}
+   510→                t={t}
+   511→                severityIcon={severityIcon}
+   512→                severityVariant={severityVariant}
+   513→                severityLabel={severityLabel}
+   514→                priorityLabel={priorityLabel}
+   515→                priorityVariant={priorityVariant}
+   516→                parseAffectedUrls={parseAffectedUrls}
+   517→                parseEvidence={parseEvidence}
+   518→              />
+   519→            ))}
+   520→          </div>
+   521→        )}
+   522→
+   523→        {/* Pagination */}
+   524→        {totalPages > 1 && (
+   525→          <div className="flex items-center justify-center gap-2 mt-6">
+   526→            <Button
+   527→              variant="outline"
+   528→              size="sm"
+   529→              disabled={currentPage <= 1}
+   530→              onClick={() => setCurrentPage(currentPage - 1)}
+   531→            >
+   532→              {tCommon("previous")}
+   533→            </Button>
+   534→            <span className="text-sm text-muted-foreground">
+   535→              {tCommon("status")} {currentPage} / {totalPages}
+   536→            </span>
+   537→            <Button
+   538→              variant="outline"
+   539→              size="sm"
+   540→              disabled={currentPage >= totalPages}
+   541→              onClick={() => setCurrentPage(currentPage + 1)}
+   542→            >
+   543→              {tCommon("next")}
+   544→            </Button>
+   545→          </div>
+   546→        )}
+   547→      </div>
+   548→    </div>
+   549→  );
+   550→}
+   551→
+   552→// Issue card component
+   553→function IssueCard({
+   554→  issue,
+   555→  index,
+   556→  expanded,
+   557→  onToggleExpand,
+   558→  onDismiss,
+   559→  t,
+   560→  severityIcon,
+   561→  severityVariant,
+   562→  severityLabel,
+   563→  priorityLabel,
+   564→  priorityVariant,
+   565→  parseAffectedUrls,
+   566→  parseEvidence,
+   567→}: {
+   568→  issue: TechnicalIssue;
+   569→  index: number;
+   570→  expanded: boolean;
+   571→  onToggleExpand: () => void;
+   572→  onDismiss: () => void;
+   573→  t: (key: string) => string;
+   574→  severityIcon: (s: string) => React.ReactNode;
+   575→  severityVariant: (s: string) => "default" | "secondary" | "destructive" | "outline";
+   576→  severityLabel: (s: string) => string;
+   577→  priorityLabel: (s: string) => string;
+   578→  priorityVariant: (s: string) => "default" | "secondary" | "destructive" | "outline";
+   579→  parseAffectedUrls: (s: string | null) => string[];
+   580→  parseEvidence: (s: string | null) => Record<string, unknown>[] | Record<string, unknown> | string | null;
+   581→}) {
+   582→  const affectedUrls = parseAffectedUrls(issue.affectedUrls);
+   583→  const evidence = parseEvidence(issue.evidence);
+   584→
+   585→  return (
+   586→    <motion.div
+   587→      initial={{ opacity: 0, y: 10 }}
+   588→      animate={{ opacity: 1, y: 0 }}
+   589→      transition={{ delay: index * 0.03 }}
+   590→    >
+   591→      <Card className={issue.dismissed ? "opacity-60" : ""}>
+   592→        <Collapsible open={expanded} onOpenChange={onToggleExpand}>
+   593→          <CardHeader className="pb-3">
+   594→            <div className="flex items-start justify-between gap-3">
+   595→              <CollapsibleTrigger asChild>
+   596→                <div className="flex items-start gap-3 flex-1 cursor-pointer">
+   597→                  {severityIcon(issue.severity)}
+   598→                  <div className="flex-1 min-w-0">
+   599→                    <p className="text-sm font-medium">{issue.dutchExplanation}</p>
+   600→                    {issue.page && (
+   601→                      <p className="text-xs text-muted-foreground mt-1 truncate">
+   602→                        {issue.page.url}
+   603→                      </p>
+   604→                    )}
+   605→                  </div>
+   606→                </div>
+   607→              </CollapsibleTrigger>
+   608→              <div className="flex items-center gap-2 shrink-0">
+   609→                <Badge variant={severityVariant(issue.severity)} className="text-xs">
+   610→                  {severityLabel(issue.severity)}
+   611→                </Badge>
+   612→                <Badge variant={priorityVariant(issue.priority)} className="text-xs">
+   613→                  {priorityLabel(issue.priority)}
+   614→                </Badge>
+   615→                {affectedUrls.length > 0 && (
+   616→                  <Badge variant="outline" className="text-xs">
+   617→                    {affectedUrls.length} URL{"'"}{affectedUrls.length !== 1 ? "s" : ""}
+   618→                  </Badge>
+   619→                )}
+   620→                <Button
+   621→                  variant={issue.dismissed ? "outline" : "ghost"}
+   622→                  size="sm"
+   623→                  onClick={(e) => {
+   624→                    e.stopPropagation();
+   625→                    onDismiss();
+   626→                  }}
+   627→                >
+   628→                  {issue.dismissed ? (
+   629→                    <>
+   630→                      <Eye className="h-3 w-3 mr-1" />
+   631→                      {t("undismiss")}
+   632→                    </>
+   633→                  ) : (
+   634→                    <>
+   635→                      <EyeOff className="h-3 w-3 mr-1" />
+   636→                      {t("dismiss")}
+   637→                    </>
+   638→                  )}
+   639→                </Button>
+   640→              </div>
+   641→            </div>
+   642→          </CardHeader>
+   643→
+   644→          {/* Recommended action */}
+   645→          {issue.recommendedAction && (
+   646→            <CardContent className="pt-0 pb-3">
+   647→              <div className="ml-7">
+   648→                <p className="text-sm">
+   649→                  <span className="font-medium text-emerald-600 dark:text-emerald-400">
+   650→                    {t("recommendedAction")}:
+   651→                  </span>{" "}
+   652→                  {issue.recommendedAction}
+   653→                </p>
+   654→              </div>
+   655→            </CardContent>
+   656→          )}
+   657→
+   658→          <CollapsibleContent>
+   659→            <CardContent className="pt-0 pb-4">
+   660→              <div className="ml-7 space-y-3 border-t pt-3">
+   661→                {/* Technical details */}
+   662→                {issue.technicalDetails && (
+   663→                  <div>
+   664→                    <p className="text-xs font-medium text-muted-foreground mb-1">
+   665→                      {t("technicalDetails")}
+   666→                    </p>
+   667→                    <p className="text-sm bg-muted p-2 rounded">{issue.technicalDetails}</p>
+   668→                  </div>
+   669→                )}
+   670→
+   671→                {/* Evidence */}
+   672→                {evidence && (
+   673→                  <div>
+   674→                    <p className="text-xs font-medium text-muted-foreground mb-1">
+   675→                      {t("evidence")}
+   676→                    </p>
+   677→                    <pre className="text-xs bg-muted p-2 rounded overflow-x-auto max-h-48 overflow-y-auto">
+   678→                      {typeof evidence === "string"
+   679→                        ? evidence
+   680→                        : JSON.stringify(evidence, null, 2)}
+   681→                    </pre>
+   682→                  </div>
+   683→                )}
+   684→
+   685→                {/* Affected URLs */}
+   686→                {affectedUrls.length > 0 && (
+   687→                  <div>
+   688→                    <p className="text-xs font-medium text-muted-foreground mb-1">
+   689→                      {t("affectedUrls")} ({affectedUrls.length})
+   690→                    </p>
+   691→                    <div className="max-h-32 overflow-y-auto space-y-0.5">
+   692→                      {affectedUrls.map((url, i) => (
+   693→                        <p key={i} className="text-xs text-muted-foreground truncate">
+   694→                          {url}
+   695→                        </p>
+   696→                      ))}
+   697→                    </div>
+   698→                  </div>
+   699→                )}
+   700→
+   701→                {/* Rule ID and metadata */}
+   702→                <div className="flex items-center gap-4 text-xs text-muted-foreground">
+   703→                  <span>Regel: {issue.ruleId}</span>
+   704→                  {issue.autoFixAvailable && (
+   705→                    <Badge variant="outline" className="text-xs">
+   706→                      Auto-fix beschikbaar
+   707→                    </Badge>
+   708→                  )}
+   709→                  <span>
+   710→                    {new Date(issue.createdAt).toLocaleDateString("nl-NL")}
+   711→                  </span>
+   712→                </div>
+   713→              </div>
+   714→            </CardContent>
+   715→          </CollapsibleContent>
+   716→        </Collapsible>
+   717→      </Card>
+   718→    </motion.div>
+   719→  );
+   720→}
+   721→
+   722→// Helper to avoid apostrophe issues in JSX
+   723→const apost = "'";
+   724→

@@ -1,0 +1,960 @@
+  2400→  status          String   @default("draft") // draft, active, completed, paused
+  2401→  targetCount     Int      @default(0)
+  2402→  contactedCount  Int      @default(0)
+  2403→  responseCount   Int      @default(0)
+  2404→  acquiredCount   Int      @default(0)
+  2405→  startDate       DateTime?
+  2406→  endDate         DateTime?
+  2407→  deletedAt       DateTime?
+  2408→  createdAt       DateTime @default(now())
+  2409→  updatedAt       DateTime @updatedAt
+  2410→
+  2411→  @@index([projectId])
+  2412→  @@index([status])
+  2413→  @@index([deletedAt])
+  2414→  @@map("outreach_campaigns")
+  2415→}
+  2416→
+  2417→// ============================================================================
+  2418→// Phase 7: Enums — Local SEO & Reputation
+  2419→// ============================================================================
+  2420→
+  2421→enum LocalHealthCategory {
+  2422→  NAP_CONSISTENCY
+  2423→  OPENING_HOURS
+  2424→  LOCAL_STRUCTURED_DATA
+  2425→  LANDING_PAGES
+  2426→  LOCAL_KEYWORDS
+  2427→  REVIEWS
+  2428→  GOOGLE_BUSINESS_PROFILE
+  2429→  LOCAL_LINKS
+  2430→  PHOTOS
+  2431→  SERVICE_AREAS
+  2432→}
+  2433→
+  2434→enum LocalHealthStatus {
+  2435→  PASSING
+  2436→  NEEDS_IMPROVEMENT
+  2437→  FAILING
+  2438→  NOT_CHECKED
+  2439→}
+  2440→
+  2441→enum ReviewSource {
+  2442→  GOOGLE
+  2443→  WOOCOMMERCE
+  2444→  TRUSTPILOT
+  2445→  CSV_IMPORT
+  2446→  SURVEY
+  2447→  SUPPORT_FEEDBACK
+  2448→  MANUAL
+  2449→}
+  2450→
+  2451→enum ReviewSentiment {
+  2452→  POSITIVE
+  2453→  NEUTRAL
+  2454→  NEGATIVE
+  2455→  MIXED
+  2456→}
+  2457→
+  2458→enum ReviewResponseStatus {
+  2459→  DRAFT
+  2460→  PENDING_APPROVAL
+  2461→  APPROVED
+  2462→  REJECTED
+  2463→  PUBLISHED
+  2464→}
+  2465→
+  2466→enum LocalKeywordIntent {
+  2467→  NAVIGATIONAL
+  2468→  INFORMATIONAL
+  2469→  TRANSACTIONAL
+  2470→  COMMERCIAL
+  2471→  LOCAL
+  2472→}
+  2473→
+  2474→// ============================================================================
+  2475→// Phase 7: Local SEO Models
+  2476→// ============================================================================
+  2477→
+  2478→model LocalKeyword {
+  2479→  id          String             @id @default(uuid())
+  2480→  projectId   String
+  2481→  locationId  String
+  2482→  keyword     String
+  2483→  intent      LocalKeywordIntent @default(LOCAL)
+  2484→  searchVolume Int?
+  2485→  difficulty  Float?
+  2486→  currentRank Int?
+  2487→  targetRank  Int?
+  2488→  url         String?
+  2489→  isActive    Boolean            @default(true)
+  2490→  deletedAt   DateTime?
+  2491→  createdAt   DateTime           @default(now())
+  2492→  updatedAt   DateTime           @updatedAt
+  2493→
+  2494→  location Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  2495→
+  2496→  @@index([projectId])
+  2497→  @@index([locationId])
+  2498→  @@index([keyword])
+  2499→  @@index([intent])
+  2500→  @@index([currentRank])
+  2501→  @@index([deletedAt])
+  2502→  @@map("local_keywords")
+  2503→}
+  2504→
+  2505→model LocalLandingPage {
+  2506→  id          String   @id @default(uuid())
+  2507→  projectId   String
+  2508→  locationId  String
+  2509→  url         String
+  2510→  title       String?
+  2511→  metaDescription String?
+  2512→  h1          String?
+  2513→  wordCount   Int      @default(0)
+  2514→  hasStructuredData Boolean @default(false)
+  2515→  hasNAP      Boolean  @default(false)
+  2516→  hasMap      Boolean  @default(false)
+  2517→  hasOpeningHours Boolean @default(false)
+  2518→  qualityScore Float  @default(0) // 0-100
+  2519→  issues      String?  // JSON array of Dutch issues
+  2520→  deletedAt   DateTime?
+  2521→  createdAt   DateTime @default(now())
+  2522→  updatedAt   DateTime @updatedAt
+  2523→
+  2524→  location Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  2525→
+  2526→  @@index([projectId])
+  2527→  @@index([locationId])
+  2528→  @@index([url])
+  2529→  @@index([qualityScore])
+  2530→  @@index([deletedAt])
+  2531→  @@map("local_landing_pages")
+  2532→}
+  2533→
+  2534→model LocalCompetitor {
+  2535→  id          String   @id @default(uuid())
+  2536→  projectId   String
+  2537→  locationId  String
+  2538→  name        String
+  2539→  address     String?
+  2540→  city        String?
+  2541→  postalCode  String?
+  2542→  website     String?
+  2543→  avgRating   Float?
+  2544→  reviewCount Int      @default(0)
+  2545→  distance    Float?   // km from our location
+  2546→  strengths   String?  // JSON array of Dutch strengths
+  2547→  weaknesses  String?  // JSON array of Dutch weaknesses
+  2548→  notes       String?  // Dutch notes
+  2549→  isActive    Boolean  @default(true)
+  2550→  deletedAt   DateTime?
+  2551→  createdAt   DateTime @default(now())
+  2552→  updatedAt   DateTime @updatedAt
+  2553→
+  2554→  location Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  2555→
+  2556→  @@index([projectId])
+  2557→  @@index([locationId])
+  2558→  @@index([isActive])
+  2559→  @@index([deletedAt])
+  2560→  @@map("local_competitors")
+  2561→}
+  2562→
+  2563→model LocationHealthCheck {
+  2564→  id           String             @id @default(uuid())
+  2565→  projectId    String
+  2566→  locationId   String
+  2567→  category     LocalHealthCategory
+  2568→  status       LocalHealthStatus  @default(NOT_CHECKED)
+  2569→  score        Float              @default(0) // 0-100
+  2570→  // Dutch findings
+  2571→  title        String             // Dutch title
+  2572→  description  String             // Dutch description
+  2573→  recommendation String?          // Dutch recommendation
+  2574→  evidence     String?            // JSON evidence
+  2575→  // Metadata
+  2576→  checkedAt    DateTime           @default(now())
+  2577→  createdAt    DateTime           @default(now())
+  2578→  updatedAt    DateTime           @updatedAt
+  2579→
+  2580→  location Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  2581→
+  2582→  @@index([projectId])
+  2583→  @@index([locationId])
+  2584→  @@index([category])
+  2585→  @@index([status])
+  2586→  @@index([score])
+  2587→  @@map("location_health_checks")
+  2588→}
+  2589→
+  2590→model GoogleBusinessProfile {
+  2591→  id              String   @id @default(uuid())
+  2592→  projectId       String
+  2593→  locationId      String   @unique
+  2594→  // GBP connection
+  2595→  accountId       String?
+  2596→  locationIdGBP   String?
+  2597→  accessToken     String?  // encrypted
+  2598→  refreshToken    String?  // encrypted
+  2599→  // Profile data
+  2600→  businessName    String?
+  2601→  primaryCategory String?
+  2602→  categories      String?  // JSON array
+  2603→  websiteUrl      String?
+  2604→  // Review stats from GBP
+  2605→  avgRating       Float?
+  2606→  totalReviews    Int      @default(0)
+  2607→  lastSyncAt      DateTime?
+  2608→  syncStatus      String   @default("not_connected") // not_connected, connected, syncing, error
+  2609→  syncError       String?  // Dutch error description
+  2610→  // Metadata
+  2611→  createdAt       DateTime @default(now())
+  2612→  updatedAt       DateTime @updatedAt
+  2613→
+  2614→  location Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  2615→
+  2616→  @@index([projectId])
+  2617→  @@index([syncStatus])
+  2618→  @@map("google_business_profiles")
+  2619→}
+  2620→
+  2621→model RankImport {
+  2622→  id          String   @id @default(uuid())
+  2623→  projectId   String
+  2624→  locationId  String?
+  2625→  importBatch String   @unique
+  2626→  source      String   // "csv_import", "gbp_adapter", "manual"
+  2627→  rowCount    Int      @default(0)
+  2628→  successCount Int     @default(0)
+  2629→  errorCount  Int      @default(0)
+  2630→  errors      String?  // JSON array of error messages
+  2631→  importedAt  DateTime @default(now())
+  2632→  createdAt   DateTime @default(now())
+  2633→
+  2634→  @@index([projectId])
+  2635→  @@index([locationId])
+  2636→  @@index([importBatch])
+  2637→  @@index([source])
+  2638→  @@map("rank_imports")
+  2639→}
+  2640→
+  2641→// ============================================================================
+  2642→// Phase 7: Reviews & Reputation Models
+  2643→// ============================================================================
+  2644→
+  2645→model Review {
+  2646→  id            String         @id @default(uuid())
+  2647→  projectId     String
+  2648→  locationId    String?
+  2649→  // Source
+  2650→  source        ReviewSource
+  2651→  externalId    String?        // ID from external platform
+  2652→  sourceUrl     String?        // Link to original review
+  2653→  // Reviewer
+  2654→  authorName    String?
+  2655→  authorAvatar  String?
+  2656→  isVerified    Boolean        @default(false)
+  2657→  // Content
+  2658→  rating        Float          @default(0) // 1-5
+  2659→  title         String?
+  2660→  content       String?
+  2661→  // Analysis
+  2662→  sentiment     ReviewSentiment @default(NEUTRAL)
+  2663→  sentimentScore Float?        // -1 to 1
+  2664→  themes        String?        // JSON array of detected themes
+  2665→  complaints    String?        // JSON array of Dutch complaints
+  2666→  compliments   String?        // JSON array of Dutch compliments
+  2667→  productIssues String?        // JSON array of Dutch product issues
+  2668→  serviceIssues String?        // JSON array of Dutch service issues
+  2669→  faqOpportunities String?     // JSON array of Dutch FAQ opportunities
+  2670→  contentOpportunities String? // JSON array of Dutch content opportunities
+  2671→  trustSignals  String?        // JSON array of Dutch trust signals
+  2672→  // Metadata
+  2673→  language      String?        @default("nl")
+  2674→  reviewDate    DateTime?
+  2675→  responseDraftId String?      @unique // FK to ReviewResponse
+  2676→  importBatch   String?
+  2677→  deletedAt     DateTime?
+  2678→  createdAt     DateTime       @default(now())
+  2679→  updatedAt     DateTime       @updatedAt
+  2680→
+  2681→  location        Location?           @relation(fields: [locationId], references: [id], onDelete: SetNull)
+  2682→  responseDraft   ReviewResponse?     @relation("ReviewResponseDraft", fields: [responseDraftId], references: [id], onDelete: SetNull)
+  2683→  responses       ReviewResponse[]    @relation("ReviewResponses")
+  2684→
+  2685→  @@index([projectId])
+  2686→  @@index([locationId])
+  2687→  @@index([source])
+  2688→  @@index([rating])
+  2689→  @@index([sentiment])
+  2690→  @@index([reviewDate])
+  2691→  @@index([externalId])
+  2692→  @@index([importBatch])
+  2693→  @@index([deletedAt])
+  2694→  @@map("reviews")
+  2695→}
+  2696→
+  2697→model ReviewResponse {
+  2698→  id          String             @id @default(uuid())
+  2699→  projectId   String
+  2700→  reviewId    String
+  2701→  // Response content
+  2702→  content     String             // Dutch response text
+  2703→  // Approval workflow
+  2704→  status      ReviewResponseStatus @default(DRAFT)
+  2705→  submittedBy String?
+  2706→  reviewedBy  String?
+  2707→  reviewedAt  DateTime?
+  2708→  rejectionReason String?        // Dutch reason for rejection
+  2709→  // Publishing
+  2710→  publishedAt DateTime?
+  2711→  publishError String?           // Dutch error description
+  2712→  // Metadata
+  2713→  createdAt   DateTime           @default(now())
+  2714→  updatedAt   DateTime           @updatedAt
+  2715→
+  2716→  review      Review  @relation("ReviewResponses", fields: [reviewId], references: [id], onDelete: Cascade)
+  2717→  draftForReview Review? @relation("ReviewResponseDraft")
+  2718→
+  2719→  @@index([projectId])
+  2720→  @@index([reviewId])
+  2721→  @@index([status])
+  2722→  @@index([submittedBy])
+  2723→  @@map("review_responses")
+  2724→}
+  2725→
+  2726→// ============================================================================
+  2727→// Phase 8: Enums — E-commerce SEO & Product Feeds
+  2728→// ============================================================================
+  2729→
+  2730→enum ProductStatus {
+  2731→  ACTIVE
+  2732→  OUT_OF_STOCK
+  2733→  DISCONTINUED
+  2734→  SEASONAL
+  2735→  DRAFT
+  2736→}
+  2737→
+  2738→enum FeedType {
+  2739→  MERCHANT
+  2740→  META_CATALOGUE
+  2741→  COMPARISON
+  2742→  MARKETPLACE
+  2743→  AFFILIATE
+  2744→}
+  2745→
+  2746→enum FeedValidationStatus {
+  2747→  PENDING
+  2748→  VALIDATING
+  2749→  VALID
+  2750→  VALID_WITH_WARNINGS
+  2751→  INVALID
+  2752→  ERROR
+  2753→}
+  2754→
+  2755→enum FeedIssueSeverity {
+  2756→  ERROR
+  2757→  WARNING
+  2758→  INFO
+  2759→}
+  2760→
+  2761→// ============================================================================
+  2762→// Phase 8: E-commerce SEO Models
+  2763→// ============================================================================
+  2764→
+  2765→model Product {
+  2766→  id              String        @id @default(uuid())
+  2767→  projectId       String
+  2768→  // Product identity
+  2769→  sku             String?
+  2770→  gtin            String?       // Global Trade Item Number (EAN/UPC/ISBN)
+  2771→  mpn             String?       // Manufacturer Part Number
+  2772→  // Content
+  2773→  name            String
+  2774→  slug            String?
+  2775→  description     String?
+  2776→  shortDescription String?
+  2777→  // Categorisation
+  2778→  categoryId      String?
+  2779→  productType     String?       // Google product type taxonomy
+  2780→  brand           String?
+  2781→  // Pricing
+  2782→  regularPrice    Float?
+  2783→  salePrice       Float?
+  2784→  currency        String?       @default("EUR")
+  2785→  // Margin data (when available)
+  2786→  costPrice       Float?
+  2787→  margin          Float?        // Calculated margin percentage
+  2788→  // Inventory
+  2789→  stockStatus     ProductStatus @default(ACTIVE)
+  2790→  stockQuantity   Int?
+  2791→  manageStock     Boolean       @default(false)
+  2792→  // Variations
+  2793→  parentProductId String?       // For variation products
+  2794→  variationAttributes String?   // JSON: {"color":"red","size":"M"}
+  2795→  // Images
+  2796→  imageUrl        String?
+  2797→  imageAlt        String?
+  2798→  additionalImages String?      // JSON array of image URLs
+  2799→  // URLs
+  2800→  productUrl      String?
+  2801→  // SEO analysis
+  2802→  titleQuality    Float?        @default(0) // 0-100
+  2803→  descriptionQuality Float?     @default(0)
+  2804→  structuredDataScore Float?    @default(0)
+  2805→  imageScore      Float?        @default(0)
+  2806→  overallSeoScore Float?        @default(0)
+  2807→  seoIssues       String?       // JSON array of Dutch SEO issues
+  2808→  // Revenue tracking
+  2809→  revenue30d      Float?        @default(0)
+  2810→  revenue90d      Float?        @default(0)
+  2811→  unitsSold30d    Int?
+  2812→  unitsSold90d    Int?
+  2813→  // Internal links
+  2814→  internalLinkCount Int?        @default(0)
+  2815→  // Seasonal data
+  2816→  isSeasonal      Boolean       @default(false)
+  2817→  seasonalMonths  String?       // JSON array of active months [1-12]
+  2818→  // Source
+  2819→  source          String?       // "woocommerce", "csv_import", "manual"
+  2820→  externalId      String?
+  2821→  importBatch     String?
+  2822→  // Metadata
+  2823→  deletedAt       DateTime?
+  2824→  createdAt       DateTime      @default(now())
+  2825→  updatedAt       DateTime      @updatedAt
+  2826→
+  2827→  category        ProductCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  2828→  parentProduct   Product?         @relation("ProductVariations", fields: [parentProductId], references: [id], onDelete: Cascade)
+  2829→  variations      Product[]        @relation("ProductVariations")
+  2830→  feedItems       ProductFeedItem[]
+  2831→
+  2832→  @@index([projectId])
+  2833→  @@index([sku])
+  2834→  @@index([gtin])
+  2835→  @@index([categoryId])
+  2836→  @@index([stockStatus])
+  2837→  @@index([overallSeoScore])
+  2838→  @@index([revenue30d])
+  2839→  @@index([parentProductId])
+  2840→  @@index([isSeasonal])
+  2841→  @@index([source])
+  2842→  @@index([importBatch])
+  2843→  @@index([deletedAt])
+  2844→  @@map("products")
+  2845→}
+  2846→
+  2847→model ProductCategory {
+  2848→  id              String   @id @default(uuid())
+  2849→  projectId       String
+  2850→  name            String
+  2851→  slug            String?
+  2852→  description     String?
+  2853→  parentId        String?
+  2854→  // Quality analysis
+  2855→  productCount    Int      @default(0)
+  2856→  qualityScore    Float?   @default(0) // 0-100
+  2857→  seoIssues       String?  // JSON array of Dutch issues
+  2858→  hasDescription  Boolean  @default(false)
+  2859→  hasStructuredData Boolean @default(false)
+  2860→  // Source
+  2861→  externalId      String?
+  2862→  // Metadata
+  2863→  deletedAt       DateTime?
+  2864→  createdAt       DateTime @default(now())
+  2865→  updatedAt       DateTime @updatedAt
+  2866→
+  2867→  parent          ProductCategory?  @relation("CategoryHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  2868→  children        ProductCategory[] @relation("CategoryHierarchy")
+  2869→  products        Product[]
+  2870→
+  2871→  @@index([projectId])
+  2872→  @@index([parentId])
+  2873→  @@index([qualityScore])
+  2874→  @@index([deletedAt])
+  2875→  @@map("product_categories")
+  2876→}
+  2877→
+  2878→model FacetedNavigationIssue {
+  2879→  id              String   @id @default(uuid())
+  2880→  projectId       String
+  2881→  // The faceted URL that has issues
+  2882→  url             String
+  2883→  // What kind of issue
+  2884→  issueType       String   // "duplicate_content", "thin_content", "crawled_facet", "noindex_needed"
+  2885→  severity        String   // "error", "warning", "info"
+  2886→  // Dutch description and recommendation
+  2887→  description     String   // Dutch description of the issue
+  2888→  recommendation  String   // Dutch recommendation
+  2889→  // Evidence
+  2890→  parameterName   String?  // e.g. "color", "size", "page"
+  2891→  parameterValue  String?  // e.g. "red", "xl", "2"
+  2892→  canonicalUrl    String?  // Recommended canonical
+  2893→  // Status
+  2894→  isResolved      Boolean  @default(false)
+  2895→  resolvedAt      DateTime?
+  2896→  // Metadata
+  2897→  detectedAt      DateTime @default(now())
+  2898→  createdAt       DateTime @default(now())
+  2899→  updatedAt       DateTime @updatedAt
+  2900→
+  2901→  @@index([projectId])
+  2902→  @@index([issueType])
+  2903→  @@index([severity])
+  2904→  @@index([isResolved])
+  2905→  @@index([detectedAt])
+  2906→  @@map("faceted_navigation_issues")
+  2907→}
+  2908→
+  2909→// ============================================================================
+  2910→// Phase 8: Product Feed Models
+  2911→// ============================================================================
+  2912→
+  2913→model ProductFeed {
+  2914→  id              String              @id @default(uuid())
+  2915→  projectId       String
+  2916→  name            String
+  2917→  feedType        FeedType
+  2918→  // Feed source
+  2919→  sourceUrl       String?             // URL to fetch feed from
+  2920→  sourceFormat    String?             // "xml", "csv", "tsv"
+  2921→  // Processing
+  2922→  status          FeedValidationStatus @default(PENDING)
+  2923→  lastValidatedAt DateTime?
+  2924→  lastFetchedAt   DateTime?
+  2925→  // Stats
+  2926→  totalProducts   Int                 @default(0)
+  2927→  validProducts   Int                 @default(0)
+  2928→  warningProducts Int                 @default(0)
+  2929→  invalidProducts Int                 @default(0)
+  2930→  // Metadata
+  2931→  notes           String?             // Dutch notes
+  2932→  deletedAt       DateTime?
+  2933→  createdAt       DateTime            @default(now())
+  2934→  updatedAt       DateTime            @updatedAt
+  2935→
+  2936→  items           ProductFeedItem[]
+  2937→
+  2938→  @@index([projectId])
+  2939→  @@index([feedType])
+  2940→  @@index([status])
+  2941→  @@index([deletedAt])
+  2942→  @@map("product_feeds")
+  2943→}
+  2944→
+  2945→model ProductFeedItem {
+  2946→  id              String           @id @default(uuid())
+  2947→  feedId          String
+  2948→  productId       String?
+  2949→  // Item identification
+  2950→  title           String?
+  2951→  description     String?
+  2952→  gtin            String?
+  2953→  mpn             String?
+  2954→  sku             String?
+  2955→  brand           String?
+  2956→  // Categorisation
+  2957→  category        String?          // Feed category
+  2958→  productType     String?          // Google product type
+  2959→  // Pricing & inventory
+  2960→  price           Float?
+  2961→  salePrice       Float?
+  2962→  currency        String?          @default("EUR")
+  2963→  availability    String?
+  2964→  // URLs
+  2965→  link            String?
+  2966→  imageLink       String?
+  2967→  // Validation
+  2968→  validationStatus FeedValidationStatus @default(PENDING)
+  2969→  issues          String?          // JSON array of validation issues
+  2970→  // Metadata
+  2971→  createdAt       DateTime         @default(now())
+  2972→  updatedAt       DateTime         @updatedAt
+  2973→
+  2974→  feed            ProductFeed      @relation(fields: [feedId], references: [id], onDelete: Cascade)
+  2975→  product         Product?         @relation(fields: [productId], references: [id], onDelete: SetNull)
+  2976→
+  2977→  @@index([feedId])
+  2978→  @@index([productId])
+  2979→  @@index([validationStatus])
+  2980→  @@index([gtin])
+  2981→  @@index([sku])
+  2982→  @@map("product_feed_items")
+  2983→}
+  2984→
+  2985→model FeedValidationRule {
+  2986→  id              String           @id @default(uuid())
+  2987→  projectId       String
+  2988→  // Rule definition
+  2989→  feedType        FeedType
+  2990→  field           String           // e.g. "title", "description", "gtin"
+  2991→  ruleName        String           // e.g. "required", "maxLength", "minLength", "pattern"
+  2992→  severity        FeedIssueSeverity @default(ERROR)
+  2993→  // Rule parameters (JSON)
+  2994→  parameters      String?          // JSON: {"maxLength": 150, "minLength": 10}
+  2995→  // Dutch description
+  2996→  description     String           // Dutch description of what this rule checks
+  2997→  failureMessage  String           // Dutch message when validation fails
+  2998→  // Status
+  2999→  isActive        Boolean          @default(true)
+  3000→  createdAt       DateTime         @default(now())
+  3001→  updatedAt       DateTime         @updatedAt
+  3002→
+  3003→  @@index([projectId])
+  3004→  @@index([feedType])
+  3005→  @@index([field])
+  3006→  @@index([isActive])
+  3007→  @@map("feed_validation_rules")
+  3008→}
+  3009→
+  3010→// ============================================================================
+  3011→// Phase 9: Enums — CRO & Business Intelligence
+  3012→// ============================================================================
+  3013→
+  3014→enum AnalyticsEventType {
+  3015→  PAGE_VIEW
+  3016→  SESSION
+  3017→  EVENT
+  3018→  CONVERSION
+  3019→  REVENUE
+  3020→}
+  3021→
+  3022→enum ConsentState {
+  3023→  GRANTED
+  3024→  DENIED
+  3025→  UNKNOWN
+  3026→}
+  3027→
+  3028→enum CROCategory {
+  3029→  CTA
+  3030→  FORMS
+  3031→  TRUST
+  3032→  VALUE_PROPOSITION
+  3033→  PRICING_COMMUNICATION
+  3034→  MOBILE_UX
+  3035→  FUNNELS
+  3036→  LANDING_PAGES
+  3037→  PRODUCT_PAGES
+  3038→}
+  3039→
+  3040→enum CROSeverity {
+  3041→  CRITICAL
+  3042→  HIGH
+  3043→  MEDIUM
+  3044→  LOW
+  3045→}
+  3046→
+  3047→enum BehaviourType {
+  3048→  SCROLL_DEPTH
+  3049→  CLICK
+  3050→  RAGE_CLICK
+  3051→  DEAD_CLICK
+  3052→  FORM_ABANDONMENT
+  3053→  DEVICE_TYPE
+  3054→  ENGAGEMENT
+  3055→}
+  3056→
+  3057→enum ExperimentStatus {
+  3058→  DRAFT
+  3059→  RUNNING
+  3060→  COMPLETED
+  3061→  CANCELLED
+  3062→}
+  3063→
+  3064→enum ForecastScenario {
+  3065→  CONSERVATIVE
+  3066→  REALISTIC
+  3067→  AMBITIOUS
+  3068→}
+  3069→
+  3070→enum BudgetCategory {
+  3071→  TECHNICAL_SEO
+  3072→  CONTENT
+  3073→  UPDATES
+  3074→  AUTHORITY
+  3075→  DIGITAL_PR
+  3076→  CRO
+  3077→  LOCAL_SEO
+  3078→  GEO
+  3079→  MONITORING
+  3080→  REPORTING
+  3081→}
+  3082→
+  3083→// ============================================================================
+  3084→// Phase 9: First-party Analytics Models
+  3085→// ============================================================================
+  3086→
+  3087→model AnalyticsEvent {
+  3088→  id          String            @id @default(uuid())
+  3089→  projectId   String
+  3090→  // Event identity
+  3091→  eventType   AnalyticsEventType
+  3092→  eventName   String?           // Custom event name
+  3093→  // Page context
+  3094→  pageUrl     String?
+  3095→  pageTitle   String?
+  3096→  referrer    String?
+  3097→  // Session
+  3098→  sessionId   String?
+  3099→  userId      String?           // Anonymised user identifier
+  3100→  // Campaign
+  3101→  utmSource   String?
+  3102→  utmMedium   String?
+  3103→  utmCampaign String?
+  3104→  utmTerm     String?
+  3105→  utmContent  String?
+  3106→  // Event data
+  3107→  eventData   String?           // JSON for custom properties
+  3108→  // Revenue
+  3109→  revenue     Float?
+  3110→  currency    String?           @default("EUR")
+  3111→  // Consent
+  3112→  consentState ConsentState     @default(UNKNOWN)
+  3113→  // Device
+  3114→  deviceType  String?           // "desktop", "mobile", "tablet"
+  3115→  browser     String?
+  3116→  os          String?
+  3117→  country     String?
+  3118→  language    String?
+  3119→  // Metadata
+  3120→  timestamp   DateTime          @default(now())
+  3121→  createdAt   DateTime          @default(now())
+  3122→
+  3123→  @@index([projectId])
+  3124→  @@index([eventType])
+  3125→  @@index([sessionId])
+  3126→  @@index([pageUrl])
+  3127→  @@index([timestamp])
+  3128→  @@index([consentState])
+  3129→  @@index([utmSource])
+  3130→  @@index([utmCampaign])
+  3131→  @@map("analytics_events")
+  3132→}
+  3133→
+  3134→model AnalyticsSession {
+  3135→  id              String   @id @default(uuid())
+  3136→  projectId       String
+  3137→  sessionId       String
+  3138→  // Session data
+  3139→  entryPage       String?
+  3140→  exitPage        String?
+  3141→  pageViews       Int      @default(0)
+  3142→  events          Int      @default(0)
+  3143→  conversions     Int      @default(0)
+  3144→  revenue         Float?   @default(0)
+  3145→  // Source
+  3146→  source          String?
+  3147→  medium          String?
+  3148→  campaign        String?
+  3149→  // Device
+  3150→  deviceType      String?
+  3151→  browser         String?
+  3152→  os              String?
+  3153→  country         String?
+  3154→  // Consent
+  3155→  consentState    ConsentState @default(UNKNOWN)
+  3156→  isCookieless    Boolean  @default(false)
+  3157→  // Duration
+  3158→  durationSeconds Int?
+  3159→  // Timestamps
+  3160→  startedAt       DateTime @default(now())
+  3161→  lastActivityAt  DateTime @default(now())
+  3162→  createdAt       DateTime @default(now())
+  3163→
+  3164→  @@unique([projectId, sessionId])
+  3165→  @@index([projectId])
+  3166→  @@index([sessionId])
+  3167→  @@index([startedAt])
+  3168→  @@index([source])
+  3169→  @@index([deviceType])
+  3170→  @@map("analytics_sessions")
+  3171→}
+  3172→
+  3173→// ============================================================================
+  3174→// Phase 9: Behaviour & CRO Models
+  3175→// ============================================================================
+  3176→
+  3177→model BehaviourRecord {
+  3178→  id              String        @id @default(uuid())
+  3179→  projectId       String
+  3180→  pageUrl         String?
+  3181→  behaviourType   BehaviourType
+  3182→  // Behaviour data
+  3183→  element         String?       // CSS selector or element description
+  3184→  value           Float?        // e.g. scroll depth percentage
+  3185→  metadata        String?       // JSON for additional data
+  3186→  // Session
+  3187→  sessionId       String?
+  3188→  deviceType      String?
+  3189→  // Source
+  3190→  source          String?       // "import", "adapter", "first_party"
+  3191→  importBatch     String?
+  3192→  // Timestamp
+  3193→  recordedAt      DateTime      @default(now())
+  3194→  createdAt       DateTime      @default(now())
+  3195→
+  3196→  @@index([projectId])
+  3197→  @@index([behaviourType])
+  3198→  @@index([pageUrl])
+  3199→  @@index([recordedAt])
+  3200→  @@index([importBatch])
+  3201→  @@map("behaviour_records")
+  3202→}
+  3203→
+  3204→model CROFinding {
+  3205→  id              String      @id @default(uuid())
+  3206→  projectId       String
+  3207→  category        CROCategory
+  3208→  severity        CROSeverity @default(MEDIUM)
+  3209→  // Finding details
+  3210→  title           String      // Dutch title
+  3211→  description     String      // Dutch description
+  3212→  recommendation  String      // Dutch recommendation
+  3213→  evidence        String?     // JSON evidence data
+  3214→  pageUrl         String?     // Page where finding applies
+  3215→  // Impact
+  3216→  estimatedImpact String?     // Dutch estimated impact description
+  3217→  effort          String?     // "low", "medium", "high"
+  3218→  // Status
+  3219→  status          String      @default("open") // open, in_progress, implemented, dismissed
+  3220→  dismissedReason String?     // Dutch reason for dismissal
+  3221→  // Source
+  3222→  source          String?     // "behaviour_analysis", "manual", "experiment"
+  3223→  // Metadata
+  3224→  createdAt       DateTime    @default(now())
+  3225→  updatedAt       DateTime    @updatedAt
+  3226→
+  3227→  @@index([projectId])
+  3228→  @@index([category])
+  3229→  @@index([severity])
+  3230→  @@index([status])
+  3231→  @@index([pageUrl])
+  3232→  @@map("cro_findings")
+  3233→}
+  3234→
+  3235→// ============================================================================
+  3236→// Phase 9: Experiments Model
+  3237→// ============================================================================
+  3238→
+  3239→model Experiment {
+  3240→  id              String           @id @default(uuid())
+  3241→  projectId       String
+  3242→  name            String
+  3243→  description     String?          // Dutch description
+  3244→  // Hypothesis
+  3245→  hypothesis      String           // Dutch hypothesis
+  3246→  // Groups
+  3247→  testGroupName   String?          // Dutch label
+  3248→  controlGroupName String?         // Dutch label
+  3249→  testGroupSize   Int?
+  3250→  controlGroupSize Int?
+  3251→  // KPI
+  3252→  kpiName         String           // Dutch KPI name
+  3253→  kpiBaseline     Float?           // Current baseline value
+  3254→  kpiTarget       Float?           // Expected improvement
+  3255→  // Dates
+  3256→  startDate       DateTime?
+  3257→  endDate         DateTime?
+  3258→  // Results
+  3259→  testGroupResult  Float?
+  3260→  controlGroupResult Float?
+  3261→  improvement     Float?           // Percentage improvement
+  3262→  confidence      Float?           // 0-1 statistical confidence
+  3263→  isSignificant   Boolean          @default(false)
+  3264→  // Conclusion
+  3265→  conclusion      String?          // Dutch conclusion
+  3266→  followUp        String?          // Dutch follow-up action
+  3267→  // Status
+  3268→  status          ExperimentStatus @default(DRAFT)
+  3269→  // Metadata
+  3270→  deletedAt       DateTime?
+  3271→  createdAt       DateTime         @default(now())
+  3272→  updatedAt       DateTime         @updatedAt
+  3273→
+  3274→  @@index([projectId])
+  3275→  @@index([status])
+  3276→  @@index([startDate])
+  3277→  @@index([isSignificant])
+  3278→  @@index([deletedAt])
+  3279→  @@map("experiments")
+  3280→}
+  3281→
+  3282→// ============================================================================
+  3283→// Phase 9: Forecasting & Budget Models
+  3284→// ============================================================================
+  3285→
+  3286→model Forecast {
+  3287→  id              String           @id @default(uuid())
+  3288→  projectId       String
+  3289→  scenario        ForecastScenario
+  3290→  name            String
+  3291→  description     String?          // Dutch description
+  3292→  // Forecast inputs (JSON)
+  3293→  assumptions     String           // JSON: list of Dutch assumptions
+  3294→  inputs          String           // JSON: input parameters
+  3295→  // Forecast outputs (JSON)
+  3296→  trafficForecast String?          // JSON: monthly projections
+  3297→  clicksForecast  String?          // JSON
+  3298→  leadsForecast   String?          // JSON
+  3299→  conversionsForecast String?      // JSON
+  3300→  revenueForecast String?          // JSON
+  3301→  ctrImprovement  Float?
+  3302→  rankingImprovement Float?
+  3303→  contentOutput   Int?             // Articles per month
+  3304→  requiredEffort  String?          // JSON: effort breakdown in Dutch
+  3305→  // Confidence
+  3306→  confidence      Float?           // 0-1
+  3307→  uncertaintyRange String?         // JSON: {low, mid, high} for each metric
+  3308→  // Time range
+  3309→  forecastMonths  Int              @default(12)
+  3310→  startDate       DateTime         @default(now())
+  3311→  // Metadata
+  3312→  deletedAt       DateTime?
+  3313→  createdAt       DateTime         @default(now())
+  3314→  updatedAt       DateTime         @updatedAt
+  3315→
+  3316→  @@index([projectId])
+  3317→  @@index([scenario])
+  3318→  @@index([confidence])
+  3319→  @@index([deletedAt])
+  3320→  @@map("forecasts")
+  3321→}
+  3322→
+  3323→model BudgetAllocation {
+  3324→  id              String         @id @default(uuid())
+  3325→  projectId       String
+  3326→  name            String
+  3327→  description     String?        // Dutch description
+  3328→  // Total budget
+  3329→  totalBudget     Float
+  3330→  currency        String         @default("EUR")
+  3331→  // Allocations (percentages stored as 0-100)
+  3332→  technicalSeo    Float          @default(0)
+  3333→  content         Float          @default(0)
+  3334→  updates         Float          @default(0)
+  3335→  authority       Float          @default(0)
+  3336→  digitalPR       Float          @default(0)
+  3337→  cro             Float          @default(0)
+  3338→  localSeo        Float          @default(0)
+  3339→  geo             Float          @default(0)
+  3340→  monitoring      Float          @default(0)
+  3341→  reporting       Float          @default(0)
+  3342→  // Notes per category (JSON with Dutch notes)
+  3343→  allocationNotes String?
+  3344→  // Status
+  3345→  isActive        Boolean        @default(true)
+  3346→  // Time range
+  3347→  periodStart     DateTime?
+  3348→  periodEnd       DateTime?
+  3349→  // Metadata
+  3350→  deletedAt       DateTime?
+  3351→  createdAt       DateTime       @default(now())
+  3352→  updatedAt       DateTime       @updatedAt
+  3353→
+  3354→  @@index([projectId])
+  3355→  @@index([isActive])
+  3356→  @@index([deletedAt])
+  3357→  @@map("budget_allocations")
+  3358→}
+  3359→

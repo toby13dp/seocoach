@@ -1,0 +1,1196 @@
+     1→"use client";
+     2→
+     3→import { useState, useEffect, use, useCallback } from "react";
+     4→import { useRouter } from "@/i18n/routing";
+     5→import {
+     6→  Card,
+     7→  CardContent,
+     8→  CardDescription,
+     9→  CardHeader,
+    10→  CardTitle,
+    11→} from "@/components/ui/card";
+    12→import { Button } from "@/components/ui/button";
+    13→import { Badge } from "@/components/ui/badge";
+    14→import { Progress } from "@/components/ui/progress";
+    15→import {
+    16→  Dialog,
+    17→  DialogContent,
+    18→  DialogDescription,
+    19→  DialogHeader,
+    20→  DialogTitle,
+    21→  DialogFooter,
+    22→} from "@/components/ui/dialog";
+    23→import { Input } from "@/components/ui/input";
+    24→import { Label } from "@/components/ui/label";
+    25→import {
+    26→  Select,
+    27→  SelectContent,
+    28→  SelectItem,
+    29→  SelectTrigger,
+    30→  SelectValue,
+    31→} from "@/components/ui/select";
+    32→import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+    33→import { Slider } from "@/components/ui/slider";
+    34→import { Separator } from "@/components/ui/separator";
+    35→import { motion } from "framer-motion";
+    36→import {
+    37→  ArrowLeft,
+    38→  Loader2,
+    39→  Plus,
+    40→  TrendingUp,
+    41→  TrendingDown,
+    42→  BarChart3,
+    43→  DollarSign,
+    44→  Users,
+    45→  MousePointerClick,
+    46→  Target,
+    47→  LineChart,
+    48→  PieChart,
+    49→  AlertTriangle,
+    50→  CheckCircle2,
+    51→  Pencil,
+    52→  Trash2,
+    53→  Lightbulb,
+    54→  Eye,
+    55→  Calculator,
+    56→} from "lucide-react";
+    57→import { toast } from "sonner";
+    58→
+    59→// --- Types ---
+    60→interface ForecastScenario {
+    61→  scenario: string;
+    62→  traffic: number;
+    63→  clicks: number;
+    64→  conversions: number;
+    65→  revenue: number;
+    66→  confidence: number;
+    67→  assumptions: string[];
+    68→  trafficRange: [number, number];
+    69→  clicksRange: [number, number];
+    70→  conversionsRange: [number, number];
+    71→  revenueRange: [number, number];
+    72→}
+    73→
+    74→interface Forecast {
+    75→  id: string;
+    76→  scenario: string;
+    77→  period: number;
+    78→  currentTraffic: number;
+    79→  currentClicks: number;
+    80→  currentConversions: number;
+    81→  currentRevenue: number;
+    82→  currentCtr: number;
+    83→  currentAvgPosition: number;
+    84→  contentOutput: number;
+    85→  projectedTraffic: number;
+    86→  projectedClicks: number;
+    87→  projectedConversions: number;
+    88→  projectedRevenue: number;
+    89→  confidence: number;
+    90→  assumptions: string[];
+    91→  createdAt: string;
+    92→}
+    93→
+    94→interface Budget {
+    95→  id: string;
+    96→  name: string;
+    97→  totalBudget: number;
+    98→  allocations: Record<string, number>;
+    99→  isActive: boolean;
+   100→  createdAt: string;
+   101→  updatedAt: string;
+   102→}
+   103→
+   104→interface BudgetRecommendation {
+   105→  id: string;
+   106→  category: string;
+   107→  currentPercentage: number;
+   108→  recommendedPercentage: number;
+   109→  reason: string;
+   110→}
+   111→
+   112→// --- Dutch Labels ---
+   113→const SCENARIO_LABELS: Record<string, string> = {
+   114→  CONSERVATIVE: "Conservatief",
+   115→  REALISTIC: "Realistisch",
+   116→  AMBITIOUS: "Ambitieus",
+   117→};
+   118→
+   119→const SCENARIO_COLORS: Record<string, string> = {
+   120→  CONSERVATIVE: "border-blue-200 dark:border-blue-800",
+   121→  REALISTIC: "border-emerald-200 dark:border-emerald-800",
+   122→  AMBITIOUS: "border-amber-200 dark:border-amber-800",
+   123→};
+   124→
+   125→const SCENARIO_BADGE_COLORS: Record<string, string> = {
+   126→  CONSERVATIVE: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300",
+   127→  REALISTIC: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-300",
+   128→  AMBITIOUS: "bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-300",
+   129→};
+   130→
+   131→const BUDGET_CATEGORIES: Record<string, string> = {
+   132→  TECHNICAL_SEO: "Technische SEO",
+   133→  CONTENT: "Content",
+   134→  UPDATES: "Updates",
+   135→  AUTHORITY: "Autoriteit",
+   136→  DIGITAL_PR: "Digitale PR",
+   137→  CRO: "CRO",
+   138→  LOCAL_SEO: "Lokale SEO",
+   139→  GEO: "GEO",
+   140→  MONITORING: "Monitoring",
+   141→  REPORTING: "Rapportage",
+   142→};
+   143→
+   144→const BUDGET_COLORS: Record<string, string> = {
+   145→  TECHNICAL_SEO: "bg-blue-500",
+   146→  CONTENT: "bg-emerald-500",
+   147→  UPDATES: "bg-amber-500",
+   148→  AUTHORITY: "bg-purple-500",
+   149→  DIGITAL_PR: "bg-pink-500",
+   150→  CRO: "bg-orange-500",
+   151→  LOCAL_SEO: "bg-teal-500",
+   152→  GEO: "bg-indigo-500",
+   153→  MONITORING: "bg-gray-500",
+   154→  REPORTING: "bg-cyan-500",
+   155→};
+   156→
+   157→const PERIOD_LABELS: Record<string, string> = {
+   158→  "6": "6 maanden",
+   159→  "12": "12 maanden",
+   160→  "24": "24 maanden",
+   161→};
+   162→
+   163→export default function ForecastsPage({
+   164→  params,
+   165→}: {
+   166→  params: Promise<{ id: string }>;
+   167→}) {
+   168→  const { id: projectId } = use(params);
+   169→  const router = useRouter();
+   170→
+   171→  // State
+   172→  const [forecasts, setForecasts] = useState<Forecast[]>([]);
+   173→  const [budgets, setBudgets] = useState<Budget[]>([]);
+   174→  const [recommendations, setRecommendations] = useState<BudgetRecommendation[]>([]);
+   175→  const [isLoading, setIsLoading] = useState(true);
+   176→
+   177→  // Forecast dialog
+   178→  const [forecastOpen, setForecastOpen] = useState(false);
+   179→  const [isGenerating, setIsGenerating] = useState(false);
+   180→  const [forecastForm, setForecastForm] = useState({
+   181→    scenario: "REALISTIC",
+   182→    period: "12",
+   183→    currentTraffic: "",
+   184→    currentClicks: "",
+   185→    currentConversions: "",
+   186→    currentRevenue: "",
+   187→    currentCtr: "",
+   188→    currentAvgPosition: "",
+   189→    contentOutput: "",
+   190→  });
+   191→
+   192→  // Budget dialog
+   193→  const [budgetOpen, setBudgetOpen] = useState(false);
+   194→  const [isSaving, setIsSaving] = useState(false);
+   195→  const [editingBudgetId, setEditingBudgetId] = useState<string | null>(null);
+   196→  const [budgetForm, setBudgetForm] = useState({
+   197→    name: "",
+   198→    totalBudget: "",
+   199→  });
+   200→  const [allocations, setAllocations] = useState<Record<string, number>>({
+   201→    TECHNICAL_SEO: 15,
+   202→    CONTENT: 25,
+   203→    UPDATES: 10,
+   204→    AUTHORITY: 10,
+   205→    DIGITAL_PR: 5,
+   206→    CRO: 10,
+   207→    LOCAL_SEO: 5,
+   208→    GEO: 5,
+   209→    MONITORING: 10,
+   210→    REPORTING: 5,
+   211→  });
+   212→
+   213→  useEffect(() => {
+   214→    fetchData();
+   215→  }, [projectId]);
+   216→
+   217→  const fetchData = useCallback(async () => {
+   218→    setIsLoading(true);
+   219→    try {
+   220→      const [fRes, bRes, rRes] = await Promise.all([
+   221→        fetch(`/api/projects/${projectId}/forecasts`),
+   222→        fetch(`/api/projects/${projectId}/budgets`),
+   223→        fetch(`/api/projects/${projectId}/budgets/recommendations`),
+   224→      ]);
+   225→
+   226→      if (fRes.ok) {
+   227→        const fData = await fRes.json();
+   228→        setForecasts(fData.forecasts || []);
+   229→      }
+   230→      if (bRes.ok) {
+   231→        const bData = await bRes.json();
+   232→        setBudgets(bData.budgets || []);
+   233→      }
+   234→      if (rRes.ok) {
+   235→        const rData = await rRes.json();
+   236→        setRecommendations(rData.recommendations || []);
+   237→      }
+   238→    } catch {
+   239→      // Silently handle
+   240→    } finally {
+   241→      setIsLoading(false);
+   242→    }
+   243→  }, [projectId]);
+   244→
+   245→  // Budget allocation sum
+   246→  const allocationSum = Object.values(allocations).reduce((a, b) => a + b, 0);
+   247→  const isAllocationValid = allocationSum === 100;
+   248→
+   249→  // Active budget
+   250→  const activeBudget = budgets.find((b) => b.isActive);
+   251→
+   252→  // Forecasts grouped by period and sorted by scenario
+   253→  const forecastsByPeriod = forecasts.reduce(
+   254→    (acc, f) => {
+   255→      if (!acc[f.period]) acc[f.period] = [];
+   256→      acc[f.period].push(f);
+   257→      return acc;
+   258→    },
+   259→    {} as Record<number, Forecast[]>
+   260→  );
+   261→
+   262→  // Handlers
+   263→  const handleGenerateForecast = async () => {
+   264→    if (!forecastForm.currentTraffic) {
+   265→      toast.error("Vul ten minste het huidige verkeer in");
+   266→      return;
+   267→    }
+   268→    setIsGenerating(true);
+   269→    try {
+   270→      const res = await fetch(`/api/projects/${projectId}/forecasts`, {
+   271→        method: "POST",
+   272→        headers: { "Content-Type": "application/json" },
+   273→        body: JSON.stringify({
+   274→          scenario: forecastForm.scenario,
+   275→          period: parseInt(forecastForm.period),
+   276→          currentTraffic: parseInt(forecastForm.currentTraffic) || 0,
+   277→          currentClicks: parseInt(forecastForm.currentClicks) || 0,
+   278→          currentConversions: parseInt(forecastForm.currentConversions) || 0,
+   279→          currentRevenue: parseFloat(forecastForm.currentRevenue) || 0,
+   280→          currentCtr: parseFloat(forecastForm.currentCtr) || 0,
+   281→          currentAvgPosition: parseFloat(forecastForm.currentAvgPosition) || 0,
+   282→          contentOutput: parseInt(forecastForm.contentOutput) || 0,
+   283→        }),
+   284→      });
+   285→      if (res.ok) {
+   286→        toast.success("Prognose gegenereerd");
+   287→        setForecastOpen(false);
+   288→        setForecastForm({
+   289→          scenario: "REALISTIC",
+   290→          period: "12",
+   291→          currentTraffic: "",
+   292→          currentClicks: "",
+   293→          currentConversions: "",
+   294→          currentRevenue: "",
+   295→          currentCtr: "",
+   296→          currentAvgPosition: "",
+   297→          contentOutput: "",
+   298→        });
+   299→        fetchData();
+   300→      } else {
+   301→        toast.error("Fout bij het genereren van de prognose");
+   302→      }
+   303→    } catch {
+   304→      toast.error("Fout bij het genereren van de prognose");
+   305→    } finally {
+   306→      setIsGenerating(false);
+   307→    }
+   308→  };
+   309→
+   310→  const handleDeleteForecast = async (forecastId: string) => {
+   311→    try {
+   312→      const res = await fetch(
+   313→        `/api/projects/${projectId}/forecasts/${forecastId}`,
+   314→        { method: "DELETE" }
+   315→      );
+   316→      if (res.ok) {
+   317→        toast.success("Prognose verwijderd");
+   318→        fetchData();
+   319→      } else {
+   320→        toast.error("Fout bij het verwijderen");
+   321→      }
+   322→    } catch {
+   323→      toast.error("Fout bij het verwijderen");
+   324→    }
+   325→  };
+   326→
+   327→  const handleSaveBudget = async () => {
+   328→    if (!budgetForm.name.trim()) {
+   329→      toast.error("Naam is vereist");
+   330→      return;
+   331→    }
+   332→    if (!budgetForm.totalBudget) {
+   333→      toast.error("Totaal budget is vereist");
+   334→      return;
+   335→    }
+   336→    if (!isAllocationValid) {
+   337→      toast.error(
+   338→        `De percentages moeten optellen tot 100%. Huidig totaal: ${allocationSum}%`
+   339→      );
+   340→      return;
+   341→    }
+   342→    setIsSaving(true);
+   343→    try {
+   344→      const url = editingBudgetId
+   345→        ? `/api/projects/${projectId}/budgets/${editingBudgetId}`
+   346→        : `/api/projects/${projectId}/budgets`;
+   347→      const method = editingBudgetId ? "PATCH" : "POST";
+   348→
+   349→      const res = await fetch(url, {
+   350→        method,
+   351→        headers: { "Content-Type": "application/json" },
+   352→        body: JSON.stringify({
+   353→          name: budgetForm.name,
+   354→          totalBudget: parseFloat(budgetForm.totalBudget),
+   355→          allocations,
+   356→        }),
+   357→      });
+   358→      if (res.ok) {
+   359→        toast.success(
+   360→          editingBudgetId ? "Budget bijgewerkt" : "Budget aangemaakt"
+   361→        );
+   362→        setBudgetOpen(false);
+   363→        setEditingBudgetId(null);
+   364→        setBudgetForm({ name: "", totalBudget: "" });
+   365→        setAllocations({
+   366→          TECHNICAL_SEO: 15,
+   367→          CONTENT: 25,
+   368→          UPDATES: 10,
+   369→          AUTHORITY: 10,
+   370→          DIGITAL_PR: 5,
+   371→          CRO: 10,
+   372→          LOCAL_SEO: 5,
+   373→          GEO: 5,
+   374→          MONITORING: 10,
+   375→          REPORTING: 5,
+   376→        });
+   377→        fetchData();
+   378→      } else {
+   379→        toast.error("Fout bij het opslaan");
+   380→      }
+   381→    } catch {
+   382→      toast.error("Fout bij het opslaan");
+   383→    } finally {
+   384→      setIsSaving(false);
+   385→    }
+   386→  };
+   387→
+   388→  const handleDeleteBudget = async (budgetId: string) => {
+   389→    try {
+   390→      const res = await fetch(
+   391→        `/api/projects/${projectId}/budgets/${budgetId}`,
+   392→        { method: "DELETE" }
+   393→      );
+   394→      if (res.ok) {
+   395→        toast.success("Budget verwijderd");
+   396→        fetchData();
+   397→      } else {
+   398→        toast.error("Fout bij het verwijderen");
+   399→      }
+   400→    } catch {
+   401→      toast.error("Fout bij het verwijderen");
+   402→    }
+   403→  };
+   404→
+   405→  const openEditBudget = (budget: Budget) => {
+   406→    setEditingBudgetId(budget.id);
+   407→    setBudgetForm({
+   408→      name: budget.name,
+   409→      totalBudget: budget.totalBudget.toString(),
+   410→    });
+   411→    setAllocations(budget.allocations || {});
+   412→    setBudgetOpen(true);
+   413→  };
+   414→
+   415→  const openNewBudget = () => {
+   416→    setEditingBudgetId(null);
+   417→    setBudgetForm({ name: "", totalBudget: "" });
+   418→    setAllocations({
+   419→      TECHNICAL_SEO: 15,
+   420→      CONTENT: 25,
+   421→      UPDATES: 10,
+   422→      AUTHORITY: 10,
+   423→      DIGITAL_PR: 5,
+   424→      CRO: 10,
+   425→      LOCAL_SEO: 5,
+   426→      GEO: 5,
+   427→      MONITORING: 10,
+   428→      REPORTING: 5,
+   429→    });
+   430→    setBudgetOpen(true);
+   431→  };
+   432→
+   433→  const formatCurrency = (value: number) => {
+   434→    return new Intl.NumberFormat("nl-NL", {
+   435→      style: "currency",
+   436→      currency: "EUR",
+   437→      maximumFractionDigits: 0,
+   438→    }).format(value);
+   439→  };
+   440→
+   441→  const formatNumber = (value: number) => {
+   442→    return new Intl.NumberFormat("nl-NL").format(value);
+   443→  };
+   444→
+   445→  const formatDate = (dateStr: string) => {
+   446→    try {
+   447→      return new Date(dateStr).toLocaleDateString("nl-NL", {
+   448→        day: "2-digit",
+   449→        month: "2-digit",
+   450→        year: "numeric",
+   451→      });
+   452→    } catch {
+   453→      return dateStr;
+   454→    }
+   455→  };
+   456→
+   457→  return (
+   458→    <motion.div
+   459→      initial={{ opacity: 0 }}
+   460→      animate={{ opacity: 1 }}
+   461→      className="p-4 md:p-6 space-y-6"
+   462→    >
+   463→      {/* Header */}
+   464→      <div className="flex items-center gap-4">
+   465→        <Button
+   466→          variant="ghost"
+   467→          size="icon"
+   468→          onClick={() => router.push(`/projects/${projectId}`)}
+   469→        >
+   470→          <ArrowLeft className="h-4 w-4" />
+   471→        </Button>
+   472→        <div className="flex-1">
+   473→          <h1 className="text-2xl font-bold tracking-tight">
+   474→            Prognoses & Budget
+   475→          </h1>
+   476→          <p className="text-sm text-muted-foreground">
+   477→            SEO-prognoses en budgetplanning
+   478→          </p>
+   479→        </div>
+   480→      </div>
+   481→
+   482→      {isLoading ? (
+   483→        <div className="grid gap-4 md:grid-cols-2">
+   484→          {[1, 2].map((i) => (
+   485→            <Card key={i}>
+   486→              <CardContent className="p-6">
+   487→                <div className="h-40 animate-pulse bg-muted rounded" />
+   488→              </CardContent>
+   489→            </Card>
+   490→          ))}
+   491→        </div>
+   492→      ) : (
+   493→        <Tabs defaultValue="forecasts" className="space-y-4">
+   494→          <TabsList>
+   495→            <TabsTrigger value="forecasts">
+   496→              <LineChart className="mr-1.5 h-4 w-4" />
+   497→              Prognoses
+   498→            </TabsTrigger>
+   499→            <TabsTrigger value="budget">
+   500→              <PieChart className="mr-1.5 h-4 w-4" />
+   501→              Budget
+   502→            </TabsTrigger>
+   503→          </TabsList>
+   504→
+   505→          {/* Tab 1: Prognoses */}
+   506→          <TabsContent value="forecasts" className="space-y-4">
+   507→            <div className="flex items-center justify-between">
+   508→              <div>
+   509→                <h2 className="text-lg font-semibold">SEO-prognoses</h2>
+   510→                <p className="text-sm text-muted-foreground">
+   511→                  Vergelijk verschillende groeiscenario&apos;s
+   512→                </p>
+   513→              </div>
+   514→              <Button size="sm" onClick={() => setForecastOpen(true)}>
+   515→                <Plus className="mr-2 h-4 w-4" />
+   516→                Nieuwe prognose
+   517→              </Button>
+   518→            </div>
+   519→
+   520→            {forecasts.length > 0 ? (
+   521→              <div className="space-y-6">
+   522→                {/* Disclaimer */}
+   523→                <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800">
+   524→                  <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+   525→                  <p className="text-xs text-amber-700 dark:text-amber-400">
+   526→                    Dit is een prognose, geen garantie. Werkelijke resultaten
+   527→                    kunnen afwijken.
+   528→                  </p>
+   529→                </div>
+   530→
+   531→                {/* Group by period */}
+   532→                {Object.entries(forecastsByPeriod).map(
+   533→                  ([period, periodForecasts]) => (
+   534→                    <div key={period} className="space-y-3">
+   535→                      <h3 className="text-sm font-medium text-muted-foreground">
+   536→                        {PERIOD_LABELS[period] || `${period} maanden`}
+   537→                      </h3>
+   538→                      <div className="grid gap-4 md:grid-cols-3">
+   539→                        {periodForecasts.map((f) => (
+   540→                          <Card
+   541→                            key={f.id}
+   542→                            className={`border-2 ${
+   543→                              SCENARIO_COLORS[f.scenario] || ""
+   544→                            }`}
+   545→                          >
+   546→                            <CardHeader className="pb-3">
+   547→                              <div className="flex items-center justify-between">
+   548→                                <Badge
+   549→                                  className={`text-xs ${
+   550→                                    SCENARIO_BADGE_COLORS[f.scenario] || ""
+   551→                                  }`}
+   552→                                >
+   553→                                  {SCENARIO_LABELS[f.scenario] || f.scenario}
+   554→                                </Badge>
+   555→                                <Button
+   556→                                  variant="ghost"
+   557→                                  size="icon"
+   558→                                  className="h-7 w-7"
+   559→                                  onClick={() => handleDeleteForecast(f.id)}
+   560→                                >
+   561→                                  <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
+   562→                                </Button>
+   563→                              </div>
+   564→                            </CardHeader>
+   565→                            <CardContent className="space-y-4">
+   566→                              {/* Key Metrics */}
+   567→                              <div className="grid grid-cols-2 gap-3">
+   568→                                <div>
+   569→                                  <p className="text-xs text-muted-foreground flex items-center gap-1">
+   570→                                    <Users className="h-3 w-3" />
+   571→                                    Verkeer
+   572→                                  </p>
+   573→                                  <p className="text-lg font-bold">
+   574→                                    {formatNumber(f.projectedTraffic)}
+   575→                                  </p>
+   576→                                </div>
+   577→                                <div>
+   578→                                  <p className="text-xs text-muted-foreground flex items-center gap-1">
+   579→                                    <MousePointerClick className="h-3 w-3" />
+   580→                                    Kliks
+   581→                                  </p>
+   582→                                  <p className="text-lg font-bold">
+   583→                                    {formatNumber(f.projectedClicks)}
+   584→                                  </p>
+   585→                                </div>
+   586→                                <div>
+   587→                                  <p className="text-xs text-muted-foreground flex items-center gap-1">
+   588→                                    <Target className="h-3 w-3" />
+   589→                                    Conversies
+   590→                                  </p>
+   591→                                  <p className="text-lg font-bold">
+   592→                                    {formatNumber(f.projectedConversions)}
+   593→                                  </p>
+   594→                                </div>
+   595→                                <div>
+   596→                                  <p className="text-xs text-muted-foreground flex items-center gap-1">
+   597→                                    <DollarSign className="h-3 w-3" />
+   598→                                    Omzet
+   599→                                  </p>
+   600→                                  <p className="text-lg font-bold">
+   601→                                    {formatCurrency(f.projectedRevenue)}
+   602→                                  </p>
+   603→                                </div>
+   604→                              </div>
+   605→
+   606→                              {/* Confidence */}
+   607→                              <div className="space-y-1">
+   608→                                <div className="flex items-center justify-between">
+   609→                                  <span className="text-xs text-muted-foreground">
+   610→                                    Betrouwbaarheid
+   611→                                  </span>
+   612→                                  <span className="text-xs font-medium">
+   613→                                    {f.confidence.toFixed(0)}%
+   614→                                  </span>
+   615→                                </div>
+   616→                                <Progress
+   617→                                  value={f.confidence}
+   618→                                  className="h-2"
+   619→                                />
+   620→                              </div>
+   621→
+   622→                              {/* Assumptions */}
+   623→                              {f.assumptions && f.assumptions.length > 0 && (
+   624→                                <div className="space-y-1">
+   625→                                  <p className="text-xs font-medium text-muted-foreground">
+   626→                                    Aannames
+   627→                                  </p>
+   628→                                  <ul className="space-y-1">
+   629→                                    {f.assumptions.map((a, i) => (
+   630→                                      <li
+   631→                                        key={i}
+   632→                                        className="text-xs text-muted-foreground flex items-start gap-1.5"
+   633→                                      >
+   634→                                        <span className="text-emerald-500 mt-0.5">
+   635→                                          •
+   636→                                        </span>
+   637→                                        {a}
+   638→                                      </li>
+   639→                                    ))}
+   640→                                  </ul>
+   641→                                </div>
+   642→                              )}
+   643→
+   644→                              <p className="text-xs text-muted-foreground">
+   645→                                Aangemaakt op {formatDate(f.createdAt)}
+   646→                              </p>
+   647→                            </CardContent>
+   648→                          </Card>
+   649→                        ))}
+   650→                      </div>
+   651→                    </div>
+   652→                  )
+   653→                )}
+   654→              </div>
+   655→            ) : (
+   656→              <Card>
+   657→                <CardContent className="py-12">
+   658→                  <div className="text-center">
+   659→                    <LineChart className="h-12 w-12 mx-auto text-muted-foreground/50 mb-4" />
+   660→                    <h3 className="text-lg font-medium mb-2">
+   661→                      Geen prognoses
+   662→                    </h3>
+   663→                    <p className="text-sm text-muted-foreground max-w-md mx-auto">
+   664→                      Genereer een SEO-prognose om inzicht te krijgen in de
+   665→                      verwachte groei op basis van verschillende scenario&apos;s.
+   666→                    </p>
+   667→                    <Button
+   668→                      className="mt-4"
+   669→                      onClick={() => setForecastOpen(true)}
+   670→                    >
+   671→                      <Plus className="mr-2 h-4 w-4" />
+   672→                      Nieuwe prognose
+   673→                    </Button>
+   674→                  </div>
+   675→                </CardContent>
+   676→              </Card>
+   677→            )}
+   678→          </TabsContent>
+   679→
+   680→          {/* Tab 2: Budget */}
+   681→          <TabsContent value="budget" className="space-y-4">
+   682→            <div className="flex items-center justify-between">
+   683→              <div>
+   684→                <h2 className="text-lg font-semibold">Budgetplanning</h2>
+   685→                <p className="text-sm text-muted-foreground">
+   686→                  Beheer en optimaliseer je SEO-budget
+   687→                </p>
+   688→              </div>
+   689→              <Button size="sm" onClick={openNewBudget}>
+   690→                <Plus className="mr-2 h-4 w-4" />
+   691→                Nieuw budget
+   692→              </Button>
+   693→            </div>
+   694→
+   695→            {/* Active Budget */}
+   696→            {activeBudget ? (
+   697→              <Card>
+   698→                <CardHeader>
+   699→                  <div className="flex items-center justify-between">
+   700→                    <div>
+   701→                      <CardTitle className="text-base flex items-center gap-2">
+   702→                        <PieChart className="h-4 w-4" />
+   703→                        {activeBudget.name}
+   704→                      </CardTitle>
+   705→                      <CardDescription>
+   706→                        Totaal: {formatCurrency(activeBudget.totalBudget)} per
+   707→                        maand
+   708→                      </CardDescription>
+   709→                    </div>
+   710→                    <div className="flex items-center gap-2">
+   711→                      <Button
+   712→                        variant="outline"
+   713→                        size="sm"
+   714→                        onClick={() => openEditBudget(activeBudget)}
+   715→                      >
+   716→                        <Pencil className="mr-2 h-4 w-4" />
+   717→                        Bewerken
+   718→                      </Button>
+   719→                      <Button
+   720→                        variant="outline"
+   721→                        size="sm"
+   722→                        className="text-red-600 hover:text-red-700"
+   723→                        onClick={() => handleDeleteBudget(activeBudget.id)}
+   724→                      >
+   725→                        <Trash2 className="h-4 w-4" />
+   726→                      </Button>
+   727→                    </div>
+   728→                  </div>
+   729→                </CardHeader>
+   730→                <CardContent className="space-y-3">
+   731→                  {Object.entries(BUDGET_CATEGORIES).map(
+   732→                    ([key, label]) => {
+   733→                      const percentage =
+   734→                        activeBudget.allocations?.[key] || 0;
+   735→                      const amount =
+   736→                        (activeBudget.totalBudget * percentage) / 100;
+   737→                      return (
+   738→                        <div key={key} className="space-y-1">
+   739→                          <div className="flex items-center justify-between text-sm">
+   740→                            <span className="flex items-center gap-2">
+   741→                              <span
+   742→                                className={`w-3 h-3 rounded-sm ${
+   743→                                  BUDGET_COLORS[key] || "bg-gray-400"
+   744→                                }`}
+   745→                              />
+   746→                              {label}
+   747→                            </span>
+   748→                            <span className="text-muted-foreground">
+   749→                              {percentage}% — {formatCurrency(amount)}
+   750→                            </span>
+   751→                          </div>
+   752→                          <div className="relative h-2 bg-muted rounded-full overflow-hidden">
+   753→                            <div
+   754→                              className={`absolute inset-y-0 left-0 rounded-full ${
+   755→                                BUDGET_COLORS[key] || "bg-gray-400"
+   756→                              }`}
+   757→                              style={{ width: `${percentage}%` }}
+   758→                            />
+   759→                          </div>
+   760→                        </div>
+   761→                      );
+   762→                    }
+   763→                  )}
+   764→                </CardContent>
+   765→              </Card>
+   766→            ) : (
+   767→              budgets.length > 0 && (
+   768→                <div className="space-y-3">
+   769→                  {budgets.map((b) => (
+   770→                    <Card key={b.id}>
+   771→                      <CardContent className="p-4 flex items-center justify-between">
+   772→                        <div>
+   773→                          <p className="font-medium">{b.name}</p>
+   774→                          <p className="text-sm text-muted-foreground">
+   775→                            {formatCurrency(b.totalBudget)} per maand
+   776→                          </p>
+   777→                        </div>
+   778→                        <div className="flex items-center gap-2">
+   779→                          <Button
+   780→                            variant="outline"
+   781→                            size="sm"
+   782→                            onClick={() => openEditBudget(b)}
+   783→                          >
+   784→                            <Pencil className="h-4 w-4" />
+   785→                          </Button>
+   786→                          <Button
+   787→                            variant="outline"
+   788→                            size="sm"
+   789→                            className="text-red-600"
+   790→                            onClick={() => handleDeleteBudget(b.id)}
+   791→                          >
+   792→                            <Trash2 className="h-4 w-4" />
+   793→                          </Button>
+   794→                        </div>
+   795→                      </CardContent>
+   796→                    </Card>
+   797→                  ))}
+   798→                </div>
+   799→              )
+   800→            )}
+   801→
+   802→            {!activeBudget && budgets.length === 0 && (
+   803→              <Card>
+   804→                <CardContent className="py-12">
+   805→                  <div className="text-center">
+   806→                    <Calculator className="h-12 w-12 mx-auto text-muted-foreground/50 mb-4" />
+   807→                    <h3 className="text-lg font-medium mb-2">Geen budget</h3>
+   808→                    <p className="text-sm text-muted-foreground max-w-md mx-auto">
+   809→                      Maak een budgetplanning om je SEO-investeringen effectief
+   810→                      te verdelen over de verschillende categorieën.
+   811→                    </p>
+   812→                    <Button className="mt-4" onClick={openNewBudget}>
+   813→                      <Plus className="mr-2 h-4 w-4" />
+   814→                      Nieuw budget
+   815→                    </Button>
+   816→                  </div>
+   817→                </CardContent>
+   818→              </Card>
+   819→            )}
+   820→
+   821→            {/* Budget Recommendations */}
+   822→            {recommendations.length > 0 && (
+   823→              <Card>
+   824→                <CardHeader>
+   825→                  <CardTitle className="text-base flex items-center gap-2">
+   826→                    <Lightbulb className="h-4 w-4" />
+   827→                    Budgetaanbevelingen
+   828→                  </CardTitle>
+   829→                  <CardDescription>
+   830→                    Suggesties voor optimalisatie van je budgetverdeling
+   831→                  </CardDescription>
+   832→                </CardHeader>
+   833→                <CardContent>
+   834→                  <div className="space-y-3">
+   835→                    {recommendations.map((rec) => {
+   836→                      const diff =
+   837→                        rec.recommendedPercentage - rec.currentPercentage;
+   838→                      return (
+   839→                        <div
+   840→                          key={rec.id}
+   841→                          className="flex items-start gap-3 p-3 rounded-lg bg-muted/30"
+   842→                        >
+   843→                          <div
+   844→                            className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${
+   845→                              diff > 0
+   846→                                ? "bg-emerald-100 dark:bg-emerald-900"
+   847→                                : diff < 0
+   848→                                ? "bg-amber-100 dark:bg-amber-900"
+   849→                                : "bg-blue-100 dark:bg-blue-900"
+   850→                            }`}
+   851→                          >
+   852→                            {diff > 0 ? (
+   853→                              <TrendingUp className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+   854→                            ) : diff < 0 ? (
+   855→                              <TrendingDown className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+   856→                            ) : (
+   857→                              <CheckCircle2 className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+   858→                            )}
+   859→                          </div>
+   860→                          <div className="flex-1">
+   861→                            <p className="text-sm font-medium">
+   862→                              {BUDGET_CATEGORIES[rec.category] || rec.category}
+   863→                            </p>
+   864→                            <p className="text-sm text-muted-foreground">
+   865→                              {rec.reason}
+   866→                            </p>
+   867→                            <div className="flex items-center gap-2 mt-1">
+   868→                              <span className="text-xs text-muted-foreground">
+   869→                                Huidig: {rec.currentPercentage}%
+   870→                              </span>
+   871→                              <span className="text-xs text-muted-foreground">
+   872→                                →
+   873→                              </span>
+   874→                              <span
+   875→                                className={`text-xs font-medium ${
+   876→                                  diff > 0
+   877→                                    ? "text-emerald-600 dark:text-emerald-400"
+   878→                                    : diff < 0
+   879→                                    ? "text-amber-600 dark:text-amber-400"
+   880→                                    : ""
+   881→                                }`}
+   882→                              >
+   883→                                Aanbevolen: {rec.recommendedPercentage}%
+   884→                              </span>
+   885→                            </div>
+   886→                          </div>
+   887→                        </div>
+   888→                      );
+   889→                    })}
+   890→                  </div>
+   891→                </CardContent>
+   892→              </Card>
+   893→            )}
+   894→          </TabsContent>
+   895→        </Tabs>
+   896→      )}
+   897→
+   898→      {/* Generate Forecast Dialog */}
+   899→      <Dialog open={forecastOpen} onOpenChange={setForecastOpen}>
+   900→        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+   901→          <DialogHeader>
+   902→            <DialogTitle>Prognose genereren</DialogTitle>
+   903→            <DialogDescription>
+   904→              Genereer een SEO-prognose op basis van huidige metrics en een
+   905→              groeiscenario.
+   906→            </DialogDescription>
+   907→          </DialogHeader>
+   908→          <div className="space-y-4 py-4">
+   909→            <div className="grid grid-cols-2 gap-4">
+   910→              <div className="space-y-2">
+   911→                <Label>Scenario</Label>
+   912→                <Select
+   913→                  value={forecastForm.scenario}
+   914→                  onValueChange={(v) =>
+   915→                    setForecastForm({ ...forecastForm, scenario: v })
+   916→                  }
+   917→                >
+   918→                  <SelectTrigger>
+   919→                    <SelectValue />
+   920→                  </SelectTrigger>
+   921→                  <SelectContent>
+   922→                    {Object.entries(SCENARIO_LABELS).map(([key, label]) => (
+   923→                      <SelectItem key={key} value={key}>
+   924→                        {label}
+   925→                      </SelectItem>
+   926→                    ))}
+   927→                  </SelectContent>
+   928→                </Select>
+   929→              </div>
+   930→              <div className="space-y-2">
+   931→                <Label>Prognoseperiode</Label>
+   932→                <Select
+   933→                  value={forecastForm.period}
+   934→                  onValueChange={(v) =>
+   935→                    setForecastForm({ ...forecastForm, period: v })
+   936→                  }
+   937→                >
+   938→                  <SelectTrigger>
+   939→                    <SelectValue />
+   940→                  </SelectTrigger>
+   941→                  <SelectContent>
+   942→                    {Object.entries(PERIOD_LABELS).map(([key, label]) => (
+   943→                      <SelectItem key={key} value={key}>
+   944→                        {label}
+   945→                      </SelectItem>
+   946→                    ))}
+   947→                  </SelectContent>
+   948→                </Select>
+   949→              </div>
+   950→            </div>
+   951→
+   952→            <Separator />
+   953→            <p className="text-sm font-medium">Huidige metrics</p>
+   954→
+   955→            <div className="grid grid-cols-2 gap-4">
+   956→              <div className="space-y-2">
+   957→                <Label htmlFor="f-traffic">Verkeer</Label>
+   958→                <Input
+   959→                  id="f-traffic"
+   960→                  type="number"
+   961→                  value={forecastForm.currentTraffic}
+   962→                  onChange={(e) =>
+   963→                    setForecastForm({
+   964→                      ...forecastForm,
+   965→                      currentTraffic: e.target.value,
+   966→                    })
+   967→                  }
+   968→                  placeholder="50000"
+   969→                />
+   970→              </div>
+   971→              <div className="space-y-2">
+   972→                <Label htmlFor="f-clicks">Kliks</Label>
+   973→                <Input
+   974→                  id="f-clicks"
+   975→                  type="number"
+   976→                  value={forecastForm.currentClicks}
+   977→                  onChange={(e) =>
+   978→                    setForecastForm({
+   979→                      ...forecastForm,
+   980→                      currentClicks: e.target.value,
+   981→                    })
+   982→                  }
+   983→                  placeholder="12000"
+   984→                />
+   985→              </div>
+   986→              <div className="space-y-2">
+   987→                <Label htmlFor="f-conversions">Conversies</Label>
+   988→                <Input
+   989→                  id="f-conversions"
+   990→                  type="number"
+   991→                  value={forecastForm.currentConversions}
+   992→                  onChange={(e) =>
+   993→                    setForecastForm({
+   994→                      ...forecastForm,
+   995→                      currentConversions: e.target.value,
+   996→                    })
+   997→                  }
+   998→                  placeholder="480"
+   999→                />
+  1000→              </div>
+  1001→              <div className="space-y-2">
+  1002→                <Label htmlFor="f-revenue">Omzet (€)</Label>
+  1003→                <Input
+  1004→                  id="f-revenue"
+  1005→                  type="number"
+  1006→                  value={forecastForm.currentRevenue}
+  1007→                  onChange={(e) =>
+  1008→                    setForecastForm({
+  1009→                      ...forecastForm,
+  1010→                      currentRevenue: e.target.value,
+  1011→                    })
+  1012→                  }
+  1013→                  placeholder="25000"
+  1014→                />
+  1015→              </div>
+  1016→              <div className="space-y-2">
+  1017→                <Label htmlFor="f-ctr">CTR (%)</Label>
+  1018→                <Input
+  1019→                  id="f-ctr"
+  1020→                  type="number"
+  1021→                  step="0.1"
+  1022→                  value={forecastForm.currentCtr}
+  1023→                  onChange={(e) =>
+  1024→                    setForecastForm({
+  1025→                      ...forecastForm,
+  1026→                      currentCtr: e.target.value,
+  1027→                    })
+  1028→                  }
+  1029→                  placeholder="3.5"
+  1030→                />
+  1031→              </div>
+  1032→              <div className="space-y-2">
+  1033→                <Label htmlFor="f-position">Gem. positie</Label>
+  1034→                <Input
+  1035→                  id="f-position"
+  1036→                  type="number"
+  1037→                  step="0.1"
+  1038→                  value={forecastForm.currentAvgPosition}
+  1039→                  onChange={(e) =>
+  1040→                    setForecastForm({
+  1041→                      ...forecastForm,
+  1042→                      currentAvgPosition: e.target.value,
+  1043→                    })
+  1044→                  }
+  1045→                  placeholder="8.5"
+  1046→                />
+  1047→              </div>
+  1048→            </div>
+  1049→
+  1050→            <div className="space-y-2">
+  1051→              <Label htmlFor="f-content">Content-output (artikelen/maand)</Label>
+  1052→              <Input
+  1053→                id="f-content"
+  1054→                type="number"
+  1055→                value={forecastForm.contentOutput}
+  1056→                onChange={(e) =>
+  1057→                  setForecastForm({
+  1058→                    ...forecastForm,
+  1059→                    contentOutput: e.target.value,
+  1060→                  })
+  1061→                }
+  1062→                placeholder="8"
+  1063→              />
+  1064→            </div>
+  1065→          </div>
+  1066→          <DialogFooter>
+  1067→            <Button variant="outline" onClick={() => setForecastOpen(false)}>
+  1068→              Annuleren
+  1069→            </Button>
+  1070→            <Button
+  1071→              onClick={handleGenerateForecast}
+  1072→              disabled={isGenerating || !forecastForm.currentTraffic}
+  1073→            >
+  1074→              {isGenerating ? (
+  1075→                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+  1076→              ) : (
+  1077→                <TrendingUp className="mr-2 h-4 w-4" />
+  1078→              )}
+  1079→              Genereren
+  1080→            </Button>
+  1081→          </DialogFooter>
+  1082→        </DialogContent>
+  1083→      </Dialog>
+  1084→
+  1085→      {/* Budget Dialog */}
+  1086→      <Dialog open={budgetOpen} onOpenChange={setBudgetOpen}>
+  1087→        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+  1088→          <DialogHeader>
+  1089→            <DialogTitle>
+  1090→              {editingBudgetId ? "Budget bewerken" : "Nieuw budget"}
+  1091→            </DialogTitle>
+  1092→            <DialogDescription>
+  1093→              {editingBudgetId
+  1094→                ? "Pas de budgetverdeling aan."
+  1095→                : "Maak een nieuwe budgetplanning aan. De percentages moeten optellen tot 100%."}
+  1096→            </DialogDescription>
+  1097→          </DialogHeader>
+  1098→          <div className="space-y-4 py-4">
+  1099→            <div className="space-y-2">
+  1100→              <Label htmlFor="b-name">Naam</Label>
+  1101→              <Input
+  1102→                id="b-name"
+  1103→                value={budgetForm.name}
+  1104→                onChange={(e) =>
+  1105→                  setBudgetForm({ ...budgetForm, name: e.target.value })
+  1106→                }
+  1107→                placeholder="Bijv. Q1 2025 SEO-budget"
+  1108→              />
+  1109→            </div>
+  1110→            <div className="space-y-2">
+  1111→              <Label htmlFor="b-total">Totaal budget per maand (€)</Label>
+  1112→              <Input
+  1113→                id="b-total"
+  1114→                type="number"
+  1115→                value={budgetForm.totalBudget}
+  1116→                onChange={(e) =>
+  1117→                  setBudgetForm({ ...budgetForm, totalBudget: e.target.value })
+  1118→                }
+  1119→                placeholder="5000"
+  1120→              />
+  1121→            </div>
+  1122→
+  1123→            <Separator />
+  1124→            <div className="space-y-1">
+  1125→              <div className="flex items-center justify-between">
+  1126→                <p className="text-sm font-medium">Verdeling</p>
+  1127→                <span
+  1128→                  className={`text-sm font-bold ${
+  1129→                    isAllocationValid
+  1130→                      ? "text-emerald-600 dark:text-emerald-400"
+  1131→                      : "text-red-600 dark:text-red-400"
+  1132→                  }`}
+  1133→                >
+  1134→                  {allocationSum}%
+  1135→                </span>
+  1136→              </div>
+  1137→              {!isAllocationValid && (
+  1138→                <p className="text-xs text-red-600 dark:text-red-400">
+  1139→                  De percentages moeten optellen tot 100%. Huidig totaal:{" "}
+  1140→                  {allocationSum}%
+  1141→                </p>
+  1142→              )}
+  1143→            </div>
+  1144→
+  1145→            <div className="space-y-4">
+  1146→              {Object.entries(BUDGET_CATEGORIES).map(([key, label]) => (
+  1147→                <div key={key} className="space-y-1.5">
+  1148→                  <div className="flex items-center justify-between">
+  1149→                    <span className="text-sm flex items-center gap-2">
+  1150→                      <span
+  1151→                        className={`w-2.5 h-2.5 rounded-sm ${
+  1152→                          BUDGET_COLORS[key] || "bg-gray-400"
+  1153→                        }`}
+  1154→                      />
+  1155→                      {label}
+  1156→                    </span>
+  1157→                    <span className="text-sm font-medium w-12 text-right">
+  1158→                      {allocations[key] || 0}%
+  1159→                    </span>
+  1160→                  </div>
+  1161→                  <Slider
+  1162→                    value={[allocations[key] || 0]}
+  1163→                    min={0}
+  1164→                    max={50}
+  1165→                    step={1}
+  1166→                    onValueChange={([val]) =>
+  1167→                      setAllocations({ ...allocations, [key]: val })
+  1168→                    }
+  1169→                  />
+  1170→                </div>
+  1171→              ))}
+  1172→            </div>
+  1173→          </div>
+  1174→          <DialogFooter>
+  1175→            <Button variant="outline" onClick={() => setBudgetOpen(false)}>
+  1176→              Annuleren
+  1177→            </Button>
+  1178→            <Button
+  1179→              onClick={handleSaveBudget}
+  1180→              disabled={
+  1181→                isSaving ||
+  1182→                !budgetForm.name.trim() ||
+  1183→                !budgetForm.totalBudget ||
+  1184→                !isAllocationValid
+  1185→              }
+  1186→            >
+  1187→              {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+  1188→              {editingBudgetId ? "Opslaan" : "Aanmaken"}
+  1189→            </Button>
+  1190→          </DialogFooter>
+  1191→        </DialogContent>
+  1192→      </Dialog>
+  1193→    </motion.div>
+  1194→  );
+  1195→}
+  1196→

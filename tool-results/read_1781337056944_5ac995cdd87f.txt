@@ -1,0 +1,861 @@
+   100→  2499→  @@index([intent])
+   101→  2500→  @@index([currentRank])
+   102→  2501→  @@index([deletedAt])
+   103→  2502→  @@map("local_keywords")
+   104→  2503→}
+   105→  2504→
+   106→  2505→model LocalLandingPage {
+   107→  2506→  id          String   @id @default(uuid())
+   108→  2507→  projectId   String
+   109→  2508→  locationId  String
+   110→  2509→  url         String
+   111→  2510→  title       String?
+   112→  2511→  metaDescription String?
+   113→  2512→  h1          String?
+   114→  2513→  wordCount   Int      @default(0)
+   115→  2514→  hasStructuredData Boolean @default(false)
+   116→  2515→  hasNAP      Boolean  @default(false)
+   117→  2516→  hasMap      Boolean  @default(false)
+   118→  2517→  hasOpeningHours Boolean @default(false)
+   119→  2518→  qualityScore Float  @default(0) // 0-100
+   120→  2519→  issues      String?  // JSON array of Dutch issues
+   121→  2520→  deletedAt   DateTime?
+   122→  2521→  createdAt   DateTime @default(now())
+   123→  2522→  updatedAt   DateTime @updatedAt
+   124→  2523→
+   125→  2524→  location Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+   126→  2525→
+   127→  2526→  @@index([projectId])
+   128→  2527→  @@index([locationId])
+   129→  2528→  @@index([url])
+   130→  2529→  @@index([qualityScore])
+   131→  2530→  @@index([deletedAt])
+   132→  2531→  @@map("local_landing_pages")
+   133→  2532→}
+   134→  2533→
+   135→  2534→model LocalCompetitor {
+   136→  2535→  id          String   @id @default(uuid())
+   137→  2536→  projectId   String
+   138→  2537→  locationId  String
+   139→  2538→  name        String
+   140→  2539→  address     String?
+   141→  2540→  city        String?
+   142→  2541→  postalCode  String?
+   143→  2542→  website     String?
+   144→  2543→  avgRating   Float?
+   145→  2544→  reviewCount Int      @default(0)
+   146→  2545→  distance    Float?   // km from our location
+   147→  2546→  strengths   String?  // JSON array of Dutch strengths
+   148→  2547→  weaknesses  String?  // JSON array of Dutch weaknesses
+   149→  2548→  notes       String?  // Dutch notes
+   150→  2549→  isActive    Boolean  @default(true)
+   151→  2550→  deletedAt   DateTime?
+   152→  2551→  createdAt   DateTime @default(now())
+   153→  2552→  updatedAt   DateTime @updatedAt
+   154→  2553→
+   155→  2554→  location Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+   156→  2555→
+   157→  2556→  @@index([projectId])
+   158→  2557→  @@index([locationId])
+   159→  2558→  @@index([isActive])
+   160→  2559→  @@index([deletedAt])
+   161→  2560→  @@map("local_competitors")
+   162→  2561→}
+   163→  2562→
+   164→  2563→model LocationHealthCheck {
+   165→  2564→  id           String             @id @default(uuid())
+   166→  2565→  projectId    String
+   167→  2566→  locationId   String
+   168→  2567→  category     LocalHealthCategory
+   169→  2568→  status       LocalHealthStatus  @default(NOT_CHECKED)
+   170→  2569→  score        Float              @default(0) // 0-100
+   171→  2570→  // Dutch findings
+   172→  2571→  title        String             // Dutch title
+   173→  2572→  description  String             // Dutch description
+   174→  2573→  recommendation String?          // Dutch recommendation
+   175→  2574→  evidence     String?            // JSON evidence
+   176→  2575→  // Metadata
+   177→  2576→  checkedAt    DateTime           @default(now())
+   178→  2577→  createdAt    DateTime           @default(now())
+   179→  2578→  updatedAt    DateTime           @updatedAt
+   180→  2579→
+   181→  2580→  location Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+   182→  2581→
+   183→  2582→  @@index([projectId])
+   184→  2583→  @@index([locationId])
+   185→  2584→  @@index([category])
+   186→  2585→  @@index([status])
+   187→  2586→  @@index([score])
+   188→  2587→  @@map("location_health_checks")
+   189→  2588→}
+   190→  2589→
+   191→  2590→model GoogleBusinessProfile {
+   192→  2591→  id              String   @id @default(uuid())
+   193→  2592→  projectId       String
+   194→  2593→  locationId      String   @unique
+   195→  2594→  // GBP connection
+   196→  2595→  accountId       String?
+   197→  2596→  locationIdGBP   String?
+   198→  2597→  accessToken     String?  // encrypted
+   199→  2598→  refreshToken    String?  // encrypted
+   200→  2599→  // Profile data
+   201→  2600→  businessName    String?
+   202→  2601→  primaryCategory String?
+   203→  2602→  categories      String?  // JSON array
+   204→  2603→  websiteUrl      String?
+   205→  2604→  // Review stats from GBP
+   206→  2605→  avgRating       Float?
+   207→  2606→  totalReviews    Int      @default(0)
+   208→  2607→  lastSyncAt      DateTime?
+   209→  2608→  syncStatus      String   @default("not_connected") // not_connected, connected, syncing, error
+   210→  2609→  syncError       String?  // Dutch error description
+   211→  2610→  // Metadata
+   212→  2611→  createdAt       DateTime @default(now())
+   213→  2612→  updatedAt       DateTime @updatedAt
+   214→  2613→
+   215→  2614→  location Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+   216→  2615→
+   217→  2616→  @@index([projectId])
+   218→  2617→  @@index([syncStatus])
+   219→  2618→  @@map("google_business_profiles")
+   220→  2619→}
+   221→  2620→
+   222→  2621→model RankImport {
+   223→  2622→  id          String   @id @default(uuid())
+   224→  2623→  projectId   String
+   225→  2624→  locationId  String?
+   226→  2625→  importBatch String   @unique
+   227→  2626→  source      String   // "csv_import", "gbp_adapter", "manual"
+   228→  2627→  rowCount    Int      @default(0)
+   229→  2628→  successCount Int     @default(0)
+   230→  2629→  errorCount  Int      @default(0)
+   231→  2630→  errors      String?  // JSON array of error messages
+   232→  2631→  importedAt  DateTime @default(now())
+   233→  2632→  createdAt   DateTime @default(now())
+   234→  2633→
+   235→  2634→  @@index([projectId])
+   236→  2635→  @@index([locationId])
+   237→  2636→  @@index([importBatch])
+   238→  2637→  @@index([source])
+   239→  2638→  @@map("rank_imports")
+   240→  2639→}
+   241→  2640→
+   242→  2641→// ============================================================================
+   243→  2642→// Phase 7: Reviews & Reputation Models
+   244→  2643→// ============================================================================
+   245→  2644→
+   246→  2645→model Review {
+   247→  2646→  id            String         @id @default(uuid())
+   248→  2647→  projectId     String
+   249→  2648→  locationId    String?
+   250→  2649→  // Source
+   251→  2650→  source        ReviewSource
+   252→  2651→  externalId    String?        // ID from external platform
+   253→  2652→  sourceUrl     String?        // Link to original review
+   254→  2653→  // Reviewer
+   255→  2654→  authorName    String?
+   256→  2655→  authorAvatar  String?
+   257→  2656→  isVerified    Boolean        @default(false)
+   258→  2657→  // Content
+   259→  2658→  rating        Float          @default(0) // 1-5
+   260→  2659→  title         String?
+   261→  2660→  content       String?
+   262→  2661→  // Analysis
+   263→  2662→  sentiment     ReviewSentiment @default(NEUTRAL)
+   264→  2663→  sentimentScore Float?        // -1 to 1
+   265→  2664→  themes        String?        // JSON array of detected themes
+   266→  2665→  complaints    String?        // JSON array of Dutch complaints
+   267→  2666→  compliments   String?        // JSON array of Dutch compliments
+   268→  2667→  productIssues String?        // JSON array of Dutch product issues
+   269→  2668→  serviceIssues String?        // JSON array of Dutch service issues
+   270→  2669→  faqOpportunities String?     // JSON array of Dutch FAQ opportunities
+   271→  2670→  contentOpportunities String? // JSON array of Dutch content opportunities
+   272→  2671→  trustSignals  String?        // JSON array of Dutch trust signals
+   273→  2672→  // Metadata
+   274→  2673→  language      String?        @default("nl")
+   275→  2674→  reviewDate    DateTime?
+   276→  2675→  responseDraftId String?      @unique // FK to ReviewResponse
+   277→  2676→  importBatch   String?
+   278→  2677→  deletedAt     DateTime?
+   279→  2678→  createdAt     DateTime       @default(now())
+   280→  2679→  updatedAt     DateTime       @updatedAt
+   281→  2680→
+   282→  2681→  location        Location?           @relation(fields: [locationId], references: [id], onDelete: SetNull)
+   283→  2682→  responseDraft   ReviewResponse?     @relation("ReviewResponseDraft", fields: [responseDraftId], references: [id], onDelete: SetNull)
+   284→  2683→  responses       ReviewResponse[]    @relation("ReviewResponses")
+   285→  2684→
+   286→  2685→  @@index([projectId])
+   287→  2686→  @@index([locationId])
+   288→  2687→  @@index([source])
+   289→  2688→  @@index([rating])
+   290→  2689→  @@index([sentiment])
+   291→  2690→  @@index([reviewDate])
+   292→  2691→  @@index([externalId])
+   293→  2692→  @@index([importBatch])
+   294→  2693→  @@index([deletedAt])
+   295→  2694→  @@map("reviews")
+   296→  2695→}
+   297→  2696→
+   298→  2697→model ReviewResponse {
+   299→  2698→  id          String             @id @default(uuid())
+   300→  2699→  projectId   String
+   301→  2700→  reviewId    String
+   302→  2701→  // Response content
+   303→  2702→  content     String             // Dutch response text
+   304→  2703→  // Approval workflow
+   305→  2704→  status      ReviewResponseStatus @default(DRAFT)
+   306→  2705→  submittedBy String?
+   307→  2706→  reviewedBy  String?
+   308→  2707→  reviewedAt  DateTime?
+   309→  2708→  rejectionReason String?        // Dutch reason for rejection
+   310→  2709→  // Publishing
+   311→  2710→  publishedAt DateTime?
+   312→  2711→  publishError String?           // Dutch error description
+   313→  2712→  // Metadata
+   314→  2713→  createdAt   DateTime           @default(now())
+   315→  2714→  updatedAt   DateTime           @updatedAt
+   316→  2715→
+   317→  2716→  review      Review  @relation("ReviewResponses", fields: [reviewId], references: [id], onDelete: Cascade)
+   318→  2717→  draftForReview Review? @relation("ReviewResponseDraft")
+   319→  2718→
+   320→  2719→  @@index([projectId])
+   321→  2720→  @@index([reviewId])
+   322→  2721→  @@index([status])
+   323→  2722→  @@index([submittedBy])
+   324→  2723→  @@map("review_responses")
+   325→  2724→}
+   326→  2725→
+   327→  2726→// ============================================================================
+   328→  2727→// Phase 8: Enums — E-commerce SEO & Product Feeds
+   329→  2728→// ============================================================================
+   330→  2729→
+   331→  2730→enum ProductStatus {
+   332→  2731→  ACTIVE
+   333→  2732→  OUT_OF_STOCK
+   334→  2733→  DISCONTINUED
+   335→  2734→  SEASONAL
+   336→  2735→  DRAFT
+   337→  2736→}
+   338→  2737→
+   339→  2738→enum FeedType {
+   340→  2739→  MERCHANT
+   341→  2740→  META_CATALOGUE
+   342→  2741→  COMPARISON
+   343→  2742→  MARKETPLACE
+   344→  2743→  AFFILIATE
+   345→  2744→}
+   346→  2745→
+   347→  2746→enum FeedValidationStatus {
+   348→  2747→  PENDING
+   349→  2748→  VALIDATING
+   350→  2749→  VALID
+   351→  2750→  VALID_WITH_WARNINGS
+   352→  2751→  INVALID
+   353→  2752→  ERROR
+   354→  2753→}
+   355→  2754→
+   356→  2755→enum FeedIssueSeverity {
+   357→  2756→  ERROR
+   358→  2757→  WARNING
+   359→  2758→  INFO
+   360→  2759→}
+   361→  2760→
+   362→  2761→// ============================================================================
+   363→  2762→// Phase 8: E-commerce SEO Models
+   364→  2763→// ============================================================================
+   365→  2764→
+   366→  2765→model Product {
+   367→  2766→  id              String        @id @default(uuid())
+   368→  2767→  projectId       String
+   369→  2768→  // Product identity
+   370→  2769→  sku             String?
+   371→  2770→  gtin            String?       // Global Trade Item Number (EAN/UPC/ISBN)
+   372→  2771→  mpn             String?       // Manufacturer Part Number
+   373→  2772→  // Content
+   374→  2773→  name            String
+   375→  2774→  slug            String?
+   376→  2775→  description     String?
+   377→  2776→  shortDescription String?
+   378→  2777→  // Categorisation
+   379→  2778→  categoryId      String?
+   380→  2779→  productType     String?       // Google product type taxonomy
+   381→  2780→  brand           String?
+   382→  2781→  // Pricing
+   383→  2782→  regularPrice    Float?
+   384→  2783→  salePrice       Float?
+   385→  2784→  currency        String?       @default("EUR")
+   386→  2785→  // Margin data (when available)
+   387→  2786→  costPrice       Float?
+   388→  2787→  margin          Float?        // Calculated margin percentage
+   389→  2788→  // Inventory
+   390→  2789→  stockStatus     ProductStatus @default(ACTIVE)
+   391→  2790→  stockQuantity   Int?
+   392→  2791→  manageStock     Boolean       @default(false)
+   393→  2792→  // Variations
+   394→  2793→  parentProductId String?       // For variation products
+   395→  2794→  variationAttributes String?   // JSON: {"color":"red","size":"M"}
+   396→  2795→  // Images
+   397→  2796→  imageUrl        String?
+   398→  2797→  imageAlt        String?
+   399→  2798→  additionalImages String?      // JSON array of image URLs
+   400→  2799→  // URLs
+   401→  2800→  productUrl      String?
+   402→  2801→  // SEO analysis
+   403→  2802→  titleQuality    Float?        @default(0) // 0-100
+   404→  2803→  descriptionQuality Float?     @default(0)
+   405→  2804→  structuredDataScore Float?    @default(0)
+   406→  2805→  imageScore      Float?        @default(0)
+   407→  2806→  overallSeoScore Float?        @default(0)
+   408→  2807→  seoIssues       String?       // JSON array of Dutch SEO issues
+   409→  2808→  // Revenue tracking
+   410→  2809→  revenue30d      Float?        @default(0)
+   411→  2810→  revenue90d      Float?        @default(0)
+   412→  2811→  unitsSold30d    Int?
+   413→  2812→  unitsSold90d    Int?
+   414→  2813→  // Internal links
+   415→  2814→  internalLinkCount Int?        @default(0)
+   416→  2815→  // Seasonal data
+   417→  2816→  isSeasonal      Boolean       @default(false)
+   418→  2817→  seasonalMonths  String?       // JSON array of active months [1-12]
+   419→  2818→  // Source
+   420→  2819→  source          String?       // "woocommerce", "csv_import", "manual"
+   421→  2820→  externalId      String?
+   422→  2821→  importBatch     String?
+   423→  2822→  // Metadata
+   424→  2823→  deletedAt       DateTime?
+   425→  2824→  createdAt       DateTime      @default(now())
+   426→  2825→  updatedAt       DateTime      @updatedAt
+   427→  2826→
+   428→  2827→  category        ProductCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+   429→  2828→  parentProduct   Product?         @relation("ProductVariations", fields: [parentProductId], references: [id], onDelete: Cascade)
+   430→  2829→  variations      Product[]        @relation("ProductVariations")
+   431→  2830→  feedItems       ProductFeedItem[]
+   432→  2831→
+   433→  2832→  @@index([projectId])
+   434→  2833→  @@index([sku])
+   435→  2834→  @@index([gtin])
+   436→  2835→  @@index([categoryId])
+   437→  2836→  @@index([stockStatus])
+   438→  2837→  @@index([overallSeoScore])
+   439→  2838→  @@index([revenue30d])
+   440→  2839→  @@index([parentProductId])
+   441→  2840→  @@index([isSeasonal])
+   442→  2841→  @@index([source])
+   443→  2842→  @@index([importBatch])
+   444→  2843→  @@index([deletedAt])
+   445→  2844→  @@map("products")
+   446→  2845→}
+   447→  2846→
+   448→  2847→model ProductCategory {
+   449→  2848→  id              String   @id @default(uuid())
+   450→  2849→  projectId       String
+   451→  2850→  name            String
+   452→  2851→  slug            String?
+   453→  2852→  description     String?
+   454→  2853→  parentId        String?
+   455→  2854→  // Quality analysis
+   456→  2855→  productCount    Int      @default(0)
+   457→  2856→  qualityScore    Float?   @default(0) // 0-100
+   458→  2857→  seoIssues       String?  // JSON array of Dutch issues
+   459→  2858→  hasDescription  Boolean  @default(false)
+   460→  2859→  hasStructuredData Boolean @default(false)
+   461→  2860→  // Source
+   462→  2861→  externalId      String?
+   463→  2862→  // Metadata
+   464→  2863→  deletedAt       DateTime?
+   465→  2864→  createdAt       DateTime @default(now())
+   466→  2865→  updatedAt       DateTime @updatedAt
+   467→  2866→
+   468→  2867→  parent          ProductCategory?  @relation("CategoryHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+   469→  2868→  children        ProductCategory[] @relation("CategoryHierarchy")
+   470→  2869→  products        Product[]
+   471→  2870→
+   472→  2871→  @@index([projectId])
+   473→  2872→  @@index([parentId])
+   474→  2873→  @@index([qualityScore])
+   475→  2874→  @@index([deletedAt])
+   476→  2875→  @@map("product_categories")
+   477→  2876→}
+   478→  2877→
+   479→  2878→model FacetedNavigationIssue {
+   480→  2879→  id              String   @id @default(uuid())
+   481→  2880→  projectId       String
+   482→  2881→  // The faceted URL that has issues
+   483→  2882→  url             String
+   484→  2883→  // What kind of issue
+   485→  2884→  issueType       String   // "duplicate_content", "thin_content", "crawled_facet", "noindex_needed"
+   486→  2885→  severity        String   // "error", "warning", "info"
+   487→  2886→  // Dutch description and recommendation
+   488→  2887→  description     String   // Dutch description of the issue
+   489→  2888→  recommendation  String   // Dutch recommendation
+   490→  2889→  // Evidence
+   491→  2890→  parameterName   String?  // e.g. "color", "size", "page"
+   492→  2891→  parameterValue  String?  // e.g. "red", "xl", "2"
+   493→  2892→  canonicalUrl    String?  // Recommended canonical
+   494→  2893→  // Status
+   495→  2894→  isResolved      Boolean  @default(false)
+   496→  2895→  resolvedAt      DateTime?
+   497→  2896→  // Metadata
+   498→  2897→  detectedAt      DateTime @default(now())
+   499→  2898→  createdAt       DateTime @default(now())
+   500→  2899→  updatedAt       DateTime @updatedAt
+   501→  2900→
+   502→  2901→  @@index([projectId])
+   503→  2902→  @@index([issueType])
+   504→  2903→  @@index([severity])
+   505→  2904→  @@index([isResolved])
+   506→  2905→  @@index([detectedAt])
+   507→  2906→  @@map("faceted_navigation_issues")
+   508→  2907→}
+   509→  2908→
+   510→  2909→// ============================================================================
+   511→  2910→// Phase 8: Product Feed Models
+   512→  2911→// ============================================================================
+   513→  2912→
+   514→  2913→model ProductFeed {
+   515→  2914→  id              String              @id @default(uuid())
+   516→  2915→  projectId       String
+   517→  2916→  name            String
+   518→  2917→  feedType        FeedType
+   519→  2918→  // Feed source
+   520→  2919→  sourceUrl       String?             // URL to fetch feed from
+   521→  2920→  sourceFormat    String?             // "xml", "csv", "tsv"
+   522→  2921→  // Processing
+   523→  2922→  status          FeedValidationStatus @default(PENDING)
+   524→  2923→  lastValidatedAt DateTime?
+   525→  2924→  lastFetchedAt   DateTime?
+   526→  2925→  // Stats
+   527→  2926→  totalProducts   Int                 @default(0)
+   528→  2927→  validProducts   Int                 @default(0)
+   529→  2928→  warningProducts Int                 @default(0)
+   530→  2929→  invalidProducts Int                 @default(0)
+   531→  2930→  // Metadata
+   532→  2931→  notes           String?             // Dutch notes
+   533→  2932→  deletedAt       DateTime?
+   534→  2933→  createdAt       DateTime            @default(now())
+   535→  2934→  updatedAt       DateTime            @updatedAt
+   536→  2935→
+   537→  2936→  items           ProductFeedItem[]
+   538→  2937→
+   539→  2938→  @@index([projectId])
+   540→  2939→  @@index([feedType])
+   541→  2940→  @@index([status])
+   542→  2941→  @@index([deletedAt])
+   543→  2942→  @@map("product_feeds")
+   544→  2943→}
+   545→  2944→
+   546→  2945→model ProductFeedItem {
+   547→  2946→  id              String           @id @default(uuid())
+   548→  2947→  feedId          String
+   549→  2948→  productId       String?
+   550→  2949→  // Item identification
+   551→  2950→  title           String?
+   552→  2951→  description     String?
+   553→  2952→  gtin            String?
+   554→  2953→  mpn             String?
+   555→  2954→  sku             String?
+   556→  2955→  brand           String?
+   557→  2956→  // Categorisation
+   558→  2957→  category        String?          // Feed category
+   559→  2958→  productType     String?          // Google product type
+   560→  2959→  // Pricing & inventory
+   561→  2960→  price           Float?
+   562→  2961→  salePrice       Float?
+   563→  2962→  currency        String?          @default("EUR")
+   564→  2963→  availability    String?
+   565→  2964→  // URLs
+   566→  2965→  link            String?
+   567→  2966→  imageLink       String?
+   568→  2967→  // Validation
+   569→  2968→  validationStatus FeedValidationStatus @default(PENDING)
+   570→  2969→  issues          String?          // JSON array of validation issues
+   571→  2970→  // Metadata
+   572→  2971→  createdAt       DateTime         @default(now())
+   573→  2972→  updatedAt       DateTime         @updatedAt
+   574→  2973→
+   575→  2974→  feed            ProductFeed      @relation(fields: [feedId], references: [id], onDelete: Cascade)
+   576→  2975→  product         Product?         @relation(fields: [productId], references: [id], onDelete: SetNull)
+   577→  2976→
+   578→  2977→  @@index([feedId])
+   579→  2978→  @@index([productId])
+   580→  2979→  @@index([validationStatus])
+   581→  2980→  @@index([gtin])
+   582→  2981→  @@index([sku])
+   583→  2982→  @@map("product_feed_items")
+   584→  2983→}
+   585→  2984→
+   586→  2985→model FeedValidationRule {
+   587→  2986→  id              String           @id @default(uuid())
+   588→  2987→  projectId       String
+   589→  2988→  // Rule definition
+   590→  2989→  feedType        FeedType
+   591→  2990→  field           String           // e.g. "title", "description", "gtin"
+   592→  2991→  ruleName        String           // e.g. "required", "maxLength", "minLength", "pattern"
+   593→  2992→  severity        FeedIssueSeverity @default(ERROR)
+   594→  2993→  // Rule parameters (JSON)
+   595→  2994→  parameters      String?          // JSON: {"maxLength": 150, "minLength": 10}
+   596→  2995→  // Dutch description
+   597→  2996→  description     String           // Dutch description of what this rule checks
+   598→  2997→  failureMessage  String           // Dutch message when validation fails
+   599→  2998→  // Status
+   600→  2999→  isActive        Boolean          @default(true)
+   601→  3000→  createdAt       DateTime         @default(now())
+   602→  3001→  updatedAt       DateTime         @updatedAt
+   603→  3002→
+   604→  3003→  @@index([projectId])
+   605→  3004→  @@index([feedType])
+   606→  3005→  @@index([field])
+   607→  3006→  @@index([isActive])
+   608→  3007→  @@map("feed_validation_rules")
+   609→  3008→}
+   610→  3009→
+   611→  3010→// ============================================================================
+   612→  3011→// Phase 9: Enums — CRO & Business Intelligence
+   613→  3012→// ============================================================================
+   614→  3013→
+   615→  3014→enum AnalyticsEventType {
+   616→  3015→  PAGE_VIEW
+   617→  3016→  SESSION
+   618→  3017→  EVENT
+   619→  3018→  CONVERSION
+   620→  3019→  REVENUE
+   621→  3020→}
+   622→  3021→
+   623→  3022→enum ConsentState {
+   624→  3023→  GRANTED
+   625→  3024→  DENIED
+   626→  3025→  UNKNOWN
+   627→  3026→}
+   628→  3027→
+   629→  3028→enum CROCategory {
+   630→  3029→  CTA
+   631→  3030→  FORMS
+   632→  3031→  TRUST
+   633→  3032→  VALUE_PROPOSITION
+   634→  3033→  PRICING_COMMUNICATION
+   635→  3034→  MOBILE_UX
+   636→  3035→  FUNNELS
+   637→  3036→  LANDING_PAGES
+   638→  3037→  PRODUCT_PAGES
+   639→  3038→}
+   640→  3039→
+   641→  3040→enum CROSeverity {
+   642→  3041→  CRITICAL
+   643→  3042→  HIGH
+   644→  3043→  MEDIUM
+   645→  3044→  LOW
+   646→  3045→}
+   647→  3046→
+   648→  3047→enum BehaviourType {
+   649→  3048→  SCROLL_DEPTH
+   650→  3049→  CLICK
+   651→  3050→  RAGE_CLICK
+   652→  3051→  DEAD_CLICK
+   653→  3052→  FORM_ABANDONMENT
+   654→  3053→  DEVICE_TYPE
+   655→  3054→  ENGAGEMENT
+   656→  3055→}
+   657→  3056→
+   658→  3057→enum ExperimentStatus {
+   659→  3058→  DRAFT
+   660→  3059→  RUNNING
+   661→  3060→  COMPLETED
+   662→  3061→  CANCELLED
+   663→  3062→}
+   664→  3063→
+   665→  3064→enum ForecastScenario {
+   666→  3065→  CONSERVATIVE
+   667→  3066→  REALISTIC
+   668→  3067→  AMBITIOUS
+   669→  3068→}
+   670→  3069→
+   671→  3070→enum BudgetCategory {
+   672→  3071→  TECHNICAL_SEO
+   673→  3072→  CONTENT
+   674→  3073→  UPDATES
+   675→  3074→  AUTHORITY
+   676→  3075→  DIGITAL_PR
+   677→  3076→  CRO
+   678→  3077→  LOCAL_SEO
+   679→  3078→  GEO
+   680→  3079→  MONITORING
+   681→  3080→  REPORTING
+   682→  3081→}
+   683→  3082→
+   684→  3083→// ============================================================================
+   685→  3084→// Phase 9: First-party Analytics Models
+   686→  3085→// ============================================================================
+   687→  3086→
+   688→  3087→model AnalyticsEvent {
+   689→  3088→  id          String            @id @default(uuid())
+   690→  3089→  projectId   String
+   691→  3090→  // Event identity
+   692→  3091→  eventType   AnalyticsEventType
+   693→  3092→  eventName   String?           // Custom event name
+   694→  3093→  // Page context
+   695→  3094→  pageUrl     String?
+   696→  3095→  pageTitle   String?
+   697→  3096→  referrer    String?
+   698→  3097→  // Session
+   699→  3098→  sessionId   String?
+   700→  3099→  userId      String?           // Anonymised user identifier
+   701→  3100→  // Campaign
+   702→  3101→  utmSource   String?
+   703→  3102→  utmMedium   String?
+   704→  3103→  utmCampaign String?
+   705→  3104→  utmTerm     String?
+   706→  3105→  utmContent  String?
+   707→  3106→  // Event data
+   708→  3107→  eventData   String?           // JSON for custom properties
+   709→  3108→  // Revenue
+   710→  3109→  revenue     Float?
+   711→  3110→  currency    String?           @default("EUR")
+   712→  3111→  // Consent
+   713→  3112→  consentState ConsentState     @default(UNKNOWN)
+   714→  3113→  // Device
+   715→  3114→  deviceType  String?           // "desktop", "mobile", "tablet"
+   716→  3115→  browser     String?
+   717→  3116→  os          String?
+   718→  3117→  country     String?
+   719→  3118→  language    String?
+   720→  3119→  // Metadata
+   721→  3120→  timestamp   DateTime          @default(now())
+   722→  3121→  createdAt   DateTime          @default(now())
+   723→  3122→
+   724→  3123→  @@index([projectId])
+   725→  3124→  @@index([eventType])
+   726→  3125→  @@index([sessionId])
+   727→  3126→  @@index([pageUrl])
+   728→  3127→  @@index([timestamp])
+   729→  3128→  @@index([consentState])
+   730→  3129→  @@index([utmSource])
+   731→  3130→  @@index([utmCampaign])
+   732→  3131→  @@map("analytics_events")
+   733→  3132→}
+   734→  3133→
+   735→  3134→model AnalyticsSession {
+   736→  3135→  id              String   @id @default(uuid())
+   737→  3136→  projectId       String
+   738→  3137→  sessionId       String
+   739→  3138→  // Session data
+   740→  3139→  entryPage       String?
+   741→  3140→  exitPage        String?
+   742→  3141→  pageViews       Int      @default(0)
+   743→  3142→  events          Int      @default(0)
+   744→  3143→  conversions     Int      @default(0)
+   745→  3144→  revenue         Float?   @default(0)
+   746→  3145→  // Source
+   747→  3146→  source          String?
+   748→  3147→  medium          String?
+   749→  3148→  campaign        String?
+   750→  3149→  // Device
+   751→  3150→  deviceType      String?
+   752→  3151→  browser         String?
+   753→  3152→  os              String?
+   754→  3153→  country         String?
+   755→  3154→  // Consent
+   756→  3155→  consentState    ConsentState @default(UNKNOWN)
+   757→  3156→  isCookieless    Boolean  @default(false)
+   758→  3157→  // Duration
+   759→  3158→  durationSeconds Int?
+   760→  3159→  // Timestamps
+   761→  3160→  startedAt       DateTime @default(now())
+   762→  3161→  lastActivityAt  DateTime @default(now())
+   763→  3162→  createdAt       DateTime @default(now())
+   764→  3163→
+   765→  3164→  @@unique([projectId, sessionId])
+   766→  3165→  @@index([projectId])
+   767→  3166→  @@index([sessionId])
+   768→  3167→  @@index([startedAt])
+   769→  3168→  @@index([source])
+   770→  3169→  @@index([deviceType])
+   771→  3170→  @@map("analytics_sessions")
+   772→  3171→}
+   773→  3172→
+   774→  3173→// ============================================================================
+   775→  3174→// Phase 9: Behaviour & CRO Models
+   776→  3175→// ============================================================================
+   777→  3176→
+   778→  3177→model BehaviourRecord {
+   779→  3178→  id              String        @id @default(uuid())
+   780→  3179→  projectId       String
+   781→  3180→  pageUrl         String?
+   782→  3181→  behaviourType   BehaviourType
+   783→  3182→  // Behaviour data
+   784→  3183→  element         String?       // CSS selector or element description
+   785→  3184→  value           Float?        // e.g. scroll depth percentage
+   786→  3185→  metadata        String?       // JSON for additional data
+   787→  3186→  // Session
+   788→  3187→  sessionId       String?
+   789→  3188→  deviceType      String?
+   790→  3189→  // Source
+   791→  3190→  source          String?       // "import", "adapter", "first_party"
+   792→  3191→  importBatch     String?
+   793→  3192→  // Timestamp
+   794→  3193→  recordedAt      DateTime      @default(now())
+   795→  3194→  createdAt       DateTime      @default(now())
+   796→  3195→
+   797→  3196→  @@index([projectId])
+   798→  3197→  @@index([behaviourType])
+   799→  3198→  @@index([pageUrl])
+   800→  3199→  @@index([recordedAt])
+   801→  3200→  @@index([importBatch])
+   802→  3201→  @@map("behaviour_records")
+   803→  3202→}
+   804→  3203→
+   805→  3204→model CROFinding {
+   806→  3205→  id              String      @id @default(uuid())
+   807→  3206→  projectId       String
+   808→  3207→  category        CROCategory
+   809→  3208→  severity        CROSeverity @default(MEDIUM)
+   810→  3209→  // Finding details
+   811→  3210→  title           String      // Dutch title
+   812→  3211→  description     String      // Dutch description
+   813→  3212→  recommendation  String      // Dutch recommendation
+   814→  3213→  evidence        String?     // JSON evidence data
+   815→  3214→  pageUrl         String?     // Page where finding applies
+   816→  3215→  // Impact
+   817→  3216→  estimatedImpact String?     // Dutch estimated impact description
+   818→  3217→  effort          String?     // "low", "medium", "high"
+   819→  3218→  // Status
+   820→  3219→  status          String      @default("open") // open, in_progress, implemented, dismissed
+   821→  3220→  dismissedReason String?     // Dutch reason for dismissal
+   822→  3221→  // Source
+   823→  3222→  source          String?     // "behaviour_analysis", "manual", "experiment"
+   824→  3223→  // Metadata
+   825→  3224→  createdAt       DateTime    @default(now())
+   826→  3225→  updatedAt       DateTime    @updatedAt
+   827→  3226→
+   828→  3227→  @@index([projectId])
+   829→  3228→  @@index([category])
+   830→  3229→  @@index([severity])
+   831→  3230→  @@index([status])
+   832→  3231→  @@index([pageUrl])
+   833→  3232→  @@map("cro_findings")
+   834→  3233→}
+   835→  3234→
+   836→  3235→// ============================================================================
+   837→  3236→// Phase 9: Experiments Model
+   838→  3237→// ============================================================================
+   839→  3238→
+   840→  3239→model Experiment {
+   841→  3240→  id              String           @id @default(uuid())
+   842→  3241→  projectId       String
+   843→  3242→  name            String
+   844→  3243→  description     String?          // Dutch description
+   845→  3244→  // Hypothesis
+   846→  3245→  hypothesis      String           // Dutch hypothesis
+   847→  3246→  // Groups
+   848→  3247→  testGroupName   String?          // Dutch label
+   849→  3248→  controlGroupName String?         // Dutch label
+   850→  3249→  testGroupSize   Int?
+   851→  3250→  controlGroupSize Int?
+   852→  3251→  // KPI
+   853→  3252→  kpiName         String           // Dutch KPI name
+   854→  3253→  kpiBaseline     Float?           // Current baseline value
+   855→  3254→  kpiTarget       Float?           // Expected improvement
+   856→  3255→  // Dates
+   857→  3256→  startDate       DateTime?
+   858→  3257→  endDate         DateTime?
+   859→  3258→  // Results
+   860→  3259→  testGroupResult  Float?
+   861→  3260→  controlGroupResult Float?
+   862→  3261→  improvement     Float?           // Percentage improvement
+   863→  3262→  confidence      Float?           // 0-1 statistical confidence
+   864→  3263→  isSignificant   Boolean          @default(false)
+   865→  3264→  // Conclusion
+   866→  3265→  conclusion      String?          // Dutch conclusion
+   867→  3266→  followUp        String?          // Dutch follow-up action
+   868→  3267→  // Status
+   869→  3268→  status          ExperimentStatus @default(DRAFT)
+   870→  3269→  // Metadata
+   871→  3270→  deletedAt       DateTime?
+   872→  3271→  createdAt       DateTime         @default(now())
+   873→  3272→  updatedAt       DateTime         @updatedAt
+   874→  3273→
+   875→  3274→  @@index([projectId])
+   876→  3275→  @@index([status])
+   877→  3276→  @@index([startDate])
+   878→  3277→  @@index([isSignificant])
+   879→  3278→  @@index([deletedAt])
+   880→  3279→  @@map("experiments")
+   881→  3280→}
+   882→  3281→
+   883→  3282→// ============================================================================
+   884→  3283→// Phase 9: Forecasting & Budget Models
+   885→  3284→// ============================================================================
+   886→  3285→
+   887→  3286→model Forecast {
+   888→  3287→  id              String           @id @default(uuid())
+   889→  3288→  projectId       String
+   890→  3289→  scenario        ForecastScenario
+   891→  3290→  name            String
+   892→  3291→  description     String?          // Dutch description
+   893→  3292→  // Forecast inputs (JSON)
+   894→  3293→  assumptions     String           // JSON: list of Dutch assumptions
+   895→  3294→  inputs          String           // JSON: input parameters
+   896→  3295→  // Forecast outputs (JSON)
+   897→  3296→  trafficForecast String?          // JSON: monthly projections
+   898→  3297→  clicksForecast  String?          // JSON
+   899→  3298→  leadsForecast   String?          // JSON
+   900→  3299→  conversionsForecast String?      // JSON
+   901→  3300→  revenueForecast String?          // JSON
+   902→  3301→  ctrImprovement  Float?
+   903→  3302→  rankingImprovement Float?
+   904→  3303→  contentOutput   Int?             // Articles per month
+   905→  3304→  requiredEffort  String?          // JSON: effort breakdown in Dutch
+   906→  3305→  // Confidence
+   907→  3306→  confidence      Float?           // 0-1
+   908→  3307→  uncertaintyRange String?         // JSON: {low, mid, high} for each metric
+   909→  3308→  // Time range
+   910→  3309→  forecastMonths  Int              @default(12)
+   911→  3310→  startDate       DateTime         @default(now())
+   912→  3311→  // Metadata
+   913→  3312→  deletedAt       DateTime?
+   914→  3313→  createdAt       DateTime         @default(now())
+   915→  3314→  updatedAt       DateTime         @updatedAt
+   916→  3315→
+   917→  3316→  @@index([projectId])
+   918→  3317→  @@index([scenario])
+   919→  3318→  @@index([confidence])
+   920→  3319→  @@index([deletedAt])
+   921→  3320→  @@map("forecasts")
+   922→  3321→}
+   923→  3322→
+   924→  3323→model BudgetAllocation {
+   925→  3324→  id              String         @id @default(uuid())
+   926→  3325→  projectId       String
+   927→  3326→  name            String
+   928→  3327→  description     String?        // Dutch description
+   929→  3328→  // Total budget
+   930→  3329→  totalBudget     Float
+   931→  3330→  currency        String         @default("EUR")
+   932→  3331→  // Allocations (percentages stored as 0-100)
+   933→  3332→  technicalSeo    Float          @default(0)
+   934→  3333→  content         Float          @default(0)
+   935→  3334→  updates         Float          @default(0)
+   936→  3335→  authority       Float          @default(0)
+   937→  3336→  digitalPR       Float          @default(0)
+   938→  3337→  cro             Float          @default(0)
+   939→  3338→  localSeo        Float          @default(0)
+   940→  3339→  geo             Float          @default(0)
+   941→  3340→  monitoring      Float          @default(0)
+   942→  3341→  reporting       Float          @default(0)
+   943→  3342→  // Notes per category (JSON with Dutch notes)
+   944→  3343→  allocationNotes String?
+   945→  3344→  // Status
+   946→  3345→  isActive        Boolean        @default(true)
+   947→  3346→  // Time range
+   948→  3347→  periodStart     DateTime?
+   949→  3348→  periodEnd       DateTime?
+   950→  3349→  // Metadata
+   951→  3350→  deletedAt       DateTime?
+   952→  3351→  createdAt       DateTime       @default(now())
+   953→  3352→  updatedAt       DateTime       @updatedAt
+   954→  3353→
+   955→  3354→  @@index([projectId])
+   956→  3355→  @@index([isActive])
+   957→  3356→  @@index([deletedAt])
+   958→  3357→  @@map("budget_allocations")
+   959→  3358→}
+   960→  3359→
