@@ -1,0 +1,850 @@
+     1→"use client";
+     2→
+     3→import { useState, useEffect, use } from "react";
+     4→import { useRouter } from "@/i18n/routing";
+     5→import { Link } from "@/i18n/routing";
+     6→import { useTranslations } from "@/i18n/client";
+     7→import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+     8→import { Button } from "@/components/ui/button";
+     9→import { Badge } from "@/components/ui/badge";
+    10→import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+    11→import { Input } from "@/components/ui/input";
+    12→import { Label } from "@/components/ui/label";
+    13→import { Textarea } from "@/components/ui/textarea";
+    14→import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+    15→import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+    16→import { motion } from "framer-motion";
+    17→import {
+    18→  ArrowLeft,
+    19→  Globe,
+    20→  Loader2,
+    21→  CheckCircle2,
+    22→  AlertCircle,
+    23→  Save,
+    24→  Clock,
+    25→  Search,
+    26→  FileText,
+    27→  AlertTriangle,
+    28→  Tag,
+    29→  GitBranch,
+    30→  PenTool,
+    31→  Cpu,
+    32→  TrendingDown,
+    33→  Workflow,
+    34→  Link2,
+    35→  Database,
+    36→  FileCode2,
+    37→  GitMerge,
+    38→  History,
+    39→} from "lucide-react";
+    40→import { toast } from "sonner";
+    41→
+    42→interface Project {
+    43→  id: string;
+    44→  name: string;
+    45→  slug: string;
+    46→  websiteUrl: string | null;
+    47→  status: string;
+    48→  onboardingCompleted: boolean;
+    49→  description: string | null;
+    50→  createdAt: string;
+    51→}
+    52→
+    53→interface BrandProfile {
+    54→  id: string;
+    55→  brandName: string | null;
+    56→  description: string | null;
+    57→  toneOfVoice: string | null;
+    58→  products: string | null;
+    59→  services: string | null;
+    60→  audiences: string | null;
+    61→  regions: string | null;
+    62→  preferredTerminology: string | null;
+    63→  prohibitedTerminology: string | null;
+    64→  allowedClaims: string | null;
+    65→  prohibitedClaims: string | null;
+    66→  proofPoints: string | null;
+    67→  certifications: string | null;
+    68→  contactInformation: string | null;
+    69→  conversionGoals: string | null;
+    70→  editorialRules: string | null;
+    71→  disclaimers: string | null;
+    72→  addressPreference: string | null;
+    73→}
+    74→
+    75→interface ActionItem {
+    76→  id: string;
+    77→  title: string;
+    78→  description: string | null;
+    79→  priority: string;
+    80→  effort: string;
+    81→  status: string;
+    82→  deadline: string | null;
+    83→  createdAt: string;
+    84→}
+    85→
+    86→interface JobEntry {
+    87→  id: string;
+    88→  type: string;
+    89→  status: string;
+    90→  progress: number;
+    91→  createdAt: string;
+    92→}
+    93→
+    94→interface AuditLogEntry {
+    95→  id: string;
+    96→  action: string;
+    97→  entity: string;
+    98→  createdAt: string;
+    99→}
+   100→
+   101→export default function ProjectDetailPage({ params }: { params: Promise<{ id: string }> }) {
+   102→  const { id } = use(params);
+   103→  const router = useRouter();
+   104→  const t = useTranslations("project");
+   105→  const tBrand = useTranslations("brand");
+   106→  const tActions = useTranslations("actions");
+   107→  const tJobs = useTranslations("jobs");
+   108→  const tAudit = useTranslations("audit");
+   109→  const tCommon = useTranslations("common");
+   110→
+   111→  const [project, setProject] = useState<Project | null>(null);
+   112→  const [brandProfile, setBrandProfile] = useState<BrandProfile | null>(null);
+   113→  const [actionItems, setActionItems] = useState<ActionItem[]>([]);
+   114→  const [jobs, setJobs] = useState<JobEntry[]>([]);
+   115→  const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
+   116→  const [isLoading, setIsLoading] = useState(true);
+   117→  const [isSaving, setIsSaving] = useState(false);
+   118→
+   119→  // Brand profile form
+   120→  const [brandForm, setBrandForm] = useState<Partial<BrandProfile>>({});
+   121→
+   122→  useEffect(() => {
+   123→    async function fetchData() {
+   124→      try {
+   125→        const [projectRes, actionsRes, jobsRes, auditRes] = await Promise.all([
+   126→          fetch(`/api/projects/${id}`),
+   127→          fetch(`/api/actions?projectId=${id}`),
+   128→          fetch(`/api/jobs?projectId=${id}`),
+   129→          fetch(`/api/audit?projectId=${id}`),
+   130→        ]);
+   131→
+   132→        if (projectRes.ok) {
+   133→          const data = await projectRes.json();
+   134→          setProject(data.project);
+   135→          if (data.brandProfile) {
+   136→            setBrandProfile(data.brandProfile);
+   137→            setBrandForm(data.brandProfile);
+   138→          }
+   139→        }
+   140→        if (actionsRes.ok) {
+   141→          const data = await actionsRes.json();
+   142→          setActionItems(data.items || []);
+   143→        }
+   144→        if (jobsRes.ok) {
+   145→          const data = await jobsRes.json();
+   146→          setJobs(data.items || []);
+   147→        }
+   148→        if (auditRes.ok) {
+   149→          const data = await auditRes.json();
+   150→          setAuditLogs(data.items || []);
+   151→        }
+   152→      } catch {
+   153→        // silently fail
+   154→      } finally {
+   155→        setIsLoading(false);
+   156→      }
+   157→    }
+   158→    fetchData();
+   159→  }, [id]);
+   160→
+   161→  const handleSaveBrandProfile = async () => {
+   162→    setIsSaving(true);
+   163→    try {
+   164→      const res = await fetch(`/api/projects/${id}/brand-profile`, {
+   165→        method: "PUT",
+   166→        headers: { "Content-Type": "application/json" },
+   167→        body: JSON.stringify(brandForm),
+   168→      });
+   169→      if (res.ok) {
+   170→        toast.success(tBrand("saveSuccess"));
+   171→      } else {
+   172→        toast.error(tBrand("saveError"));
+   173→      }
+   174→    } catch {
+   175→      toast.error(tBrand("saveError"));
+   176→    } finally {
+   177→      setIsSaving(false);
+   178→    }
+   179→  };
+   180→
+   181→  const statusVariant = (status: string) => {
+   182→    switch (status) {
+   183→      case "ACTIVE": return "default";
+   184→      case "PAUSED": return "secondary";
+   185→      case "ARCHIVED": return "outline";
+   186→      default: return "secondary";
+   187→    }
+   188→  };
+   189→
+   190→  const statusLabel = (status: string) => {
+   191→    switch (status) {
+   192→      case "ACTIVE": return t("active");
+   193→      case "PAUSED": return t("paused");
+   194→      case "ARCHIVED": return t("archived");
+   195→      default: return status;
+   196→    }
+   197→  };
+   198→
+   199→  const priorityVariant = (priority: string) => {
+   200→    switch (priority) {
+   201→      case "CRITICAL": return "destructive";
+   202→      case "HIGH": return "default";
+   203→      case "MEDIUM": return "secondary";
+   204→      case "LOW": return "outline";
+   205→      default: return "secondary";
+   206→    }
+   207→  };
+   208→
+   209→  const actionStatusLabel = (status: string) => {
+   210→    switch (status) {
+   211→      case "PENDING": return tActions("pending");
+   212→      case "IN_PROGRESS": return tActions("inProgress");
+   213→      case "COMPLETED": return tActions("completed");
+   214→      case "SKIPPED": return tActions("skipped");
+   215→      default: return status;
+   216→    }
+   217→  };
+   218→
+   219→  const jobStatusLabel = (status: string) => {
+   220→    switch (status) {
+   221→      case "PENDING": return tJobs("pending");
+   222→      case "RUNNING": return tJobs("running");
+   223→      case "COMPLETED": return tJobs("completed");
+   224→      case "FAILED": return tJobs("failed");
+   225→      case "CANCELLED": return tJobs("cancelled");
+   226→      default: return status;
+   227→    }
+   228→  };
+   229→
+   230→  if (isLoading) {
+   231→    return (
+   232→      <div className="flex items-center justify-center min-h-[calc(100vh-3.5rem)]">
+   233→        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+   234→      </div>
+   235→    );
+   236→  }
+   237→
+   238→  if (!project) {
+   239→    return (
+   240→      <div className="p-4 md:p-6">
+   241→        <Button variant="ghost" onClick={() => router.push("/projects")}>
+   242→          <ArrowLeft className="mr-2 h-4 w-4" />
+   243→          {tCommon("back")}
+   244→        </Button>
+   245→        <p className="text-muted-foreground mt-4">{tCommon("noResults")}</p>
+   246→      </div>
+   247→    );
+   248→  }
+   249→
+   250→  return (
+   251→    <motion.div
+   252→      initial={{ opacity: 0 }}
+   253→      animate={{ opacity: 1 }}
+   254→      className="p-4 md:p-6 space-y-6"
+   255→    >
+   256→      {/* Header */}
+   257→      <div className="flex items-center gap-4">
+   258→        <Button variant="ghost" size="icon" onClick={() => router.push("/projects")}>
+   259→          <ArrowLeft className="h-4 w-4" />
+   260→        </Button>
+   261→        <div className="flex-1">
+   262→          <div className="flex items-center gap-3">
+   263→            <h1 className="text-2xl font-bold tracking-tight">{project.name}</h1>
+   264→            <Badge variant={statusVariant(project.status) as "default" | "secondary" | "outline"}>
+   265→              {statusLabel(project.status)}
+   266→            </Badge>
+   267→            {project.onboardingCompleted ? (
+   268→              <Badge variant="default" className="bg-emerald-600 text-xs">
+   269→                <CheckCircle2 className="mr-1 h-3 w-3" />
+   270→                {t("onboardingComplete")}
+   271→              </Badge>
+   272→            ) : (
+   273→              <Badge variant="outline" className="text-xs">
+   274→                <AlertCircle className="mr-1 h-3 w-3" />
+   275→                {t("onboardingIncomplete")}
+   276→              </Badge>
+   277→            )}
+   278→          </div>
+   279→          {project.websiteUrl && (
+   280→            <p className="text-muted-foreground text-sm mt-1 flex items-center gap-1">
+   281→              <Globe className="h-3 w-3" />
+   282→              {project.websiteUrl}
+   283→            </p>
+   284→          )}
+   285→        </div>
+   286→      </div>
+   287→
+   288→      {/* Tabs */}
+   289→      <Tabs defaultValue="overview" className="space-y-4">
+   290→        <TabsList>
+   291→          <TabsTrigger value="overview">{t("overview")}</TabsTrigger>
+   292→          <TabsTrigger value="brand">{t("brandProfile")}</TabsTrigger>
+   293→          <TabsTrigger value="actions">{t("actionItems")}</TabsTrigger>
+   294→          <TabsTrigger value="jobs">{t("jobs")}</TabsTrigger>
+   295→          <TabsTrigger value="audit">{t("auditLog")}</TabsTrigger>
+   296→        </TabsList>
+   297→
+   298→        {/* Overview Tab */}
+   299→        <TabsContent value="overview">
+   300→          <div className="grid gap-4 md:grid-cols-2">
+   301→            <Card>
+   302→              <CardHeader>
+   303→                <CardTitle className="text-base">{t("projectInfo")}</CardTitle>
+   304→              </CardHeader>
+   305→              <CardContent className="space-y-3">
+   306→                <div>
+   307→                  <span className="text-sm text-muted-foreground">{t("name")}:</span>
+   308→                  <p className="text-sm font-medium">{project.name}</p>
+   309→                </div>
+   310→                {project.websiteUrl && (
+   311→                  <div>
+   312→                    <span className="text-sm text-muted-foreground">{t("website")}:</span>
+   313→                    <p className="text-sm font-medium">{project.websiteUrl}</p>
+   314→                  </div>
+   315→                )}
+   316→                <div>
+   317→                  <span className="text-sm text-muted-foreground">{t("status")}:</span>
+   318→                  <Badge variant={statusVariant(project.status) as "default" | "secondary" | "outline"} className="ml-2">
+   319→                    {statusLabel(project.status)}
+   320→                  </Badge>
+   321→                </div>
+   322→                {project.description && (
+   323→                  <div>
+   324→                    <span className="text-sm text-muted-foreground">{tCommon("description")}:</span>
+   325→                    <p className="text-sm">{project.description}</p>
+   326→                  </div>
+   327→                )}
+   328→              </CardContent>
+   329→            </Card>
+   330→            <Card>
+   331→              <CardHeader>
+   332→                <CardTitle className="text-base">{t("quickStats")}</CardTitle>
+   333→              </CardHeader>
+   334→              <CardContent className="space-y-3">
+   335→                <div className="flex justify-between">
+   336→                  <span className="text-sm text-muted-foreground">{t("actionItems")}:</span>
+   337→                  <span className="text-sm font-medium">{actionItems.length}</span>
+   338→                </div>
+   339→                <div className="flex justify-between">
+   340→                  <span className="text-sm text-muted-foreground">{t("jobs")}:</span>
+   341→                  <span className="text-sm font-medium">{jobs.length}</span>
+   342→                </div>
+   343→                <div className="flex justify-between">
+   344→                  <span className="text-sm text-muted-foreground">Aangemaakt:</span>
+   345→                  <span className="text-sm font-medium">
+   346→                    {new Date(project.createdAt).toLocaleDateString("nl-NL")}
+   347→                  </span>
+   348→                </div>
+   349→              </CardContent>
+   350→            </Card>
+   351→          </div>
+   352→
+   353→          {/* Module Navigation */}
+   354→          <div className="mt-6">
+   355→            <h3 className="text-sm font-medium text-muted-foreground mb-3">Modules</h3>
+   356→            <div className="grid gap-3 grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
+   357→              <Link href={`/projects/${id}/crawls`}>
+   358→                <Card className="hover:bg-accent/50 transition-colors cursor-pointer">
+   359→                  <CardContent className="p-4 flex items-center gap-3">
+   360→                    <Search className="h-5 w-5 text-emerald-600 shrink-0" />
+   361→                    <div>
+   362→                      <p className="text-sm font-medium">Crawls</p>
+   363→                      <p className="text-xs text-muted-foreground">Website scannen</p>
+   364→                    </div>
+   365→                  </CardContent>
+   366→                </Card>
+   367→              </Link>
+   368→              <Link href={`/projects/${id}/inventory`}>
+   369→                <Card className="hover:bg-accent/50 transition-colors cursor-pointer">
+   370→                  <CardContent className="p-4 flex items-center gap-3">
+   371→                    <FileText className="h-5 w-5 text-blue-600 shrink-0" />
+   372→                    <div>
+   373→                      <p className="text-sm font-medium">Inventaris</p>
+   374→                      <p className="text-xs text-muted-foreground">Pagina-overzicht</p>
+   375→                    </div>
+   376→                  </CardContent>
+   377→                </Card>
+   378→              </Link>
+   379→              <Link href={`/projects/${id}/issues`}>
+   380→                <Card className="hover:bg-accent/50 transition-colors cursor-pointer">
+   381→                  <CardContent className="p-4 flex items-center gap-3">
+   382→                    <AlertTriangle className="h-5 w-5 text-orange-600 shrink-0" />
+   383→                    <div>
+   384→                      <p className="text-sm font-medium">Technische problemen</p>
+   385→                      <p className="text-xs text-muted-foreground">SEO-aanbevelingen</p>
+   386→                    </div>
+   387→                  </CardContent>
+   388→                </Card>
+   389→              </Link>
+   390→              <Link href={`/projects/${id}/keywords`}>
+   391→                <Card className="hover:bg-accent/50 transition-colors cursor-pointer">
+   392→                  <CardContent className="p-4 flex items-center gap-3">
+   393→                    <Tag className="h-5 w-5 text-purple-600 shrink-0" />
+   394→                    <div>
+   395→                      <p className="text-sm font-medium">Trefwoorden</p>
+   396→                      <p className="text-xs text-muted-foreground">Zoekwoordbeheer</p>
+   397→                    </div>
+   398→                  </CardContent>
+   399→                </Card>
+   400→              </Link>
+   401→              <Link href={`/projects/${id}/topics`}>
+   402→                <Card className="hover:bg-accent/50 transition-colors cursor-pointer">
+   403→                  <CardContent className="p-4 flex items-center gap-3">
+   404→                    <GitBranch className="h-5 w-5 text-teal-600 shrink-0" />
+   405→                    <div>
+   406→                      <p className="text-sm font-medium">Onderwerpen</p>
+   407→                      <p className="text-xs text-muted-foreground">Clusters & structuur</p>
+   408→                    </div>
+   409→                  </CardContent>
+   410→                </Card>
+   411→              </Link>
+   412→              <Link href={`/projects/${id}/briefs`}>
+   413→                <Card className="hover:bg-accent/50 transition-colors cursor-pointer">
+   414→                  <CardContent className="p-4 flex items-center gap-3">
+   415→                    <PenTool className="h-5 w-5 text-rose-600 shrink-0" />
+   416→                    <div>
+   417→                      <p className="text-sm font-medium">Contentstudio</p>
+   418→                      <p className="text-xs text-muted-foreground">Briefs & concepten</p>
+   419→                    </div>
+   420→                  </CardContent>
+   421→                </Card>
+   422→              </Link>
+   423→              <Link href={`/projects/${id}/ai-providers`}>
+   424→                <Card className="hover:bg-accent/50 transition-colors cursor-pointer">
+   425→                  <CardContent className="p-4 flex items-center gap-3">
+   426→                    <Cpu className="h-5 w-5 text-indigo-600 shrink-0" />
+   427→                    <div>
+   428→                      <p className="text-sm font-medium">AI-instellingen</p>
+   429→                      <p className="text-xs text-muted-foreground">Providers & modellen</p>
+   430→                    </div>
+   431→                  </CardContent>
+   432→                </Card>
+   433→              </Link>
+   434→              <Link href={`/projects/${id}/decay`}>
+   435→                <Card className="hover:bg-accent/50 transition-colors cursor-pointer">
+   436→                  <CardContent className="p-4 flex items-center gap-3">
+   437→                    <TrendingDown className="h-5 w-5 text-red-600 shrink-0" />
+   438→                    <div>
+   439→                      <p className="text-sm font-medium">Contentverval</p>
+   440→                      <p className="text-xs text-muted-foreground">Snoei-aanbevelingen</p>
+   441→                    </div>
+   442→                  </CardContent>
+   443→                </Card>
+   444→              </Link>
+   445→              <Link href={`/projects/${id}/studio`}>
+   446→                <Card className="hover:bg-accent/50 transition-colors cursor-pointer">
+   447→                  <CardContent className="p-4 flex items-center gap-3">
+   448→                    <Workflow className="h-5 w-5 text-emerald-600 shrink-0" />
+   449→                    <div>
+   450→                      <p className="text-sm font-medium">Contentwizard</p>
+   451→                      <p className="text-xs text-muted-foreground">Stap-voor-stap maken</p>
+   452→                    </div>
+   453→                  </CardContent>
+   454→                </Card>
+   455→              </Link>
+   456→              <Link href={`/projects/${id}/links`}>
+   457→                <Card className="hover:bg-accent/50 transition-colors cursor-pointer">
+   458→                  <CardContent className="p-4 flex items-center gap-3">
+   459→                    <Link2 className="h-5 w-5 text-cyan-600 shrink-0" />
+   460→                    <div>
+   461→                      <p className="text-sm font-medium">Interne links</p>
+   462→                      <p className="text-xs text-muted-foreground">Suggesties & goedkeuring</p>
+   463→                    </div>
+   464→                  </CardContent>
+   465→                </Card>
+   466→              </Link>
+   467→              <Link href={`/projects/${id}/structured-data`}>
+   468→                <Card className="hover:bg-accent/50 transition-colors cursor-pointer">
+   469→                  <CardContent className="p-4 flex items-center gap-3">
+   470→                    <Database className="h-5 w-5 text-amber-600 shrink-0" />
+   471→                    <div>
+   472→                      <p className="text-sm font-medium">Gestructureerde data</p>
+   473→                      <p className="text-xs text-muted-foreground">JSON-LD schema</p>
+   474→                    </div>
+   475→                  </CardContent>
+   476→                </Card>
+   477→              </Link>
+   478→              <Link href={`/projects/${id}/programmatic`}>
+   479→                <Card className="hover:bg-accent/50 transition-colors cursor-pointer">
+   480→                  <CardContent className="p-4 flex items-center gap-3">
+   481→                    <FileCode2 className="h-5 w-5 text-violet-600 shrink-0" />
+   482→                    <div>
+   483→                      <p className="text-sm font-medium">Programmatische SEO</p>
+   484→                      <p className="text-xs text-muted-foreground">Sjablonen & bulkpagina's</p>
+   485→                    </div>
+   486→                  </CardContent>
+   487→                </Card>
+   488→              </Link>
+   489→              <Link href={`/projects/${id}/cms`}>
+   490→                <Card className="hover:bg-accent/50 transition-colors cursor-pointer">
+   491→                  <CardContent className="p-4 flex items-center gap-3">
+   492→                    <GitMerge className="h-5 w-5 text-sky-600 shrink-0" />
+   493→                    <div>
+   494→                      <p className="text-sm font-medium">CMS-verbindingen</p>
+   495→                      <p className="text-xs text-muted-foreground">WordPress & WooCommerce</p>
+   496→                    </div>
+   497→                  </CardContent>
+   498→                </Card>
+   499→              </Link>
+   500→              <Link href={`/projects/${id}/decay-workflow`}>
+   501→                <Card className="hover:bg-accent/50 transition-colors cursor-pointer">
+   502→                  <CardContent className="p-4 flex items-center gap-3">
+   503→                    <TrendingDown className="h-5 w-5 text-orange-600 shrink-0" />
+   504→                    <div>
+   505→                      <p className="text-sm font-medium">Verval-workflow</p>
+   506→                      <p className="text-xs text-muted-foreground">Update & snoeien</p>
+   507→                    </div>
+   508→                  </CardContent>
+   509→                </Card>
+   510→              </Link>
+   511→              <Link href={`/projects/${id}/history`}>
+   512→                <Card className="hover:bg-accent/50 transition-colors cursor-pointer">
+   513→                  <CardContent className="p-4 flex items-center gap-3">
+   514→                    <History className="h-5 w-5 text-slate-600 shrink-0" />
+   515→                    <div>
+   516→                      <p className="text-sm font-medium">Wijzigingsgeschiedenis</p>
+   517→                      <p className="text-xs text-muted-foreground">Alle contentwijzigingen</p>
+   518→                    </div>
+   519→                  </CardContent>
+   520→                </Card>
+   521→              </Link>
+   522→            </div>
+   523→          </div>
+   524→        </TabsContent>
+   525→
+   526→        {/* Brand Profile Tab */}
+   527→        <TabsContent value="brand">
+   528→          <Card>
+   529→            <CardHeader>
+   530→              <CardTitle className="text-base">{tBrand("title")}</CardTitle>
+   531→              <CardDescription>
+   532→                Beheer het merkprofiel voor dit project
+   533→              </CardDescription>
+   534→            </CardHeader>
+   535→            <CardContent className="space-y-4">
+   536→              <div className="grid gap-4 md:grid-cols-2">
+   537→                <div className="space-y-2">
+   538→                  <Label>{tBrand("brandName")}</Label>
+   539→                  <Input
+   540→                    value={brandForm.brandName || ""}
+   541→                    onChange={(e) => setBrandForm({ ...brandForm, brandName: e.target.value })}
+   542→                  />
+   543→                </div>
+   544→                <div className="space-y-2">
+   545→                  <Label>{tBrand("toneOfVoice")}</Label>
+   546→                  <Select
+   547→                    value={brandForm.addressPreference || ""}
+   548→                    onValueChange={(val) => setBrandForm({ ...brandForm, addressPreference: val })}
+   549→                  >
+   550→                    <SelectTrigger>
+   551→                      <SelectValue placeholder={tBrand("addressPreference")} />
+   552→                    </SelectTrigger>
+   553→                    <SelectContent>
+   554→                      <SelectItem value="formal">{tBrand("formal")}</SelectItem>
+   555→                      <SelectItem value="informal">{tBrand("informal")}</SelectItem>
+   556→                    </SelectContent>
+   557→                  </Select>
+   558→                </div>
+   559→              </div>
+   560→              <div className="space-y-2">
+   561→                <Label>{tBrand("description")}</Label>
+   562→                <Textarea
+   563→                  value={brandForm.description || ""}
+   564→                  onChange={(e) => setBrandForm({ ...brandForm, description: e.target.value })}
+   565→                  rows={3}
+   566→                />
+   567→              </div>
+   568→              <div className="grid gap-4 md:grid-cols-2">
+   569→                <div className="space-y-2">
+   570→                  <Label>{tBrand("products")}</Label>
+   571→                  <Textarea
+   572→                    value={brandForm.products || ""}
+   573→                    onChange={(e) => setBrandForm({ ...brandForm, products: e.target.value })}
+   574→                    rows={3}
+   575→                    placeholder="Eén per regel"
+   576→                  />
+   577→                </div>
+   578→                <div className="space-y-2">
+   579→                  <Label>{tBrand("services")}</Label>
+   580→                  <Textarea
+   581→                    value={brandForm.services || ""}
+   582→                    onChange={(e) => setBrandForm({ ...brandForm, services: e.target.value })}
+   583→                    rows={3}
+   584→                    placeholder="Eén per regel"
+   585→                  />
+   586→                </div>
+   587→              </div>
+   588→              <div className="grid gap-4 md:grid-cols-2">
+   589→                <div className="space-y-2">
+   590→                  <Label>{tBrand("audiences")}</Label>
+   591→                  <Textarea
+   592→                    value={brandForm.audiences || ""}
+   593→                    onChange={(e) => setBrandForm({ ...brandForm, audiences: e.target.value })}
+   594→                    rows={3}
+   595→                    placeholder="Eén per regel"
+   596→                  />
+   597→                </div>
+   598→                <div className="space-y-2">
+   599→                  <Label>{tBrand("regions")}</Label>
+   600→                  <Textarea
+   601→                    value={brandForm.regions || ""}
+   602→                    onChange={(e) => setBrandForm({ ...brandForm, regions: e.target.value })}
+   603→                    rows={3}
+   604→                    placeholder="Eén per regel"
+   605→                  />
+   606→                </div>
+   607→              </div>
+   608→              <div className="grid gap-4 md:grid-cols-2">
+   609→                <div className="space-y-2">
+   610→                  <Label>{tBrand("preferredTerms")}</Label>
+   611→                  <Textarea
+   612→                    value={brandForm.preferredTerminology || ""}
+   613→                    onChange={(e) => setBrandForm({ ...brandForm, preferredTerminology: e.target.value })}
+   614→                    rows={2}
+   615→                    placeholder="Eén per regel"
+   616→                  />
+   617→                </div>
+   618→                <div className="space-y-2">
+   619→                  <Label>{tBrand("prohibitedTerms")}</Label>
+   620→                  <Textarea
+   621→                    value={brandForm.prohibitedTerminology || ""}
+   622→                    onChange={(e) => setBrandForm({ ...brandForm, prohibitedTerminology: e.target.value })}
+   623→                    rows={2}
+   624→                    placeholder="Eén per regel"
+   625→                  />
+   626→                </div>
+   627→              </div>
+   628→              <div className="grid gap-4 md:grid-cols-2">
+   629→                <div className="space-y-2">
+   630→                  <Label>{tBrand("allowedClaims")}</Label>
+   631→                  <Textarea
+   632→                    value={brandForm.allowedClaims || ""}
+   633→                    onChange={(e) => setBrandForm({ ...brandForm, allowedClaims: e.target.value })}
+   634→                    rows={2}
+   635→                    placeholder="Eén per regel"
+   636→                  />
+   637→                </div>
+   638→                <div className="space-y-2">
+   639→                  <Label>{tBrand("prohibitedClaims")}</Label>
+   640→                  <Textarea
+   641→                    value={brandForm.prohibitedClaims || ""}
+   642→                    onChange={(e) => setBrandForm({ ...brandForm, prohibitedClaims: e.target.value })}
+   643→                    rows={2}
+   644→                    placeholder="Eén per regel"
+   645→                  />
+   646→                </div>
+   647→              </div>
+   648→              <div className="grid gap-4 md:grid-cols-2">
+   649→                <div className="space-y-2">
+   650→                  <Label>{tBrand("proofPoints")}</Label>
+   651→                  <Textarea
+   652→                    value={brandForm.proofPoints || ""}
+   653→                    onChange={(e) => setBrandForm({ ...brandForm, proofPoints: e.target.value })}
+   654→                    rows={2}
+   655→                    placeholder="Eén per regel"
+   656→                  />
+   657→                </div>
+   658→                <div className="space-y-2">
+   659→                  <Label>{tBrand("certifications")}</Label>
+   660→                  <Textarea
+   661→                    value={brandForm.certifications || ""}
+   662→                    onChange={(e) => setBrandForm({ ...brandForm, certifications: e.target.value })}
+   663→                    rows={2}
+   664→                    placeholder="Eén per regel"
+   665→                  />
+   666→                </div>
+   667→              </div>
+   668→              <div className="grid gap-4 md:grid-cols-2">
+   669→                <div className="space-y-2">
+   670→                  <Label>{tBrand("conversionGoals")}</Label>
+   671→                  <Textarea
+   672→                    value={brandForm.conversionGoals || ""}
+   673→                    onChange={(e) => setBrandForm({ ...brandForm, conversionGoals: e.target.value })}
+   674→                    rows={2}
+   675→                    placeholder="Eén per regel"
+   676→                  />
+   677→                </div>
+   678→                <div className="space-y-2">
+   679→                  <Label>{tBrand("editorialRules")}</Label>
+   680→                  <Textarea
+   681→                    value={brandForm.editorialRules || ""}
+   682→                    onChange={(e) => setBrandForm({ ...brandForm, editorialRules: e.target.value })}
+   683→                    rows={2}
+   684→                    placeholder="Eén per regel"
+   685→                  />
+   686→                </div>
+   687→              </div>
+   688→              <div className="space-y-2">
+   689→                <Label>{tBrand("disclaimers")}</Label>
+   690→                <Textarea
+   691→                  value={brandForm.disclaimers || ""}
+   692→                  onChange={(e) => setBrandForm({ ...brandForm, disclaimers: e.target.value })}
+   693→                  rows={2}
+   694→                />
+   695→              </div>
+   696→              <div className="flex justify-end">
+   697→                <Button onClick={handleSaveBrandProfile} disabled={isSaving}>
+   698→                  {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+   699→                  <Save className="mr-2 h-4 w-4" />
+   700→                  {tCommon("save")}
+   701→                </Button>
+   702→              </div>
+   703→            </CardContent>
+   704→          </Card>
+   705→        </TabsContent>
+   706→
+   707→        {/* Actions Tab */}
+   708→        <TabsContent value="actions">
+   709→          <Card>
+   710→            <CardHeader>
+   711→              <CardTitle className="text-base">{t("actionItems")}</CardTitle>
+   712→            </CardHeader>
+   713→            <CardContent>
+   714→              {actionItems.length > 0 ? (
+   715→                <Table>
+   716→                  <TableHeader>
+   717→                    <TableRow>
+   718→                      <TableHead>Titel</TableHead>
+   719→                      <TableHead>{tActions("priority")}</TableHead>
+   720→                      <TableHead>{tActions("status")}</TableHead>
+   721→                      <TableHead>{tActions("effort")}</TableHead>
+   722→                      <TableHead>{tActions("deadline")}</TableHead>
+   723→                    </TableRow>
+   724→                  </TableHeader>
+   725→                  <TableBody>
+   726→                    {actionItems.map((action) => (
+   727→                      <TableRow key={action.id}>
+   728→                        <TableCell className="font-medium">{action.title}</TableCell>
+   729→                        <TableCell>
+   730→                          <Badge variant={priorityVariant(action.priority) as "destructive" | "default" | "secondary" | "outline"} className="text-xs">
+   731→                            {tActions(action.priority.toLowerCase() as "critical" | "high" | "medium" | "low")}
+   732→                          </Badge>
+   733→                        </TableCell>
+   734→                        <TableCell>{actionStatusLabel(action.status)}</TableCell>
+   735→                        <TableCell>{tActions(action.effort.toLowerCase() as "minimal" | "low" | "medium" | "high")}</TableCell>
+   736→                        <TableCell>
+   737→                          {action.deadline
+   738→                            ? new Date(action.deadline).toLocaleDateString("nl-NL")
+   739→                            : "-"}
+   740→                        </TableCell>
+   741→                      </TableRow>
+   742→                    ))}
+   743→                  </TableBody>
+   744→                </Table>
+   745→              ) : (
+   746→                <div className="flex flex-col items-center justify-center py-8 text-center">
+   747→                  <AlertCircle className="h-10 w-10 text-muted-foreground/30 mb-2" />
+   748→                  <p className="text-sm text-muted-foreground">{t("noActionItems")}</p>
+   749→                </div>
+   750→              )}
+   751→            </CardContent>
+   752→          </Card>
+   753→        </TabsContent>
+   754→
+   755→        {/* Jobs Tab */}
+   756→        <TabsContent value="jobs">
+   757→          <Card>
+   758→            <CardHeader>
+   759→              <CardTitle className="text-base">{t("jobs")}</CardTitle>
+   760→            </CardHeader>
+   761→            <CardContent>
+   762→              {jobs.length > 0 ? (
+   763→                <Table>
+   764→                  <TableHeader>
+   765→                    <TableRow>
+   766→                      <TableHead>{tCommon("type")}</TableHead>
+   767→                      <TableHead>{tJobs("status")}</TableHead>
+   768→                      <TableHead>{tJobs("progress")}</TableHead>
+   769→                      <TableHead>{tCommon("date")}</TableHead>
+   770→                    </TableRow>
+   771→                  </TableHeader>
+   772→                  <TableBody>
+   773→                    {jobs.map((job) => (
+   774→                      <TableRow key={job.id}>
+   775→                        <TableCell className="font-medium">{job.type}</TableCell>
+   776→                        <TableCell>
+   777→                          <Badge variant="secondary" className="text-xs">
+   778→                            {jobStatusLabel(job.status)}
+   779→                          </Badge>
+   780→                        </TableCell>
+   781→                        <TableCell>
+   782→                          <div className="flex items-center gap-2">
+   783→                            <div className="w-20 bg-muted rounded-full h-2">
+   784→                              <div
+   785→                                className="bg-primary h-2 rounded-full transition-all"
+   786→                                style={{ width: `${job.progress}%` }}
+   787→                              />
+   788→                            </div>
+   789→                            <span className="text-xs">{job.progress}%</span>
+   790→                          </div>
+   791→                        </TableCell>
+   792→                        <TableCell>
+   793→                          {new Date(job.createdAt).toLocaleDateString("nl-NL")}
+   794→                        </TableCell>
+   795→                      </TableRow>
+   796→                    ))}
+   797→                  </TableBody>
+   798→                </Table>
+   799→              ) : (
+   800→                <div className="flex flex-col items-center justify-center py-8 text-center">
+   801→                  <Clock className="h-10 w-10 text-muted-foreground/30 mb-2" />
+   802→                  <p className="text-sm text-muted-foreground">{t("noJobs")}</p>
+   803→                </div>
+   804→              )}
+   805→            </CardContent>
+   806→          </Card>
+   807→        </TabsContent>
+   808→
+   809→        {/* Audit Tab */}
+   810→        <TabsContent value="audit">
+   811→          <Card>
+   812→            <CardHeader>
+   813→              <CardTitle className="text-base">{t("auditLog")}</CardTitle>
+   814→            </CardHeader>
+   815→            <CardContent>
+   816→              {auditLogs.length > 0 ? (
+   817→                <Table>
+   818→                  <TableHeader>
+   819→                    <TableRow>
+   820→                      <TableHead>{tCommon("date")}</TableHead>
+   821→                      <TableHead>{tAudit("action")}</TableHead>
+   822→                      <TableHead>{tAudit("entity")}</TableHead>
+   823→                    </TableRow>
+   824→                  </TableHeader>
+   825→                  <TableBody>
+   826→                    {auditLogs.map((log) => (
+   827→                      <TableRow key={log.id}>
+   828→                        <TableCell>
+   829→                          {new Date(log.createdAt).toLocaleDateString("nl-NL")}
+   830→                        </TableCell>
+   831→                        <TableCell>{log.action}</TableCell>
+   832→                        <TableCell>{log.entity}</TableCell>
+   833→                      </TableRow>
+   834→                    ))}
+   835→                  </TableBody>
+   836→                </Table>
+   837→              ) : (
+   838→                <div className="flex flex-col items-center justify-center py-8 text-center">
+   839→                  <AlertCircle className="h-10 w-10 text-muted-foreground/30 mb-2" />
+   840→                  <p className="text-sm text-muted-foreground">{t("noAuditLogs")}</p>
+   841→                </div>
+   842→              )}
+   843→            </CardContent>
+   844→          </Card>
+   845→        </TabsContent>
+   846→      </Tabs>
+   847→    </motion.div>
+   848→  );
+   849→}
+   850→

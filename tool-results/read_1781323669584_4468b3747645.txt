@@ -1,0 +1,1050 @@
+     1→     1→// ============================================================================
+     2→     2→// Analytics & Monitoring — Time-Series Calculation Library
+     3→     3→// SEOCoach: AI-Driven SEO Automation Platform (Dutch Market)
+     4→     4→// ============================================================================
+     5→     5→// Queries DailyMetric and QueryPerformance tables to produce time-series,
+     6→     6→// period comparisons, and dashboard data.
+     7→     7→// Never fabricates data — only shows metrics when real data exists.
+     8→     8→// All user-facing messages are in Dutch.
+     9→     9→// ============================================================================
+    10→    10→
+    11→    11→import { db } from '@/lib/db';
+    12→    12→import type {
+    13→    13→  MetricTimeSeries,
+    14→    14→  PeriodComparison,
+    15→    15→  AnalyticsDashboard,
+    16→    16→  DataFreshnessInfo,
+    17→    17→  SyncStatusInfo,
+    18→    18→  MetricFilters,
+    19→    19→  AggregationMethod,
+    20→    20→  DeviceBreakdown,
+    21→    21→  CountryBreakdown,
+    22→    22→  LandingPagePerformanceRow,
+    23→    23→  QueryPerformanceRow,
+    24→    24→} from './types';
+    25→    25→
+    26→    26→// ============================================================================
+    27→    27→// Date Helpers
+    28→    28→// ============================================================================
+    29→    29→
+    30→    30→/**
+    31→    31→ * Format a Date object as YYYY-MM-DD.
+    32→    32→ */
+    33→    33→function formatDate(date: Date): string {
+    34→    34→  const year = date.getFullYear().toString();
+    35→    35→  const month = (date.getMonth() + 1).toString().padStart(2, '0');
+    36→    36→  const day = date.getDate().toString().padStart(2, '0');
+    37→    37→  return `${year}-${month}-${day}`;
+    38→    38→}
+    39→    39→
+    40→    40→/**
+    41→    41→ * Get a Date object from a YYYY-MM-DD string.
+    42→    42→ */
+    43→    43→function parseDate(dateStr: string): Date {
+    44→    44→  return new Date(dateStr + 'T00:00:00.000Z');
+    45→    45→}
+    46→    46→
+    47→    47→/**
+    48→    48→ * Add days to a date and return a new Date.
+    49→    49→ */
+    50→    50→function addDays(date: Date, days: number): Date {
+    51→    51→  const result = new Date(date);
+    52→    52→  result.setDate(result.getDate() + days);
+    53→    53→  return result;
+    54→    54→}
+    55→    55→
+    56→    56→// ============================================================================
+    57→    57→// Metric Field Mapping
+    58→    58→// ============================================================================
+    59→    59→
+    60→    60→/**
+    61→    61→ * Map a metric key to the corresponding DailyMetric field name.
+    62→    62→ * Returns the Prisma field name for use in queries.
+    63→    63→ */
+    64→    64→function getMetricField(metric: string): string {
+    65→    65→  const fieldMap: Record<string, string> = {
+    66→    66→    clicks: 'clicks',
+    67→    67→    impressions: 'impressions',
+    68→    68→    ctr: 'ctr',
+    69→    69→    averagePosition: 'averagePosition',
+    70→    70→    position: 'averagePosition',
+    71→    71→    sessions: 'sessions',
+    72→    72→    users: 'users',
+    73→    73→    newUsers: 'newUsers',
+    74→    74→    pageViews: 'pageViews',
+    75→    75→    bounceRate: 'bounceRate',
+    76→    76→    avgSessionDuration: 'avgSessionDuration',
+    77→    77→    conversions: 'conversions',
+    78→    78→    conversionRate: 'conversionRate',
+    79→    79→    revenue: 'revenue',
+    80→    80→    productRevenue: 'productRevenue',
+    81→    81→  };
+    82→    82→  return fieldMap[metric] ?? metric;
+    83→    83→}
+    84→    84→
+    85→    85→/**
+    86→    86→ * Check if a metric uses average aggregation rather than sum.
+    87→    87→ */
+    88→    88→function isAverageMetric(metric: string): boolean {
+    89→    89→  return [
+    90→    90→    'ctr',
+    91→    91→    'averagePosition',
+    92→    92→    'position',
+    93→    93→    'bounceRate',
+    94→    94→    'avgSessionDuration',
+    95→    95→    'conversionRate',
+    96→    96→  ].includes(metric);
+    97→    97→}
+    98→    98→
+    99→    99→// ============================================================================
+   100→   100→// Change Calculation
+   101→   101→// ============================================================================
+   102→   102→
+   103→   103→/**
+   104→   104→ * Calculate the percentage change between two values.
+   105→   105→ * Handles edge cases: division by zero, null values, and zero-to-zero.
+   106→   106→ *
+   107→   107→ * @param current - The current period value
+   108→   108→ * @param previous - The previous period value
+   109→   109→ * @returns Percentage change as a number, or null if undefined
+   110→   110→ */
+   111→   111→export function calculateChangePercentage(
+   112→   112→  current: number | null,
+   113→   113→  previous: number | null
+   114→   114→): number | null {
+   115→   115→  if (current === null || previous === null) return null;
+   116→   116→  if (previous === 0 && current === 0) return 0;
+   117→   117→  if (previous === 0) return current > 0 ? 100 : null;
+   118→   118→  return ((current - previous) / Math.abs(previous)) * 100;
+   119→   119→}
+   120→   120→
+   121→   121→/**
+   122→   122→ * Determine the direction of a change.
+   123→   123→ *
+   124→   124→ * @param change - The percentage change value
+   125→   125→ * @returns 'up', 'down', or 'neutral'
+   126→   126→ */
+   127→   127→function getChangeDirection(
+   128→   128→  change: number | null
+   129→   129→): 'up' | 'down' | 'neutral' | null {
+   130→   130→  if (change === null) return null;
+   131→   131→  if (change > 0.5) return 'up';
+   132→   132→  if (change < -0.5) return 'down';
+   133→   133→  return 'neutral';
+   134→   134→}
+   135→   135→
+   136→   136→// ============================================================================
+   137→   137→// Aggregation
+   138→   138→// ============================================================================
+   139→   139→
+   140→   140→/**
+   141→   141→ * Aggregate an array of metric values using the specified method.
+   142→   142→ *
+   143→   143→ * @param values - Array of numeric values
+   144→   144→ * @param method - Aggregation method ('sum' or 'average')
+   145→   145→ * @returns Aggregated value
+   146→   146→ */
+   147→   147→export function aggregateMetrics(
+   148→   148→  values: number[],
+   149→   149→  method: AggregationMethod
+   150→   150→): number {
+   151→   151→  if (values.length === 0) return 0;
+   152→   152→
+   153→   153→  if (method === 'average') {
+   154→   154→    return values.reduce((sum, v) => sum + v, 0) / values.length;
+   155→   155→  }
+   156→   156→
+   157→   157→  return values.reduce((sum, v) => sum + v, 0);
+   158→   158→}
+   159→   159→
+   160→   160→// ============================================================================
+   161→   161→// Time-Series Calculation
+   162→   162→// ============================================================================
+   163→   163→
+   164→   164→/**
+   165→   165→ * Calculate a time-series for a specific metric within a date range.
+   166→   166→ *
+   167→   167→ * Queries DailyMetric records and returns a MetricTimeSeries with
+   168→   168→ * data points, totals, averages, and change calculations.
+   169→   169→ * Only returns data when real data exists — never fabricates data.
+   170→   170→ *
+   171→   171→ * @param projectId - The project ID
+   172→   172→ * @param metric - The metric key (e.g. 'clicks', 'sessions', 'ctr')
+   173→   173→ * @param startDate - Start date (YYYY-MM-DD)
+   174→   174→ * @param endDate - End date (YYYY-MM-DD)
+   175→   175→ * @param filters - Optional segmentation filters
+   176→   176→ * @returns MetricTimeSeries with data points and aggregations
+   177→   177→ */
+   178→   178→export async function calculateTimeSeries(
+   179→   179→  projectId: string,
+   180→   180→  metric: string,
+   181→   181→  startDate: string,
+   182→   182→  endDate: string,
+   183→   183→  filters?: MetricFilters
+   184→   184→): Promise<MetricTimeSeries> {
+   185→   185→  const field = getMetricField(metric);
+   186→   186→  const useAverage = isAverageMetric(metric);
+   187→   187→
+   188→   188→  const where: Record<string, unknown> = {
+   189→   189→    projectId,
+   190→   190→    date: {
+   191→   191→      gte: parseDate(startDate),
+   192→   192→      lte: parseDate(endDate),
+   193→   193→    },
+   194→   194→  };
+   195→   195→
+   196→   196→  // Apply filters
+   197→   197→  if (filters?.source) where.source = filters.source;
+   198→   198→  if (filters?.medium) where.medium = filters.medium;
+   199→   199→  if (filters?.campaign) where.campaign = filters.campaign;
+   200→   200→  if (filters?.device) where.device = filters.device;
+   201→   201→  if (filters?.country) where.country = filters.country;
+   202→   202→  if (filters?.landingPage) where.landingPage = filters.landingPage;
+   203→   203→  if (filters?.connectionId) where.connectionId = filters.connectionId;
+   204→   204→
+   205→   205→  const records = await db.dailyMetric.findMany({
+   206→   206→    where,
+   207→   207→    select: {
+   208→   208→      date: true,
+   209→   209→      [field]: true,
+   210→   210→    },
+   211→   211→    orderBy: { date: 'asc' },
+   212→   212→  });
+   213→   213→
+   214→   214→  if (records.length === 0) {
+   215→   215→    return {
+   216→   216→      metric,
+   217→   217→      dataPoints: [],
+   218→   218→      total: 0,
+   219→   219→      average: 0,
+   220→   220→      change: null,
+   221→   221→      changeDirection: null,
+   222→   222→    };
+   223→   223→  }
+   224→   224→
+   225→   225→  // Group by date and aggregate (multiple records per day possible due to segmentation)
+   226→   226→  const dateMap = new Map<string, number[]>();
+   227→   227→
+   228→   228→  for (const record of records) {
+   229→   229→    const dateKey = formatDate(record.date);
+   230→   230→    const value = record[field as keyof typeof record];
+   231→   231→    if (typeof value === 'number' && !isNaN(value)) {
+   232→   232→      if (!dateMap.has(dateKey)) {
+   233→   233→        dateMap.set(dateKey, []);
+   234→   234→      }
+   235→   235→      dateMap.get(dateKey)!.push(value);
+   236→   236→    }
+   237→   237→  }
+   238→   238→
+   239→   239→  // Build data points
+   240→   240→  const dataPoints: { date: string; value: number }[] = [];
+   241→   241→  for (const [date, values] of dateMap) {
+   242→   242→    const aggregated = useAverage
+   243→   243→      ? aggregateMetrics(values, 'average')
+   244→   244→      : aggregateMetrics(values, 'sum');
+   245→   245→    dataPoints.push({ date, value: Math.round(aggregated * 100) / 100 });
+   246→   246→  }
+   247→   247→
+   248→   248→  // Sort by date
+   249→   249→  dataPoints.sort((a, b) => a.date.localeCompare(b.date));
+   250→   250→
+   251→   251→  // Calculate totals
+   252→   252→  const allValues = dataPoints.map((dp) => dp.value);
+   253→   253→  const total = useAverage
+   254→   254→    ? aggregateMetrics(allValues, 'average')
+   255→   255→    : aggregateMetrics(allValues, 'sum');
+   256→   256→  const average =
+   257→   257→    allValues.length > 0
+   258→   258→      ? allValues.reduce((sum, v) => sum + v, 0) / allValues.length
+   259→   259→      : 0;
+   260→   260→
+   261→   261→  // Calculate change vs previous period of equal length
+   262→   262→  const periodDays =
+   263→   263→    Math.ceil(
+   264→   264→      (parseDate(endDate).getTime() - parseDate(startDate).getTime()) /
+   265→   265→        (1000 * 60 * 60 * 24)
+   266→   266→    ) + 1;
+   267→   267→  const prevEnd = addDays(parseDate(startDate), -1);
+   268→   268→  const prevStart = addDays(prevEnd, -(periodDays - 1));
+   269→   269→
+   270→   270→  const previousTotal = await getMetricTotal(
+   271→   271→    projectId,
+   272→   272→    metric,
+   273→   273→    formatDate(prevStart),
+   274→   274→    formatDate(prevEnd),
+   275→   275→    filters
+   276→   276→  );
+   277→   277→
+   278→   278→  const change = calculateChangePercentage(
+   279→   279→    useAverage ? average : total,
+   280→   280→    previousTotal
+   281→   281→  );
+   282→   282→  const changeDirection = getChangeDirection(change);
+   283→   283→
+   284→   284→  return {
+   285→   285→    metric,
+   286→   286→    dataPoints,
+   287→   287→    total: Math.round(total * 100) / 100,
+   288→   288→    average: Math.round(average * 100) / 100,
+   289→   289→    change: change !== null ? Math.round(change * 100) / 100 : null,
+   290→   290→    changeDirection,
+   291→   291→  };
+   292→   292→}
+   293→   293→
+   294→   294→/**
+   295→   295→ * Get the total for a metric in a period (used for change calculations).
+   296→   296→ */
+   297→   297→async function getMetricTotal(
+   298→   298→  projectId: string,
+   299→   299→  metric: string,
+   300→   300→  startDate: string,
+   301→   301→  endDate: string,
+   302→   302→  filters?: MetricFilters
+   303→   303→): Promise<number | null> {
+   304→   304→  const field = getMetricField(metric);
+   305→   305→  const useAverage = isAverageMetric(metric);
+   306→   306→
+   307→   307→  const where: Record<string, unknown> = {
+   308→   308→    projectId,
+   309→   309→    date: {
+   310→   310→      gte: parseDate(startDate),
+   311→   311→      lte: parseDate(endDate),
+   312→   312→    },
+   313→   313→  };
+   314→   314→
+   315→   315→  if (filters?.source) where.source = filters.source;
+   316→   316→  if (filters?.medium) where.medium = filters.medium;
+   317→   317→  if (filters?.campaign) where.campaign = filters.campaign;
+   318→   318→  if (filters?.device) where.device = filters.device;
+   319→   319→  if (filters?.country) where.country = filters.country;
+   320→   320→  if (filters?.landingPage) where.landingPage = filters.landingPage;
+   321→   321→  if (filters?.connectionId) where.connectionId = filters.connectionId;
+   322→   322→
+   323→   323→  const records = await db.dailyMetric.findMany({
+   324→   324→    where,
+   325→   325→    select: {
+   326→   326→      [field]: true,
+   327→   327→    },
+   328→   328→  });
+   329→   329→
+   330→   330→  if (records.length === 0) return null;
+   331→   331→
+   332→   332→  const values: number[] = [];
+   333→   333→  for (const record of records) {
+   334→   334→    const raw = record[field as keyof typeof record];
+   335→   335→    if (typeof raw === 'number' && !isNaN(raw)) {
+   336→   336→      values.push(raw);
+   337→   337→    }
+   338→   338→  }
+   339→   339→
+   340→   340→  if (values.length === 0) return null;
+   341→   341→
+   342→   342→  return useAverage
+   343→   343→    ? aggregateMetrics(values, 'average')
+   344→   344→    : aggregateMetrics(values, 'sum');
+   345→   345→}
+   346→   346→
+   347→   347→// ============================================================================
+   348→   348→// Period Comparison
+   349→   349→// ============================================================================
+   350→   350→
+   351→   351→/**
+   352→   352→ * Calculate a comparison between two periods for a metric.
+   353→   353→ *
+   354→   354→ * @param projectId - The project ID
+   355→   355→ * @param metric - The metric key
+   356→   356→ * @param currentStart - Current period start (YYYY-MM-DD)
+   357→   357→ * @param currentEnd - Current period end (YYYY-MM-DD)
+   358→   358→ * @param previousStart - Previous period start (YYYY-MM-DD)
+   359→   359→ * @param previousEnd - Previous period end (YYYY-MM-DD)
+   360→   360→ * @param filters - Optional segmentation filters
+   361→   361→ * @returns PeriodComparison with current, previous, and optional year-over-year
+   362→   362→ */
+   363→   363→export async function calculatePeriodComparison(
+   364→   364→  projectId: string,
+   365→   365→  metric: string,
+   366→   366→  currentStart: string,
+   367→   367→  currentEnd: string,
+   368→   368→  previousStart: string,
+   369→   369→  previousEnd: string,
+   370→   370→  filters?: MetricFilters
+   371→   371→): Promise<PeriodComparison> {
+   372→   372→  const [current, previous] = await Promise.all([
+   373→   373→    calculateTimeSeries(projectId, metric, currentStart, currentEnd, filters),
+   374→   374→    calculateTimeSeries(
+   375→   375→      projectId,
+   376→   376→      metric,
+   377→   377→      previousStart,
+   378→   378→      previousEnd,
+   379→   379→      filters
+   380→   380→    ),
+   381→   381→  ]);
+   382→   382→
+   383→   383→  // Try year-over-year if possible
+   384→   384→  let yearOverYear: MetricTimeSeries | null = null;
+   385→   385→  try {
+   386→   386→    const currentStartDt = parseDate(currentStart);
+   387→   387→    const currentEndDt = parseDate(currentEnd);
+   388→   388→    const yoyStart = formatDate(
+   389→   389→      new Date(currentStartDt.getFullYear() - 1, currentStartDt.getMonth(), currentStartDt.getDate())
+   390→   390→    );
+   391→   391→    const yoyEnd = formatDate(
+   392→   392→      new Date(currentEndDt.getFullYear() - 1, currentEndDt.getMonth(), currentEndDt.getDate())
+   393→   393→    );
+   394→   394→
+   395→   395→    yearOverYear = await calculateTimeSeries(
+   396→   396→      projectId,
+   397→   397→      metric,
+   398→   398→      yoyStart,
+   399→   399→      yoyEnd,
+   400→   400→      filters
+   401→   401→    );
+   402→   402→
+   403→   403→    // If no data for YoY period, set to null
+   404→   404→    if (yearOverYear.dataPoints.length === 0) {
+   405→   405→      yearOverYear = null;
+   406→   406→    }
+   407→   407→  } catch {
+   408→   408→    // Year-over-year is optional — don't fail the whole comparison
+   409→   409→  }
+   410→   410→
+   411→   411→  return {
+   412→   412→    current,
+   413→   413→    previous,
+   414→   414→    yearOverYear,
+   415→   415→  };
+   416→   416→}
+   417→   417→
+   418→   418→/**
+   419→   419→ * Calculate year-over-year comparison for a metric.
+   420→   420→ *
+   421→   421→ * @param projectId - The project ID
+   422→   422→ * @param metric - The metric key
+   423→   423→ * @param currentStart - Current period start (YYYY-MM-DD)
+   424→   424→ * @param currentEnd - Current period end (YYYY-MM-DD)
+   425→   425→ * @param filters - Optional segmentation filters
+   426→   426→ * @returns PeriodComparison with current vs same period last year
+   427→   427→ */
+   428→   428→export async function calculateYearOverYear(
+   429→   429→  projectId: string,
+   430→   430→  metric: string,
+   431→   431→  currentStart: string,
+   432→   432→  currentEnd: string,
+   433→   433→  filters?: MetricFilters
+   434→   434→): Promise<PeriodComparison | null> {
+   435→   435→  const currentStartDt = parseDate(currentStart);
+   436→   436→  const currentEndDt = parseDate(currentEnd);
+   437→   437→
+   438→   438→  const yoyStart = formatDate(
+   439→   439→    new Date(
+   440→   440→      currentStartDt.getFullYear() - 1,
+   441→   441→      currentStartDt.getMonth(),
+   442→   442→      currentStartDt.getDate()
+   443→   443→    )
+   444→   444→  );
+   445→   445→  const yoyEnd = formatDate(
+   446→   446→    new Date(
+   447→   447→      currentEndDt.getFullYear() - 1,
+   448→   448→      currentEndDt.getMonth(),
+   449→   449→      currentEndDt.getDate()
+   450→   450→    )
+   451→   451→  );
+   452→   452→
+   453→   453→  // Check if YoY data exists
+   454→   454→  const yoyCount = await db.dailyMetric.count({
+   455→   455→    where: {
+   456→   456→      projectId,
+   457→   457→      date: {
+   458→   458→        gte: parseDate(yoyStart),
+   459→   459→        lte: parseDate(yoyEnd),
+   460→   460→      },
+   461→   461→      ...(filters?.connectionId ? { connectionId: filters.connectionId } : {}),
+   462→   462→    },
+   463→   463→  });
+   464→   464→
+   465→   465→  if (yoyCount === 0) return null;
+   466→   466→
+   467→   467→  return calculatePeriodComparison(
+   468→   468→    projectId,
+   469→   469→    metric,
+   470→   470→    currentStart,
+   471→   471→    currentEnd,
+   472→   472→    yoyStart,
+   473→   473→    yoyEnd,
+   474→   474→    filters
+   475→   475→  );
+   476→   476→}
+   477→   477→
+   478→   478→// ============================================================================
+   479→   479→// Dashboard Data
+   480→   480→// ============================================================================
+   481→   481→
+   482→   482→/**
+   483→   483→ * Get complete dashboard data for a project.
+   484→   484→ *
+   485→   485→ * Aggregates search performance, analytics, conversions, and revenue
+   486→   486→ * metrics. Only includes sections where real data exists.
+   487→   487→ *
+   488→   488→ * @param projectId - The project ID
+   489→   489→ * @param days - Number of days to look back (default 28)
+   490→   490→ * @returns AnalyticsDashboard with all available metrics
+   491→   491→ */
+   492→   492→export async function getDashboardData(
+   493→   493→  projectId: string,
+   494→   494→  days: number = 28
+   495→   495→): Promise<AnalyticsDashboard> {
+   496→   496→  const endDate = formatDate(new Date());
+   497→   497→  const startDate = formatDate(addDays(new Date(), -(days - 1)));
+   498→   498→
+   499→   499→  // Calculate search performance metrics (always available if any data exists)
+   500→   500→  const [clicks, impressions, ctr, position, dataFreshness, syncStatus] =
+   501→   501→    await Promise.all([
+   502→   502→      calculateTimeSeries(projectId, 'clicks', startDate, endDate),
+   503→   503→      calculateTimeSeries(projectId, 'impressions', startDate, endDate),
+   504→   504→      calculateTimeSeries(projectId, 'ctr', startDate, endDate),
+   505→   505→      calculateTimeSeries(projectId, 'averagePosition', startDate, endDate),
+   506→   506→      getDataFreshness(projectId),
+   507→   507→      getSyncStatus(projectId),
+   508→   508→    ]);
+   509→   509→
+   510→   510→  const dashboard: AnalyticsDashboard = {
+   511→   511→    searchPerformance: {
+   512→   512→      clicks,
+   513→   513→      impressions,
+   514→   514→      ctr,
+   515→   515→      position,
+   516→   516→    },
+   517→   517→    dataFreshness,
+   518→   518→    syncStatus,
+   519→   519→  };
+   520→   520→
+   521→   521→  // Check if analytics data exists
+   522→   522→  const sessionsCount = await db.dailyMetric.count({
+   523→   523→    where: {
+   524→   524→      projectId,
+   525→   525→      date: { gte: parseDate(startDate), lte: parseDate(endDate) },
+   526→   526→      sessions: { gt: 0 },
+   527→   527→    },
+   528→   528→  });
+   529→   529→
+   530→   530→  if (sessionsCount > 0) {
+   531→   531→    const [sessions, users, bounceRate] = await Promise.all([
+   532→   532→      calculateTimeSeries(projectId, 'sessions', startDate, endDate),
+   533→   533→      calculateTimeSeries(projectId, 'users', startDate, endDate),
+   534→   534→      calculateTimeSeries(projectId, 'bounceRate', startDate, endDate),
+   535→   535→    ]);
+   536→   536→
+   537→   537→    dashboard.analytics = { sessions, users, bounceRate };
+   538→   538→  }
+   539→   539→
+   540→   540→  // Check if conversion data exists
+   541→   541→  const conversionCount = await db.dailyMetric.count({
+   542→   542→    where: {
+   543→   543→      projectId,
+   544→   544→      date: { gte: parseDate(startDate), lte: parseDate(endDate) },
+   545→   545→      conversions: { gt: 0 },
+   546→   546→    },
+   547→   547→  });
+   548→   548→
+   549→   549→  if (conversionCount > 0) {
+   550→   550→    const [conversions, conversionRate] = await Promise.all([
+   551→   551→      calculateTimeSeries(projectId, 'conversions', startDate, endDate),
+   552→   552→      calculateTimeSeries(projectId, 'conversionRate', startDate, endDate),
+   553→   553→    ]);
+   554→   554→
+   555→   555→    dashboard.conversions = { conversions, conversionRate };
+   556→   556→  }
+   557→   557→
+   558→   558→  // Check if revenue data exists
+   559→   559→  const revenueCount = await db.dailyMetric.count({
+   560→   560→    where: {
+   561→   561→      projectId,
+   562→   562→      date: { gte: parseDate(startDate), lte: parseDate(endDate) },
+   563→   563→      revenue: { not: null },
+   564→   564→    },
+   565→   565→  });
+   566→   566→
+   567→   567→  if (revenueCount > 0) {
+   568→   568→    const revenue = await calculateTimeSeries(
+   569→   569→      projectId,
+   570→   570→      'revenue',
+   571→   571→      startDate,
+   572→   572→      endDate
+   573→   573→    );
+   574→   574→    dashboard.revenue = { revenue };
+   575→   575→  }
+   576→   576→
+   577→   577→  return dashboard;
+   578→   578→}
+   579→   579→
+   580→   580→// ============================================================================
+   581→   581→// Query & Page Performance
+   582→   582→// ============================================================================
+   583→   583→
+   584→   584→/**
+   585→   585→ * Get top queries by clicks for a date range.
+   586→   586→ *
+   587→   587→ * @param projectId - The project ID
+   588→   588→ * @param startDate - Start date (YYYY-MM-DD)
+   589→   589→ * @param endDate - End date (YYYY-MM-DD)
+   590→   590→ * @param limit - Maximum number of results (default 20)
+   591→   591→ * @returns Array of query performance entries
+   592→   592→ */
+   593→   593→export async function getTopQueries(
+   594→   594→  projectId: string,
+   595→   595→  startDate: string,
+   596→   596→  endDate: string,
+   597→   597→  limit: number = 20
+   598→   598→): Promise<QueryPerformanceRow[]> {
+   599→   599→  const records = await db.queryPerformance.findMany({
+   600→   600→    where: {
+   601→   601→      projectId,
+   602→   602→      date: {
+   603→   603→        gte: parseDate(startDate),
+   604→   604→        lte: parseDate(endDate),
+   605→   605→      },
+   606→   606→    },
+   607→   607→    select: {
+   608→   608→      query: true,
+   609→   609→      clicks: true,
+   610→   610→      impressions: true,
+   611→   611→      ctr: true,
+   612→   612→      position: true,
+   613→   613→    },
+   614→   614→    orderBy: { clicks: 'desc' },
+   615→   615→    take: limit * 5, // Get more to aggregate
+   616→   616→  });
+   617→   617→
+   618→   618→  if (records.length === 0) return [];
+   619→   619→
+   620→   620→  // Aggregate by query
+   621→   621→  const queryMap = new Map<
+   622→   622→    string,
+   623→   623→    { clicks: number; impressions: number; ctrValues: number[]; positionValues: number[] }
+   624→   624→  >();
+   625→   625→
+   626→   626→  for (const record of records) {
+   627→   627→    const existing = queryMap.get(record.query);
+   628→   628→    if (existing) {
+   629→   629→      existing.clicks += record.clicks;
+   630→   630→      existing.impressions += record.impressions;
+   631→   631→      existing.ctrValues.push(record.ctr);
+   632→   632→      existing.positionValues.push(record.position);
+   633→   633→    } else {
+   634→   634→      queryMap.set(record.query, {
+   635→   635→        clicks: record.clicks,
+   636→   636→        impressions: record.impressions,
+   637→   637→        ctrValues: [record.ctr],
+   638→   638→        positionValues: [record.position],
+   639→   639→      });
+   640→   640→    }
+   641→   641→  }
+   642→   642→
+   643→   643→  // Convert to array and sort
+   644→   644→  const results: QueryPerformanceRow[] = Array.from(queryMap.entries())
+   645→   645→    .map(([query, data]) => ({
+   646→   646→      query,
+   647→   647→      clicks: data.clicks,
+   648→   648→      impressions: data.impressions,
+   649→   649→      ctr:
+   650→   650→        data.impressions > 0
+   651→   651→          ? data.clicks / data.impressions
+   652→   652→          : 0,
+   653→   653→      position:
+   654→   654→        data.positionValues.length > 0
+   655→   655→          ? data.positionValues.reduce((s, v) => s + v, 0) /
+   656→   656→            data.positionValues.length
+   657→   657→          : 0,
+   658→   658→      date: '', // Aggregated across dates
+   659→   659→    }))
+   660→   660→    .sort((a, b) => b.clicks - a.clicks)
+   661→   661→    .slice(0, limit);
+   662→   662→
+   663→   663→  return results;
+   664→   664→}
+   665→   665→
+   666→   666→/**
+   667→   667→ * Get top landing pages by clicks for a date range.
+   668→   668→ *
+   669→   669→ * @param projectId - The project ID
+   670→   670→ * @param startDate - Start date (YYYY-MM-DD)
+   671→   671→ * @param endDate - End date (YYYY-MM-DD)
+   672→   672→ * @param limit - Maximum number of results (default 20)
+   673→   673→ * @returns Array of landing page performance entries
+   674→   674→ */
+   675→   675→export async function getTopLandingPages(
+   676→   676→  projectId: string,
+   677→   677→  startDate: string,
+   678→   678→  endDate: string,
+   679→   679→  limit: number = 20
+   680→   680→): Promise<LandingPagePerformanceRow[]> {
+   681→   681→  const records = await db.dailyMetric.findMany({
+   682→   682→    where: {
+   683→   683→      projectId,
+   684→   684→      date: {
+   685→   685→        gte: parseDate(startDate),
+   686→   686→        lte: parseDate(endDate),
+   687→   687→      },
+   688→   688→      landingPage: { not: null },
+   689→   689→    },
+   690→   690→    select: {
+   691→   691→      landingPage: true,
+   692→   692→      clicks: true,
+   693→   693→      impressions: true,
+   694→   694→      ctr: true,
+   695→   695→      averagePosition: true,
+   696→   696→      sessions: true,
+   697→   697→      bounceRate: true,
+   698→   698→    },
+   699→   699→    orderBy: { clicks: 'desc' },
+   700→   700→    take: limit * 5,
+   701→   701→  });
+   702→   702→
+   703→   703→  if (records.length === 0) return [];
+   704→   704→
+   705→   705→  // Aggregate by landing page
+   706→   706→  const pageMap = new Map<
+   707→   707→    string,
+   708→   708→    {
+   709→   709→      clicks: number;
+   710→   710→      impressions: number;
+   711→   711→      ctrValues: number[];
+   712→   712→      positionValues: number[];
+   713→   713→      sessions: number;
+   714→   714→      bounceRateValues: number[];
+   715→   715→    }
+   716→   716→  >();
+   717→   717→
+   718→   718→  for (const record of records) {
+   719→   719→    const page = record.landingPage ?? '(onbekend)';
+   720→   720→    const existing = pageMap.get(page);
+   721→   721→    if (existing) {
+   722→   722→      existing.clicks += record.clicks;
+   723→   723→      existing.impressions += record.impressions;
+   724→   724→      existing.ctrValues.push(record.ctr);
+   725→   725→      existing.positionValues.push(record.averagePosition);
+   726→   726→      existing.sessions += record.sessions;
+   727→   727→      if (record.bounceRate !== null) {
+   728→   728→        existing.bounceRateValues.push(record.bounceRate);
+   729→   729→      }
+   730→   730→    } else {
+   731→   731→      pageMap.set(page, {
+   732→   732→        clicks: record.clicks,
+   733→   733→        impressions: record.impressions,
+   734→   734→        ctrValues: [record.ctr],
+   735→   735→        positionValues: [record.averagePosition],
+   736→   736→        sessions: record.sessions,
+   737→   737→        bounceRateValues: record.bounceRate !== null ? [record.bounceRate] : [],
+   738→   738→      });
+   739→   739→    }
+   740→   740→  }
+   741→   741→
+   742→   742→  const results: LandingPagePerformanceRow[] = Array.from(pageMap.entries())
+   743→   743→    .map(([landingPage, data]) => ({
+   744→   744→      landingPage,
+   745→   745→      clicks: data.clicks,
+   746→   746→      impressions: data.impressions,
+   747→   747→      ctr:
+   748→   748→        data.impressions > 0
+   749→   749→          ? data.clicks / data.impressions
+   750→   750→          : 0,
+   751→   751→      position:
+   752→   752→        data.positionValues.length > 0
+   753→   753→          ? data.positionValues.reduce((s, v) => s + v, 0) /
+   754→   754→            data.positionValues.length
+   755→   755→          : 0,
+   756→   756→      sessions: data.sessions > 0 ? data.sessions : undefined,
+   757→   757→      bounceRate:
+   758→   758→        data.bounceRateValues.length > 0
+   759→   759→          ? data.bounceRateValues.reduce((s, v) => s + v, 0) /
+   760→   760→            data.bounceRateValues.length
+   761→   761→          : null,
+   762→   762→    }))
+   763→   763→    .sort((a, b) => b.clicks - a.clicks)
+   764→   764→    .slice(0, limit);
+   765→   765→
+   766→   766→  return results;
+   767→   767→}
+   768→   768→
+   769→   769→// ============================================================================
+   770→   770→// Segmentation
+   771→   771→// ============================================================================
+   772→   772→
+   773→   773→/**
+   774→   774→ * Get a metric broken down by device category.
+   775→   775→ *
+   776→   776→ * @param projectId - The project ID
+   777→   777→ * @param metric - The metric key
+   778→   778→ * @param startDate - Start date (YYYY-MM-DD)
+   779→   779→ * @param endDate - End date (YYYY-MM-DD)
+   780→   780→ * @returns Array of device breakdowns
+   781→   781→ */
+   782→   782→export async function getMetricByDevice(
+   783→   783→  projectId: string,
+   784→   784→  metric: string,
+   785→   785→  startDate: string,
+   786→   786→  endDate: string
+   787→   787→): Promise<DeviceBreakdown[]> {
+   788→   788→  const field = getMetricField(metric);
+   789→   789→  const useAverage = isAverageMetric(metric);
+   790→   790→
+   791→   791→  // Dutch device labels
+   792→   792→  const deviceLabels: Record<string, string> = {
+   793→   793→    desktop: 'Desktop',
+   794→   794→    mobile: 'Mobiel',
+   795→   795→    tablet: 'Tablet',
+   796→   796→  };
+   797→   797→
+   798→   798→  const records = await db.dailyMetric.findMany({
+   799→   799→    where: {
+   800→   800→      projectId,
+   801→   801→      date: {
+   802→   802→        gte: parseDate(startDate),
+   803→   803→        lte: parseDate(endDate),
+   804→   804→      },
+   805→   805→      device: { not: null },
+   806→   806→    },
+   807→   807→    select: {
+   808→   808→      device: true,
+   809→   809→      [field]: true,
+   810→   810→    },
+   811→   811→  });
+   812→   812→
+   813→   813→  if (records.length === 0) return [];
+   814→   814→
+   815→   815→  // Group by device
+   816→   816→  const deviceMap = new Map<string, number[]>();
+   817→   817→  for (const record of records) {
+   818→   818→    const device = record.device ?? '(onbekend)';
+   819→   819→    const value = record[field as keyof typeof record];
+   820→   820→    if (typeof value === 'number' && !isNaN(value)) {
+   821→   821→      if (!deviceMap.has(device)) {
+   822→   822→        deviceMap.set(device, []);
+   823→   823→      }
+   824→   824→      deviceMap.get(device)!.push(value);
+   825→   825→    }
+   826→   826→  }
+   827→   827→
+   828→   828→  const results: DeviceBreakdown[] = Array.from(deviceMap.entries())
+   829→   829→    .map(([device, values]) => ({
+   830→   830→      device,
+   831→   831→      value: Math.round(
+   832→   832→        (useAverage
+   833→   833→          ? aggregateMetrics(values, 'average')
+   834→   834→          : aggregateMetrics(values, 'sum')) *
+   835→   835→          100
+   836→   836→      ) / 100,
+   837→   837→      label: deviceLabels[device.toLowerCase()] ?? device,
+   838→   838→    }))
+   839→   839→    .sort((a, b) => b.value - a.value);
+   840→   840→
+   841→   841→  return results;
+   842→   842→}
+   843→   843→
+   844→   844→/**
+   845→   845→ * Get a metric broken down by country.
+   846→   846→ *
+   847→   847→ * @param projectId - The project ID
+   848→   848→ * @param metric - The metric key
+   849→   849→ * @param startDate - Start date (YYYY-MM-DD)
+   850→   850→ * @param endDate - End date (YYYY-MM-DD)
+   851→   851→ * @param limit - Maximum number of results (default 10)
+   852→   852→ * @returns Array of country breakdowns
+   853→   853→ */
+   854→   854→export async function getMetricByCountry(
+   855→   855→  projectId: string,
+   856→   856→  metric: string,
+   857→   857→  startDate: string,
+   858→   858→  endDate: string,
+   859→   859→  limit: number = 10
+   860→   860→): Promise<CountryBreakdown[]> {
+   861→   861→  const field = getMetricField(metric);
+   862→   862→  const useAverage = isAverageMetric(metric);
+   863→   863→
+   864→   864→  // Dutch country labels for common countries
+   865→   865→  const countryLabels: Record<string, string> = {
+   866→   866→    NLD: 'Nederland',
+   867→   867→    BEL: 'België',
+   868→   868→    DEU: 'Duitsland',
+   869→   869→    GBR: 'Verenigd Koninkrijk',
+   870→   870→    FRA: 'Frankrijk',
+   871→   871→    USA: 'Verenigde Staten',
+   872→   872→    nld: 'Nederland',
+   873→   873→    bel: 'België',
+   874→   874→    deu: 'Duitsland',
+   875→   875→    gbr: 'Verenigd Koninkrijk',
+   876→   876→    fra: 'Frankrijk',
+   877→   877→    usa: 'Verenigde Staten',
+   878→   878→    NL: 'Nederland',
+   879→   879→    BE: 'België',
+   880→   880→    DE: 'Duitsland',
+   881→   881→    GB: 'Verenigd Koninkrijk',
+   882→   882→    FR: 'Frankrijk',
+   883→   883→    US: 'Verenigde Staten',
+   884→   884→  };
+   885→   885→
+   886→   886→  const records = await db.dailyMetric.findMany({
+   887→   887→    where: {
+   888→   888→      projectId,
+   889→   889→      date: {
+   890→   890→        gte: parseDate(startDate),
+   891→   891→        lte: parseDate(endDate),
+   892→   892→      },
+   893→   893→      country: { not: null },
+   894→   894→    },
+   895→   895→    select: {
+   896→   896→      country: true,
+   897→   897→      [field]: true,
+   898→   898→    },
+   899→   899→  });
+   900→   900→
+   901→   901→  if (records.length === 0) return [];
+   902→   902→
+   903→   903→  // Group by country
+   904→   904→  const countryMap = new Map<string, number[]>();
+   905→   905→  for (const record of records) {
+   906→   906→    const country = record.country ?? '(onbekend)';
+   907→   907→    const value = record[field as keyof typeof record];
+   908→   908→    if (typeof value === 'number' && !isNaN(value)) {
+   909→   909→      if (!countryMap.has(country)) {
+   910→   910→        countryMap.set(country, []);
+   911→   911→      }
+   912→   912→      countryMap.get(country)!.push(value);
+   913→   913→    }
+   914→   914→  }
+   915→   915→
+   916→   916→  const results: CountryBreakdown[] = Array.from(countryMap.entries())
+   917→   917→    .map(([country, values]) => ({
+   918→   918→      country,
+   919→   919→      value: Math.round(
+   920→   920→        (useAverage
+   921→   921→          ? aggregateMetrics(values, 'average')
+   922→   922→          : aggregateMetrics(values, 'sum')) *
+   923→   923→          100
+   924→   924→      ) / 100,
+   925→   925→      label: countryLabels[country] ?? country,
+   926→   926→    }))
+   927→   927→    .sort((a, b) => b.value - a.value)
+   928→   928→    .slice(0, limit);
+   929→   929→
+   930→   930→  return results;
+   931→   931→}
+   932→   932→
+   933→   933→// ============================================================================
+   934→   934→// Data Freshness
+   935→   935→// ============================================================================
+   936→   936→
+   937→   937→/**
+   938→   938→ * Get data freshness information for a project.
+   939→   939→ *
+   940→   940→ * Checks last sync time, data ranges, and generates Dutch explanations
+   941→   941→ * for any gaps or missing data.
+   942→   942→ *
+   943→   943→ * @param projectId - The project ID
+   944→   944→ * @returns DataFreshnessInfo with freshness details
+   945→   945→ */
+   946→   946→export async function getDataFreshness(
+   947→   947→  projectId: string
+   948→   948→): Promise<DataFreshnessInfo> {
+   949→   949→  // Get the most recent sync
+   950→   950→  const latestSync = await db.dataConnection.findFirst({
+   951→   951→    where: {
+   952→   952→      projectId,
+   953→   953→      deletedAt: null,
+   954→   954→      lastSyncAt: { not: null },
+   955→   955→    },
+   956→   956→    orderBy: { lastSyncAt: 'desc' },
+   957→   957→    select: { lastSyncAt: true },
+   958→   958→  });
+   959→   959→
+   960→   960→  // Get data range
+   961→   961→  const dateRange = await db.dailyMetric.aggregate({
+   962→   962→    where: { projectId },
+   963→   963→    _min: { date: true },
+   964→   964→    _max: { date: true },
+   965→   965→  });
+   966→   966→
+   967→   967→  const dataStartDate = dateRange._min.date;
+   968→   968→  const dataEndDate = dateRange._max.date;
+   969→   969→  const hasData = dataStartDate !== null && dataEndDate !== null;
+   970→   970→
+   971→   971→  // Generate Dutch data note
+   972→   972→  let dataNote: string | null = null;
+   973→   973→
+   974→   974→  if (!hasData) {
+   975→   975→    dataNote =
+   976→   976→      'Er is nog geen gegevens beschikbaar. Importeer gegevens via een CSV-bestand of verbind Google Search Console.';
+   977→   977→  } else if (latestSync?.lastSyncAt) {
+   978→   978→    const hoursSinceSync = Math.floor(
+   979→   979→      (Date.now() - latestSync.lastSyncAt.getTime()) / (1000 * 60 * 60)
+   980→   980→    );
+   981→   981→
+   982→   982→    if (hoursSinceSync > 48) {
+   983→   983→      dataNote = `Gegevens zijn meer dan ${Math.floor(hoursSinceSync / 24)} dagen geleden voor het laatst gesynchroniseerd. Controleer je gegevensverbindingen.`;
+   984→   984→    } else if (hoursSinceSync > 24) {
+   985→   985→      dataNote = `Gegevens zijn ${Math.floor(hoursSinceSync / 24)} dagen geleden gesynchroniseerd. De meest recente gegevens kunnen ontbreken.`;
+   986→   986→    }
+   987→   987→
+   988→   988→    // Check if data is recent (GSC data has a 2-3 day delay)
+   989→   989→    const dataEnd = dataEndDate!;
+   990→   990→    const now = new Date();
+   991→   991→    const dataAgeDays = Math.floor(
+   992→   992→      (now.getTime() - dataEnd.getTime()) / (1000 * 60 * 60 * 24)
+   993→   993→    );
+   994→   994→
+   995→   995→    if (dataAgeDays > 5) {
+   996→   996→      dataNote =
+   997→   997→        dataNote ??
+   998→   998→        `De meest recente gegevens zijn van ${dataAgeDays} dagen geleden. Google Search Console-gegevens hebben een vertraging van 2-3 dagen.`;
+   999→   999→    }
+  1000→  1000→  }
+  1001→  1001→
+  1002→  1002→  return {
+  1003→  1003→    lastSyncAt: latestSync?.lastSyncAt ?? null,
+  1004→  1004→    dataStartDate,
+  1005→  1005→    dataEndDate,
+  1006→  1006→    dataNote,
+  1007→  1007→    isDataAvailable: hasData,
+  1008→  1008→  };
+  1009→  1009→}
+  1010→  1010→
+  1011→  1011→// ============================================================================
+  1012→  1012→// Sync Status
+  1013→  1013→// ============================================================================
+  1014→  1014→
+  1015→  1015→/**
+  1016→  1016→ * Get sync status for all data connections of a project.
+  1017→  1017→ *
+  1018→  1018→ * @param projectId - The project ID
+  1019→  1019→ * @returns Array of SyncStatusInfo for each connection
+  1020→  1020→ */
+  1021→  1021→export async function getSyncStatus(
+  1022→  1022→  projectId: string
+  1023→  1023→): Promise<SyncStatusInfo[]> {
+  1024→  1024→  const connections = await db.dataConnection.findMany({
+  1025→  1025→    where: {
+  1026→  1026→      projectId,
+  1027→  1027→      deletedAt: null,
+  1028→  1028→    },
+  1029→  1029→    select: {
+  1030→  1030→      id: true,
+  1031→  1031→      name: true,
+  1032→  1032→      type: true,
+  1033→  1033→      status: true,
+  1034→  1034→      lastSyncAt: true,
+  1035→  1035→      lastSyncError: true,
+  1036→  1036→      nextSyncAt: true,
+  1037→  1037→    },
+  1038→  1038→  });
+  1039→  1039→
+  1040→  1040→  return connections.map((conn) => ({
+  1041→  1041→    connectionId: conn.id,
+  1042→  1042→    connectionName: conn.name,
+  1043→  1043→    connectionType: conn.type,
+  1044→  1044→    status: conn.status,
+  1045→  1045→    lastSyncAt: conn.lastSyncAt,
+  1046→  1046→    lastSyncError: conn.lastSyncError,
+  1047→  1047→    nextSyncAt: conn.nextSyncAt,
+  1048→  1048→  }));
+  1049→  1049→}
+  1050→  1050→

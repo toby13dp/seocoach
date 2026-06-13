@@ -1,5 +1,5 @@
 // ============================================================================
-// Prisma Schema — AI-Driven SEO Automation Platform (Phase 1-4)
+// Prisma Schema — AI-Driven SEO Automation Platform (Phase 1-5)
 // ============================================================================
 
 generator client {
@@ -1488,4 +1488,472 @@ model QualityFinding {
   @@index([severity])
   @@index([dismissed])
   @@map("quality_findings")
+}
+
+// ============================================================================
+// Phase 5: Analytics & Monitoring — Enums
+// ============================================================================
+
+enum DataConnectionType {
+  GOOGLE_SEARCH_CONSOLE
+  GOOGLE_ANALYTICS_4
+  CSV_SEARCH_PERFORMANCE
+  CSV_ANALYTICS
+  CSV_CONVERSIONS
+  CSV_REVENUE
+  GOOGLE_BUSINESS_PROFILE
+}
+
+enum DataConnectionStatus {
+  CONNECTED
+  DISCONNECTED
+  ERROR
+  PENDING
+  EXPIRED
+}
+
+enum AlertType {
+  RANKING_DROP
+  CLICK_DROP
+  IMPRESSION_DROP
+  CTR_DROP
+  CONVERSION_DROP
+  REVENUE_DROP
+  INDEXING_ISSUE
+  NEW_404
+  UNEXPECTED_NOINDEX
+  BROKEN_INTEGRATION
+  PUBLISHING_FAILURE
+  CONTENT_DECAY
+  COMPETITOR_CHANGE
+  LOST_AI_MENTION
+  NEGATIVE_REVIEW_TREND
+  DEPLOYMENT_REGRESSION
+}
+
+enum AlertSeverity {
+  CRITICAL
+  HIGH
+  MEDIUM
+  LOW
+  INFO
+}
+
+enum AlertStatus {
+  ACTIVE
+  ACKNOWLEDGED
+  SNOOZED
+  RESOLVED
+  DISMISSED
+}
+
+enum RoadmapView {
+  TODAY
+  THIS_WEEK
+  THIS_MONTH
+  NINETY_DAYS
+  LATER
+}
+
+enum RoadmapItemType {
+  TECHNICAL_ISSUE
+  CONTENT_GAP
+  KEYWORD_OPPORTUNITY
+  DECAY
+  INTERNAL_LINK
+  COMPETITOR
+  GEO
+  LOCAL_SEO
+  ECOMMERCE
+  CRO
+  REVENUE
+}
+
+enum ReportType {
+  MONTHLY
+  QUARTERLY
+  TECHNICAL_AUDIT
+  CONTENT
+  KEYWORDS
+  COMPETITORS
+  LOCAL_SEO
+  GEO
+  WOOCOMMERCE
+  CRO
+  REVENUE
+  EXECUTIVE
+  HOLISTIC
+  CUSTOM
+}
+
+enum ReportStatus {
+  DRAFT
+  IN_REVIEW
+  APPROVED
+  PUBLISHED
+  ARCHIVED
+}
+
+enum ReportSectionType {
+  KPI_CARDS
+  CHART
+  TABLE
+  TEXT
+  RECOMMENDATIONS
+  ROADMAP
+  PAGE_BREAK
+}
+
+// ============================================================================
+// Phase 5: Data Connections (Search Console, GA4, CSV)
+// ============================================================================
+
+model DataConnection {
+  id               String              @id @default(uuid())
+  projectId        String
+  name             String
+  type             DataConnectionType
+  status           DataConnectionStatus @default(PENDING)
+  // Connection config (JSON): OAuth tokens, API keys, file references, etc.
+  config           String?
+  // Last sync tracking
+  lastSyncAt       DateTime?
+  lastSyncStatus   String?             // success, partial, failed
+  lastSyncError    String?
+  nextSyncAt       DateTime?
+  syncIntervalMinutes Int              @default(1440) // 24h default
+  // Data freshness
+  dataStartDate    DateTime?
+  dataEndDate      DateTime?
+  dataNote         String?             // Dutch explanation for missing data
+  // Metadata
+  metadata         String?             // JSON: account info, property info, etc.
+  deletedAt        DateTime?
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+
+  @@index([projectId])
+  @@index([type])
+  @@index([status])
+  @@index([deletedAt])
+  @@map("data_connections")
+}
+
+// ============================================================================
+// Phase 5: Daily Metrics (time-series data from GSC/GA4/CSV)
+// ============================================================================
+
+model DailyMetric {
+  id               String   @id @default(uuid())
+  projectId        String
+  connectionId     String
+  date             DateTime
+  // Search metrics
+  clicks           Int      @default(0)
+  impressions      Int      @default(0)
+  ctr              Float    @default(0)
+  averagePosition  Float    @default(0)
+  // Analytics metrics
+  sessions         Int      @default(0)
+  users            Int      @default(0)
+  newUsers         Int      @default(0)
+  pageViews        Int      @default(0)
+  bounceRate       Float?
+  avgSessionDuration Float?  // seconds
+  // Conversion metrics
+  conversions      Int      @default(0)
+  conversionRate   Float?
+  // Revenue metrics
+  revenue          Float?
+  productRevenue   Float?
+  // Segmentation
+  source           String?  // organic, paid, social, direct, referral, etc.
+  medium           String?
+  campaign         String?
+  device           String?  // desktop, mobile, tablet
+  country          String?
+  landingPage      String?  // URL
+  // Metadata
+  importBatch      String?  // batch ID for bulk imports
+  createdAt        DateTime @default(now())
+
+  @@unique([projectId, connectionId, date, source, medium, device, country, landingPage])
+  @@index([projectId])
+  @@index([connectionId])
+  @@index([date])
+  @@index([source])
+  @@index([device])
+  @@index([country])
+  @@index([landingPage])
+  @@index([importBatch])
+  @@map("daily_metrics")
+}
+
+// ============================================================================
+// Phase 5: Query Performance (GSC query-level data)
+// ============================================================================
+
+model QueryPerformance {
+  id               String   @id @default(uuid())
+  projectId        String
+  connectionId     String
+  date             DateTime
+  query            String
+  // Metrics
+  clicks           Int      @default(0)
+  impressions      Int      @default(0)
+  ctr              Float    @default(0)
+  position         Float    @default(0)
+  // Segmentation
+  country          String?
+  device           String?
+  page             String?  // landing page URL
+  // Metadata
+  importBatch      String?
+  createdAt        DateTime @default(now())
+
+  @@unique([projectId, connectionId, date, query, country, device, page])
+  @@index([projectId])
+  @@index([connectionId])
+  @@index([date])
+  @@index([query])
+  @@index([position])
+  @@index([clicks])
+  @@map("query_performance")
+}
+
+// ============================================================================
+// Phase 5: Alerts
+// ============================================================================
+
+model Alert {
+  id               String        @id @default(uuid())
+  projectId        String
+  type             AlertType
+  severity         AlertSeverity @default(MEDIUM)
+  status           AlertStatus   @default(ACTIVE)
+  // Alert content
+  title            String        // Dutch title
+  message          String        // Dutch explanation
+  evidence         String?       // JSON evidence data
+  metricValue      Float?
+  previousValue    Float?
+  changePercentage Float?
+  threshold        Float?
+  // Minimum data volume check
+  dataPointsUsed   Int           @default(0)
+  dataSufficient   Boolean       @default(true)
+  dataNote         String?       // Dutch explanation if data insufficient
+  // Grouping and deduplication
+  alertGroup       String?       // group key for related alerts
+  // Lifecycle
+  acknowledgedBy   String?
+  acknowledgedAt   DateTime?
+  snoozedUntil     DateTime?
+  snoozedBy        String?
+  resolvedBy       String?
+  resolvedAt       DateTime?
+  dismissedBy      String?
+  dismissedAt      DateTime?
+  assignedTo       String?
+  resolution       String?       // Dutch resolution note
+  // Notification
+  notifiedChannels String?       // JSON array: email, in_app, webhook
+  // Anomaly detection metadata
+  anomalyScore     Float?
+  anomalyMethod    String?       // statistical, threshold, trend
+  // Metadata
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  @@index([projectId])
+  @@index([type])
+  @@index([severity])
+  @@index([status])
+  @@index([alertGroup])
+  @@index([assignedTo])
+  @@index([createdAt])
+  @@map("alerts")
+}
+
+// ============================================================================
+// Phase 5: Alert Notification Preferences
+// ============================================================================
+
+model AlertPreference {
+  id               String     @id @default(uuid())
+  projectId        String
+  userId           String
+  alertType        AlertType?
+  severity         AlertSeverity?
+  channel          String     // email, in_app, webhook
+  isEnabled        Boolean    @default(true)
+  digestFrequency  String?    // none, daily, weekly
+  quietHoursStart  String?    // "22:00"
+  quietHoursEnd    String?    // "08:00"
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+
+  @@unique([projectId, userId, alertType, severity, channel])
+  @@index([projectId])
+  @@index([userId])
+  @@map("alert_preferences")
+}
+
+// ============================================================================
+// Phase 5: Roadmap Items
+// ============================================================================
+
+model RoadmapItem {
+  id               String           @id @default(uuid())
+  projectId        String
+  type             RoadmapItemType
+  title            String           // Dutch title
+  description      String?          // Dutch description
+  // Source reference
+  sourceType       String?          // technical_issue, keyword, decay, etc.
+  sourceId         String?          // ID of the source entity
+  // Priority & scheduling
+  priority         ActionPriority   @default(MEDIUM)
+  effort           ActionEffort     @default(MEDIUM)
+  impact           String?          // Dutch impact description
+  scheduledDate    DateTime?
+  dueDate          DateTime?
+  view             RoadmapView      @default(LATER)
+  sortOrder        Int              @default(0)
+  // Status
+  status           ActionItemStatus @default(PENDING)
+  assignedTo       String?
+  completedAt      DateTime?
+  // AI-generated recommendation
+  recommendation   String?          // Dutch recommendation
+  autoGenerated    Boolean          @default(false)
+  // Metadata
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  @@index([projectId])
+  @@index([type])
+  @@index([priority])
+  @@index([status])
+  @@index([view])
+  @@index([scheduledDate])
+  @@index([assignedTo])
+  @@index([sortOrder])
+  @@map("roadmap_items")
+}
+
+// ============================================================================
+// Phase 5: White-Label Profile
+// ============================================================================
+
+model WhiteLabelProfile {
+  id                String    @id @default(uuid())
+  organizationId    String
+  name              String
+  // Branding
+  logoUrl           String?
+  primaryColor      String?   @default("#059669") // emerald-600
+  secondaryColor    String?
+  accentColor       String?
+  fontFamily        String?
+  // Organization details shown in reports
+  companyName       String?
+  companyTagline    String?
+  companyAddress    String?
+  companyPhone      String?
+  companyEmail      String?
+  companyWebsite    String?
+  companyKvk        String?   // KvK number
+  // Report content
+  introductionText  String?   // Dutch intro for reports
+  closingText       String?   // Dutch closing for reports
+  footerText        String?   // Dutch footer text
+  senderIdentity    String?   // "Van: [name]"
+  // Custom domain architecture (URL prefix pattern)
+  customDomainReady Boolean   @default(false)
+  customDomainPattern String?
+  // Metadata
+  isDefault         Boolean   @default(false)
+  deletedAt         DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([organizationId])
+  @@index([deletedAt])
+  @@map("white_label_profiles")
+}
+
+// ============================================================================
+// Phase 5: Reports
+// ============================================================================
+
+model Report {
+  id                String         @id @default(uuid())
+  projectId         String
+  whiteLabelId      String?
+  type              ReportType
+  status            ReportStatus   @default(DRAFT)
+  title             String         // Dutch title
+  description       String?        // Dutch description
+  // Date range
+  startDate         DateTime
+  endDate           DateTime
+  comparisonStartDate DateTime?     // for period comparison
+  comparisonEndDate DateTime?
+  // Sections (JSON array of section definitions)
+  sections          String         // JSON
+  // Snapshot data (frozen at generation time)
+  snapshotData      String?        // JSON - frozen data so reports don't change
+  snapshotGeneratedAt DateTime?
+  // Output
+  htmlOutput        String?        // generated HTML
+  pdfPath           String?        // path to generated PDF
+  // Approval
+  approvedBy        String?
+  approvedAt        DateTime?
+  // Sharing
+  shareToken        String?        @unique
+  sharePassword     String?        // hashed password for shared reports
+  shareExpiresAt    DateTime?
+  shareAccessCount  Int            @default(0)
+  // Scheduling
+  scheduledAt       DateTime?
+  // Version tracking
+  version           Int            @default(1)
+  parentReportId    String?        // for version history
+  // Metadata
+  createdById       String?
+  deletedAt         DateTime?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  @@index([projectId])
+  @@index([type])
+  @@index([status])
+  @@index([whiteLabelId])
+  @@index([shareToken])
+  @@index([scheduledAt])
+  @@index([deletedAt])
+  @@map("reports")
+}
+
+// ============================================================================
+// Phase 5: Report Comments (client/colleague feedback)
+// ============================================================================
+
+model ReportComment {
+  id          String   @id @default(uuid())
+  reportId    String
+  userId      String?
+  sectionId   String?  // which section the comment refers to
+  comment     String   // Dutch comment
+  resolved    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([reportId])
+  @@index([sectionId])
+  @@index([resolved])
+  @@map("report_comments")
 }

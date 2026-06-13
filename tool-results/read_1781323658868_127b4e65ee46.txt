@@ -1,0 +1,857 @@
+     1→// ============================================================================
+     2→// Report Builder — SEOCoach
+     3→// AI-Driven SEO Automation Platform (Dutch Market)
+     4→// ============================================================================
+     5→// Creates, configures, and manages reports with section-based layouts.
+     6→// Each report type has a default set of sections with Dutch titles.
+     7→// Reports can be previewed, snapshot-frozen, approved, and archived.
+     8→//
+     9→// IMPORTANT: Never fabricates data. Reports only contain real data
+    10→// that exists in the project at the time of snapshot generation.
+    11→// ============================================================================
+    12→
+    13→import { db } from '@/lib/db';
+    14→import type { ReportType, ReportStatus } from '@prisma/client';
+    15→import { v4 as uuidv4 } from 'uuid';
+    16→import type {
+    17→  ReportSection,
+    18→  ReportCreateConfig,
+    19→} from './types';
+    20→import {
+    21→  REPORT_TYPE_LABELS,
+    22→  REPORT_TYPE_DESCRIPTIONS,
+    23→} from './types';
+    24→
+    25→// ============================================================================
+    26→// Default Section Generators per Report Type
+    27→// ============================================================================
+    28→
+    29→/**
+    30→ * Returns the default section layout for a given report type.
+    31→ * Each section has a Dutch title and JSON configuration.
+    32→ *
+    33→ * Sections are defined based on what data would be relevant for each type.
+    34→ * When no real data exists, the section renders an empty state rather than
+    35→ * fabricated data.
+    36→ */
+    37→export function getDefaultSections(type: ReportType): ReportSection[] {
+    38→  switch (type) {
+    39→    case 'MONTHLY':
+    40→      return [
+    41→        {
+    42→          id: uuidv4(),
+    43→          type: 'KPI_CARDS',
+    44→          title: 'Kernstatistieken',
+    45→          config: JSON.stringify({
+    46→            metrics: [
+    47→              { metric: 'clicks', dutchLabel: 'Klikken', dataSource: 'search_console' },
+    48→              { metric: 'impressions', dutchLabel: 'Vertoningen', dataSource: 'search_console' },
+    49→              { metric: 'ctr', dutchLabel: 'CTR', dataSource: 'search_console' },
+    50→              { metric: 'position', dutchLabel: 'Gemiddelde positie', dataSource: 'search_console' },
+    51→            ],
+    52→            showComparison: true,
+    53→          }),
+    54→          sortOrder: 0,
+    55→        },
+    56→        {
+    57→          id: uuidv4(),
+    58→          type: 'CHART',
+    59→          title: 'Zoekprestatietrends',
+    60→          config: JSON.stringify({
+    61→            chartType: 'line',
+    62→            dataSource: 'search_console',
+    63→            xLabel: 'Datum',
+    64→            yLabel: 'Klikken en vertoningen',
+    65→            showComparison: true,
+    66→          }),
+    67→          sortOrder: 1,
+    68→        },
+    69→        {
+    70→          id: uuidv4(),
+    71→          type: 'TABLE',
+    72→          title: 'Top zoekopdrachten',
+    73→          config: JSON.stringify({
+    74→            dataSource: 'search_console_queries',
+    75→            columns: [
+    76→              { key: 'query', dutchLabel: 'Zoekopdracht', align: 'left' },
+    77→              { key: 'clicks', dutchLabel: 'Klikken', align: 'right' },
+    78→              { key: 'impressions', dutchLabel: 'Vertoningen', align: 'right' },
+    79→              { key: 'ctr', dutchLabel: 'CTR', align: 'right' },
+    80→              { key: 'position', dutchLabel: 'Positie', align: 'right' },
+    81→            ],
+    82→            maxRows: 20,
+    83→          }),
+    84→          sortOrder: 2,
+    85→        },
+    86→        {
+    87→          id: uuidv4(),
+    88→          type: 'RECOMMENDATIONS',
+    89→          title: 'Aanbevelingen',
+    90→          config: JSON.stringify({ source: 'roadmap', maxItems: 10 }),
+    91→          sortOrder: 3,
+    92→        },
+    93→        {
+    94→          id: uuidv4(),
+    95→          type: 'ROADMAP',
+    96→          title: 'Roadmap',
+    97→          config: JSON.stringify({ view: 'THIS_MONTH' }),
+    98→          sortOrder: 4,
+    99→        },
+   100→      ];
+   101→
+   102→    case 'QUARTERLY':
+   103→      return [
+   104→        {
+   105→          id: uuidv4(),
+   106→          type: 'KPI_CARDS',
+   107→          title: 'Kwartaal-KPI\'s',
+   108→          config: JSON.stringify({
+   109→            metrics: [
+   110→              { metric: 'clicks', dutchLabel: 'Klikken', dataSource: 'search_console' },
+   111→              { metric: 'impressions', dutchLabel: 'Vertoningen', dataSource: 'search_console' },
+   112→              { metric: 'ctr', dutchLabel: 'CTR', dataSource: 'search_console' },
+   113→              { metric: 'position', dutchLabel: 'Gemiddelde positie', dataSource: 'search_console' },
+   114→            ],
+   115→            showComparison: true,
+   116→          }),
+   117→          sortOrder: 0,
+   118→        },
+   119→        {
+   120→          id: uuidv4(),
+   121→          type: 'CHART',
+   122→          title: 'Prestatietrends over het kwartaal',
+   123→          config: JSON.stringify({
+   124→            chartType: 'area',
+   125→            dataSource: 'search_console',
+   126→            xLabel: 'Week',
+   127→            yLabel: 'Klikken',
+   128→            showComparison: true,
+   129→          }),
+   130→          sortOrder: 1,
+   131→        },
+   132→        {
+   133→          id: uuidv4(),
+   134→          type: 'TABLE',
+   135→          title: 'Top presterende pagina\'s',
+   136→          config: JSON.stringify({
+   137→            dataSource: 'search_console_pages',
+   138→            columns: [
+   139→              { key: 'page', dutchLabel: 'Pagina', align: 'left' },
+   140→              { key: 'clicks', dutchLabel: 'Klikken', align: 'right' },
+   141→              { key: 'impressions', dutchLabel: 'Vertoningen', align: 'right' },
+   142→              { key: 'ctr', dutchLabel: 'CTR', align: 'right' },
+   143→              { key: 'change', dutchLabel: 'Verandering', align: 'right' },
+   144→            ],
+   145→            maxRows: 15,
+   146→          }),
+   147→          sortOrder: 2,
+   148→        },
+   149→        {
+   150→          id: uuidv4(),
+   151→          type: 'RECOMMENDATIONS',
+   152→          title: 'Strategische aanbevelingen',
+   153→          config: JSON.stringify({ source: 'roadmap', maxItems: 15 }),
+   154→          sortOrder: 3,
+   155→        },
+   156→        {
+   157→          id: uuidv4(),
+   158→          type: 'ROADMAP',
+   159→          title: 'Roadmap voor komend kwartaal',
+   160→          config: JSON.stringify({ view: 'NINETY_DAYS' }),
+   161→          sortOrder: 4,
+   162→        },
+   163→      ];
+   164→
+   165→    case 'TECHNICAL_AUDIT':
+   166→      return [
+   167→        {
+   168→          id: uuidv4(),
+   169→          type: 'KPI_CARDS',
+   170→          title: 'Technische gezondheid',
+   171→          config: JSON.stringify({
+   172→            metrics: [
+   173→              { metric: 'total_issues', dutchLabel: 'Totaal problemen', dataSource: 'technical_issues' },
+   174→              { metric: 'critical_issues', dutchLabel: 'Kritieke problemen', dataSource: 'technical_issues' },
+   175→              { metric: 'warnings', dutchLabel: 'Waarschuwingen', dataSource: 'technical_issues' },
+   176→              { metric: 'health_score', dutchLabel: 'Gezondheidsscore', dataSource: 'technical_issues' },
+   177→            ],
+   178→            showComparison: false,
+   179→          }),
+   180→          sortOrder: 0,
+   181→        },
+   182→        {
+   183→          id: uuidv4(),
+   184→          type: 'TABLE',
+   185→          title: 'Technische problemen',
+   186→          config: JSON.stringify({
+   187→            dataSource: 'technical_issues',
+   188→            columns: [
+   189→              { key: 'ruleName', dutchLabel: 'Probleem', align: 'left' },
+   190→              { key: 'severity', dutchLabel: 'Ernst', align: 'center' },
+   191→              { key: 'affectedUrls', dutchLabel: 'Getroffen URL\'s', align: 'right' },
+   192→              { key: 'priority', dutchLabel: 'Prioriteit', align: 'center' },
+   193→            ],
+   194→            maxRows: 30,
+   195→          }),
+   196→          sortOrder: 1,
+   197→        },
+   198→        {
+   199→          id: uuidv4(),
+   200→          type: 'RECOMMENDATIONS',
+   201→          title: 'Aanbevolen acties',
+   202→          config: JSON.stringify({ source: 'technical_issues', maxItems: 20 }),
+   203→          sortOrder: 2,
+   204→        },
+   205→      ];
+   206→
+   207→    case 'CONTENT':
+   208→      return [
+   209→        {
+   210→          id: uuidv4(),
+   211→          type: 'KPI_CARDS',
+   212→          title: 'Contentstatistieken',
+   213→          config: JSON.stringify({
+   214→            metrics: [
+   215→              { metric: 'total_pages', dutchLabel: 'Totaal pagina\'s', dataSource: 'pages' },
+   216→              { metric: 'healthy_pages', dutchLabel: 'Gezonde pagina\'s', dataSource: 'pages' },
+   217→              { metric: 'decaying_pages', dutchLabel: 'Verouderde pagina\'s', dataSource: 'content_decay' },
+   218→              { metric: 'content_briefs', dutchLabel: 'Contentbriefs', dataSource: 'content_briefs' },
+   219→            ],
+   220→            showComparison: false,
+   221→          }),
+   222→          sortOrder: 0,
+   223→        },
+   224→        {
+   225→          id: uuidv4(),
+   226→          type: 'TABLE',
+   227→          title: 'Verouderde content',
+   228→          config: JSON.stringify({
+   229→            dataSource: 'content_decay',
+   230→            columns: [
+   231→              { key: 'url', dutchLabel: 'URL', align: 'left' },
+   232→              { key: 'decayPercentage', dutchLabel: 'Achteruitgang %', align: 'right' },
+   233→              { key: 'pruningAction', dutchLabel: 'Actie', align: 'center' },
+   234→              { key: 'currentClicks', dutchLabel: 'Huidige klikken', align: 'right' },
+   235→            ],
+   236→            maxRows: 20,
+   237→          }),
+   238→          sortOrder: 1,
+   239→        },
+   240→        {
+   241→          id: uuidv4(),
+   242→          type: 'RECOMMENDATIONS',
+   243→          title: 'Contentaanbevelingen',
+   244→          config: JSON.stringify({ source: 'content', maxItems: 10 }),
+   245→          sortOrder: 2,
+   246→        },
+   247→      ];
+   248→
+   249→    case 'KEYWORDS':
+   250→      return [
+   251→        {
+   252→          id: uuidv4(),
+   253→          type: 'KPI_CARDS',
+   254→          title: 'Zoekwoordstatistieken',
+   255→          config: JSON.stringify({
+   256→            metrics: [
+   257→              { metric: 'total_keywords', dutchLabel: 'Totaal zoekwoorden', dataSource: 'keywords' },
+   258→              { metric: 'top10_keywords', dutchLabel: 'In top 10', dataSource: 'keywords' },
+   259→              { metric: 'opportunities', dutchLabel: 'Kansen', dataSource: 'opportunity_scores' },
+   260→              { metric: 'avg_position', dutchLabel: 'Gemiddelde positie', dataSource: 'keywords' },
+   261→            ],
+   262→            showComparison: true,
+   263→          }),
+   264→          sortOrder: 0,
+   265→        },
+   266→        {
+   267→          id: uuidv4(),
+   268→          type: 'TABLE',
+   269→          title: 'Top zoekwoorden',
+   270→          config: JSON.stringify({
+   271→            dataSource: 'keywords',
+   272→            columns: [
+   273→              { key: 'keyword', dutchLabel: 'Zoekwoord', align: 'left' },
+   274→              { key: 'searchVolume', dutchLabel: 'Zoekvolume', align: 'right' },
+   275→              { key: 'currentRanking', dutchLabel: 'Positie', align: 'right' },
+   276→              { key: 'opportunityScore', dutchLabel: 'Kansscore', align: 'right' },
+   277→              { key: 'searchIntent', dutchLabel: 'Intentie', align: 'center' },
+   278→            ],
+   279→            maxRows: 25,
+   280→          }),
+   281→          sortOrder: 1,
+   282→        },
+   283→        {
+   284→          id: uuidv4(),
+   285→          type: 'RECOMMENDATIONS',
+   286→          title: 'Zoekwoordkansen',
+   287→          config: JSON.stringify({ source: 'keywords', maxItems: 15 }),
+   288→          sortOrder: 2,
+   289→        },
+   290→      ];
+   291→
+   292→    case 'EXECUTIVE':
+   293→      return [
+   294→        {
+   295→          id: uuidv4(),
+   296→          type: 'KPI_CARDS',
+   297→          title: 'Samenvatting',
+   298→          config: JSON.stringify({
+   299→            metrics: [
+   300→              { metric: 'clicks', dutchLabel: 'Klikken', dataSource: 'search_console' },
+   301→              { metric: 'impressions', dutchLabel: 'Vertoningen', dataSource: 'search_console' },
+   302→              { metric: 'ctr', dutchLabel: 'CTR', dataSource: 'search_console' },
+   303→              { metric: 'position', dutchLabel: 'Positie', dataSource: 'search_console' },
+   304→            ],
+   305→            showComparison: true,
+   306→          }),
+   307→          sortOrder: 0,
+   308→        },
+   309→        {
+   310→          id: uuidv4(),
+   311→          type: 'TEXT',
+   312→          title: 'Managementsamenvatting',
+   313→          config: JSON.stringify({ source: 'executive_summary' }),
+   314→          sortOrder: 1,
+   315→        },
+   316→        {
+   317→          id: uuidv4(),
+   318→          type: 'RECOMMENDATIONS',
+   319→          title: 'Belangrijkste actiepunten',
+   320→          config: JSON.stringify({ source: 'roadmap', maxItems: 5, onlyCritical: true }),
+   321→          sortOrder: 2,
+   322→        },
+   323→        {
+   324→          id: uuidv4(),
+   325→          type: 'PAGE_BREAK',
+   326→          title: '',
+   327→          config: JSON.stringify({}),
+   328→          sortOrder: 3,
+   329→        },
+   330→        {
+   331→          id: uuidv4(),
+   332→          type: 'ROADMAP',
+   333→          title: 'Roadmap',
+   334→          config: JSON.stringify({ view: 'THIS_MONTH' }),
+   335→          sortOrder: 4,
+   336→        },
+   337→      ];
+   338→
+   339→    case 'HOLISTIC':
+   340→      return [
+   341→        {
+   342→          id: uuidv4(),
+   343→          type: 'KPI_CARDS',
+   344→          title: 'Algemeen overzicht',
+   345→          config: JSON.stringify({
+   346→            metrics: [
+   347→              { metric: 'clicks', dutchLabel: 'Klikken', dataSource: 'search_console' },
+   348→              { metric: 'impressions', dutchLabel: 'Vertoningen', dataSource: 'search_console' },
+   349→              { metric: 'technical_issues', dutchLabel: 'Technische problemen', dataSource: 'technical_issues' },
+   350→              { metric: 'decaying_pages', dutchLabel: 'Verouderde pagina\'s', dataSource: 'content_decay' },
+   351→            ],
+   352→            showComparison: true,
+   353→          }),
+   354→          sortOrder: 0,
+   355→        },
+   356→        {
+   357→          id: uuidv4(),
+   358→          type: 'CHART',
+   359→          title: 'Prestatietrends',
+   360→          config: JSON.stringify({
+   361→            chartType: 'line',
+   362→            dataSource: 'search_console',
+   363→            xLabel: 'Datum',
+   364→            yLabel: 'Klikken',
+   365→            showComparison: true,
+   366→          }),
+   367→          sortOrder: 1,
+   368→        },
+   369→        {
+   370→          id: uuidv4(),
+   371→          type: 'TABLE',
+   372→          title: 'Technische problemen',
+   373→          config: JSON.stringify({
+   374→            dataSource: 'technical_issues',
+   375→            columns: [
+   376→              { key: 'ruleName', dutchLabel: 'Probleem', align: 'left' },
+   377→              { key: 'severity', dutchLabel: 'Ernst', align: 'center' },
+   378→              { key: 'priority', dutchLabel: 'Prioriteit', align: 'center' },
+   379→            ],
+   380→            maxRows: 10,
+   381→          }),
+   382→          sortOrder: 2,
+   383→        },
+   384→        {
+   385→          id: uuidv4(),
+   386→          type: 'TABLE',
+   387→          title: 'Top zoekwoorden',
+   388→          config: JSON.stringify({
+   389→            dataSource: 'keywords',
+   390→            columns: [
+   391→              { key: 'keyword', dutchLabel: 'Zoekwoord', align: 'left' },
+   392→              { key: 'searchVolume', dutchLabel: 'Volume', align: 'right' },
+   393→              { key: 'currentRanking', dutchLabel: 'Positie', align: 'right' },
+   394→            ],
+   395→            maxRows: 10,
+   396→          }),
+   397→          sortOrder: 3,
+   398→        },
+   399→        {
+   400→          id: uuidv4(),
+   401→          type: 'RECOMMENDATIONS',
+   402→          title: 'Gecombineerde aanbevelingen',
+   403→          config: JSON.stringify({ source: 'all', maxItems: 10 }),
+   404→          sortOrder: 4,
+   405→        },
+   406→        {
+   407→          id: uuidv4(),
+   408→          type: 'ROADMAP',
+   409→          title: 'Roadmap',
+   410→          config: JSON.stringify({ view: 'NINETY_DAYS' }),
+   411→          sortOrder: 5,
+   412→        },
+   413→      ];
+   414→
+   415→    // Simplified defaults for specialized report types
+   416→    case 'COMPETITORS':
+   417→    case 'LOCAL_SEO':
+   418→    case 'GEO':
+   419→    case 'WOOCOMMERCE':
+   420→    case 'CRO':
+   421→    case 'REVENUE':
+   422→      return [
+   423→        {
+   424→          id: uuidv4(),
+   425→          type: 'KPI_CARDS',
+   426→          title: REPORT_TYPE_LABELS[type],
+   427→          config: JSON.stringify({
+   428→            metrics: [],
+   429→            showComparison: true,
+   430→          }),
+   431→          sortOrder: 0,
+   432→        },
+   433→        {
+   434→          id: uuidv4(),
+   435→          type: 'RECOMMENDATIONS',
+   436→          title: 'Aanbevelingen',
+   437→          config: JSON.stringify({ source: type.toLowerCase(), maxItems: 10 }),
+   438→          sortOrder: 1,
+   439→        },
+   440→      ];
+   441→
+   442→    case 'CUSTOM':
+   443→    default:
+   444→      return [
+   445→        {
+   446→          id: uuidv4(),
+   447→          type: 'TEXT',
+   448→          title: 'Inleiding',
+   449→          config: JSON.stringify({ content: '' }),
+   450→          sortOrder: 0,
+   451→        },
+   452→      ];
+   453→  }
+   454→}
+   455→
+   456→// ============================================================================
+   457→// Report CRUD
+   458→// ============================================================================
+   459→
+   460→/**
+   461→ * Create a new report with default sections based on its type.
+   462→ *
+   463→ * The report is created in DRAFT status with sections derived from
+   464→ * getDefaultSections(). Dates default to the current month if not provided.
+   465→ *
+   466→ * @param projectId - The project to create the report for
+   467→ * @param config - Report creation configuration
+   468→ * @returns The created Report record
+   469→ */
+   470→export async function createReport(
+   471→  projectId: string,
+   472→  type: ReportType,
+   473→  config?: ReportCreateConfig,
+   474→) {
+   475→  const now = new Date();
+   476→  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+   477→  const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+   478→
+   479→  const sections = getDefaultSections(type);
+   480→  const title = config?.title || `${REPORT_TYPE_LABELS[type]} — ${formatDutchMonth(now)}`;
+   481→  const description = config?.description || REPORT_TYPE_DESCRIPTIONS[type];
+   482→
+   483→  return db.report.create({
+   484→    data: {
+   485→      projectId,
+   486→      type,
+   487→      status: 'DRAFT' as ReportStatus,
+   488→      title,
+   489→      description,
+   490→      startDate: config?.startDate || startOfMonth,
+   491→      endDate: config?.endDate || endOfMonth,
+   492→      comparisonStartDate: config?.comparisonStartDate || null,
+   493→      comparisonEndDate: config?.comparisonEndDate || null,
+   494→      sections: JSON.stringify(sections),
+   495→      whiteLabelId: config?.whiteLabelId || null,
+   496→      createdById: config?.createdById || null,
+   497→      version: 1,
+   498→    },
+   499→  });
+   500→}
+   501→
+   502→/**
+   503→ * Update the sections layout of a report.
+   504→ * Replaces the entire sections JSON with the provided array.
+   505→ *
+   506→ * @param reportId - The report ID
+   507→ * @param sections - The new sections array
+   508→ * @returns The updated Report record
+   509→ */
+   510→export async function updateReportSections(
+   511→  reportId: string,
+   512→  sections: ReportSection[],
+   513→) {
+   514→  return db.report.update({
+   515→    where: { id: reportId },
+   516→    data: {
+   517→      sections: JSON.stringify(sections),
+   518→    },
+   519→  });
+   520→}
+   521→
+   522→/**
+   523→ * Add a new section to a report.
+   524→ * Appends the section at the end (highest sortOrder).
+   525→ *
+   526→ * @param reportId - The report ID
+   527→ * @param section - The section to add
+   528→ * @returns The updated Report record
+   529→ */
+   530→export async function addSection(
+   531→  reportId: string,
+   532→  section: ReportSection,
+   533→) {
+   534→  const report = await db.report.findUnique({
+   535→    where: { id: reportId },
+   536→    select: { sections: true },
+   537→  });
+   538→
+   539→  if (!report) {
+   540→    throw new Error(`Rapport niet gevonden: ${reportId}`);
+   541→  }
+   542→
+   543→  const sections: ReportSection[] = JSON.parse(report.sections);
+   544→  const maxSortOrder = sections.length > 0
+   545→    ? Math.max(...sections.map((s) => s.sortOrder))
+   546→    : -1;
+   547→
+   548→  const newSection: ReportSection = {
+   549→    ...section,
+   550→    sortOrder: section.sortOrder ?? maxSortOrder + 1,
+   551→  };
+   552→
+   553→  sections.push(newSection);
+   554→
+   555→  return db.report.update({
+   556→    where: { id: reportId },
+   557→    data: { sections: JSON.stringify(sections) },
+   558→  });
+   559→}
+   560→
+   561→/**
+   562→ * Remove a section from a report by its ID.
+   563→ *
+   564→ * @param reportId - The report ID
+   565→ * @param sectionId - The section ID to remove
+   566→ * @returns The updated Report record
+   567→ */
+   568→export async function removeSection(
+   569→  reportId: string,
+   570→  sectionId: string,
+   571→) {
+   572→  const report = await db.report.findUnique({
+   573→    where: { id: reportId },
+   574→    select: { sections: true },
+   575→  });
+   576→
+   577→  if (!report) {
+   578→    throw new Error(`Rapport niet gevonden: ${reportId}`);
+   579→  }
+   580→
+   581→  const sections: ReportSection[] = JSON.parse(report.sections);
+   582→  const filtered = sections.filter((s) => s.id !== sectionId);
+   583→
+   584→  // Re-sort remaining sections
+   585→  const reindexed = filtered.map((s, i) => ({ ...s, sortOrder: i }));
+   586→
+   587→  return db.report.update({
+   588→    where: { id: reportId },
+   589→    data: { sections: JSON.stringify(reindexed) },
+   590→  });
+   591→}
+   592→
+   593→/**
+   594→ * Reorder sections within a report.
+   595→ * The order of sectionIds determines the new sortOrder.
+   596→ *
+   597→ * @param reportId - The report ID
+   598→ * @param sectionIds - Array of section IDs in the desired order
+   599→ * @returns The updated Report record
+   600→ */
+   601→export async function reorderSections(
+   602→  reportId: string,
+   603→  sectionIds: string[],
+   604→) {
+   605→  const report = await db.report.findUnique({
+   606→    where: { id: reportId },
+   607→    select: { sections: true },
+   608→  });
+   609→
+   610→  if (!report) {
+   611→    throw new Error(`Rapport niet gevonden: ${reportId}`);
+   612→  }
+   613→
+   614→  const sections: ReportSection[] = JSON.parse(report.sections);
+   615→  const sectionMap = new Map(sections.map((s) => [s.id, s]));
+   616→
+   617→  const reordered: ReportSection[] = sectionIds.map((id, index) => {
+   618→    const section = sectionMap.get(id);
+   619→    if (!section) {
+   620→      throw new Error(`Sectie niet gevonden: ${id}`);
+   621→    }
+   622→    return { ...section, sortOrder: index };
+   623→  });
+   624→
+   625→  return db.report.update({
+   626→    where: { id: reportId },
+   627→    data: { sections: JSON.stringify(reordered) },
+   628→  });
+   629→}
+   630→
+   631→// ============================================================================
+   632→// Preview & Snapshot
+   633→// ============================================================================
+   634→
+   635→/**
+   636→ * Preview a report by generating a data snapshot without freezing it.
+   637→ * This is a read-only preview — the report's snapshotData is not modified.
+   638→ *
+   639→ * @param reportId - The report ID to preview
+   640→ * @returns Preview data object with sections and current data references
+   641→ */
+   642→export async function previewReport(reportId: string) {
+   643→  const report = await db.report.findUnique({
+   644→    where: { id: reportId },
+   645→  });
+   646→
+   647→  if (!report) {
+   648→    throw new Error(`Rapport niet gevonden: ${reportId}`);
+   649→  }
+   650→
+   651→  const sections: ReportSection[] = JSON.parse(report.sections);
+   652→
+   653→  return {
+   654→    id: report.id,
+   655→    title: report.title,
+   656→    description: report.description,
+   657→    type: report.type,
+   658→    status: report.status,
+   659→    startDate: report.startDate,
+   660→    endDate: report.endDate,
+   661→    sections,
+   662→    // Preview does NOT include frozen snapshotData — it uses live data references
+   663→    hasSnapshot: report.snapshotData !== null,
+   664→  };
+   665→}
+   666→
+   667→/**
+   668→ * Generate and freeze a snapshot of the current data for a report.
+   669→ *
+   670→ * Once a snapshot is generated, the report will always show the data
+   671→ * as it was at the moment of snapshot generation, even if the
+   672→ * underlying data changes later.
+   673→ *
+   674→ * IMPORTANT: Only snapshots real data that exists. If a data source
+   675→ * is not yet connected or has no data, the snapshot records that
+   676→ * state explicitly (it never fabricates data).
+   677→ *
+   678→ * @param reportId - The report ID to snapshot
+   679→ * @returns The updated Report record
+   680→ */
+   681→export async function generateSnapshot(reportId: string) {
+   682→  const report = await db.report.findUnique({
+   683→    where: { id: reportId },
+   684→  });
+   685→
+   686→  if (!report) {
+   687→    throw new Error(`Rapport niet gevonden: ${reportId}`);
+   688→  }
+   689→
+   690→  const projectId = report.projectId;
+   691→  const sections: ReportSection[] = JSON.parse(report.sections);
+   692→
+   693→  // Gather live data for each section's data source
+   694→  const snapshotData: Record<string, unknown> = {
+   695→    generatedAt: new Date().toISOString(),
+   696→    reportId,
+   697→    projectId,
+   698→    dateRange: {
+   699→      start: report.startDate.toISOString(),
+   700→      end: report.endDate.toISOString(),
+   701→    },
+   702→  };
+   703→
+   704→  // Collect unique data sources from sections
+   705→  const dataSources = new Set<string>();
+   706→  for (const section of sections) {
+   707→    try {
+   708→      const config = JSON.parse(section.config);
+   709→      if (config.dataSource) {
+   710→        dataSources.add(config.dataSource);
+   711→      }
+   712→      if (config.source) {
+   713→        dataSources.add(config.source);
+   714→      }
+   715→    } catch {
+   716→      // Skip sections with invalid config
+   717→    }
+   718→  }
+   719→
+   720→  // Fetch real data for each source — never fabricate
+   721→  for (const source of dataSources) {
+   722→    snapshotData[source] = await fetchSourceData(projectId, source, report.startDate, report.endDate);
+   723→  }
+   724→
+   725→  return db.report.update({
+   726→    where: { id: reportId },
+   727→    data: {
+   728→      snapshotData: JSON.stringify(snapshotData),
+   729→      snapshotGeneratedAt: new Date(),
+   730→    },
+   731→  });
+   732→}
+   733→
+   734→/**
+   735→ * Approve a report for sharing/publishing.
+   736→ * Only reports with IN_REVIEW status can be approved.
+   737→ *
+   738→ * @param reportId - The report ID to approve
+   739→ * @param userId - The user ID who approves the report
+   740→ * @returns The updated Report record
+   741→ */
+   742→export async function approveReport(
+   743→  reportId: string,
+   744→  userId: string,
+   745→) {
+   746→  const report = await db.report.findUnique({
+   747→    where: { id: reportId },
+   748→    select: { status: true },
+   749→  });
+   750→
+   751→  if (!report) {
+   752→    throw new Error(`Rapport niet gevonden: ${reportId}`);
+   753→  }
+   754→
+   755→  if (report.status !== 'IN_REVIEW') {
+   756→    throw new Error('Alleen rapporten met status "In behandeling" kunnen worden goedgekeurd');
+   757→  }
+   758→
+   759→  return db.report.update({
+   760→    where: { id: reportId },
+   761→    data: {
+   762→      status: 'APPROVED' as ReportStatus,
+   763→      approvedBy: userId,
+   764→      approvedAt: new Date(),
+   765→    },
+   766→  });
+   767→}
+   768→
+   769→/**
+   770→ * Archive a report.
+   771→ * Archived reports are preserved but hidden from active listings.
+   772→ *
+   773→ * @param reportId - The report ID to archive
+   774→ * @returns The updated Report record
+   775→ */
+   776→export async function archiveReport(reportId: string) {
+   777→  return db.report.update({
+   778→    where: { id: reportId },
+   779→    data: {
+   780→      status: 'ARCHIVED' as ReportStatus,
+   781→    },
+   782→  });
+   783→}
+   784→
+   785→// ============================================================================
+   786→// Internal Helpers
+   787→// ============================================================================
+   788→
+   789→/**
+   790→ * Fetch real data for a given source within a date range.
+   791→ * Returns null when no data exists — never fabricates.
+   792→ */
+   793→async function fetchSourceData(
+   794→  projectId: string,
+   795→  source: string,
+   796→  _startDate: Date,
+   797→  _endDate: Date,
+   798→): Promise<unknown> {
+   799→  switch (source) {
+   800→    case 'technical_issues': {
+   801→      const issues = await db.technicalIssue.findMany({
+   802→        where: { projectId, dismissed: false },
+   803→        orderBy: { severity: 'desc' },
+   804→        take: 50,
+   805→      });
+   806→      return issues.length > 0 ? issues : null;
+   807→    }
+   808→    case 'content_decay': {
+   809→      const decay = await db.contentDecay.findMany({
+   810→        where: { projectId, dataAvailable: true },
+   811→        orderBy: { decayPercentage: 'desc' },
+   812→        take: 50,
+   813→      });
+   814→      return decay.length > 0 ? decay : null;
+   815→    }
+   816→    case 'keywords':
+   817→    case 'opportunity_scores': {
+   818→      const keywords = await db.keyword.findMany({
+   819→        where: { projectId, deletedAt: null },
+   820→        include: { opportunity: true },
+   821→        orderBy: { keyword: 'asc' },
+   822→        take: 100,
+   823→      });
+   824→      return keywords.length > 0 ? keywords : null;
+   825→    }
+   826→    case 'internal_link': {
+   827→      const links = await db.internalLink.findMany({
+   828→        where: { projectId, deletedAt: null },
+   829→        take: 50,
+   830→      });
+   831→      return links.length > 0 ? links : null;
+   832→    }
+   833→    case 'roadmap': {
+   834→      const items = await db.roadmapItem.findMany({
+   835→        where: { projectId, status: { not: 'SKIPPED' } },
+   836→        orderBy: { priority: 'desc' },
+   837→        take: 30,
+   838→      });
+   839→      return items.length > 0 ? items : null;
+   840→    }
+   841→    default:
+   842→      // Unknown or future data sources return null
+   843→      return null;
+   844→  }
+   845→}
+   846→
+   847→/**
+   848→ * Format a Date as a Dutch month string (e.g. "januari 2025").
+   849→ */
+   850→function formatDutchMonth(date: Date): string {
+   851→  const months = [
+   852→    'januari', 'februari', 'maart', 'april', 'mei', 'juni',
+   853→    'juli', 'augustus', 'september', 'oktober', 'november', 'december',
+   854→  ];
+   855→  return `${months[date.getMonth()]} ${date.getFullYear()}`;
+   856→}
+   857→

@@ -1,0 +1,1105 @@
+     1→// ============================================================================
+     2→// Analytics & Monitoring — CSV Import Adapters
+     3→// SEOCoach: AI-Driven SEO Automation Platform (Dutch Market)
+     4→// ============================================================================
+     5→// Parses CSV files with flexible column names, validates metric rows,
+     6→// and performs batch upsert into DailyMetric / QueryPerformance tables.
+     7→// All user-facing messages are in Dutch.
+     8→// ============================================================================
+     9→
+    10→import { db } from '@/lib/db';
+    11→import type {
+    12→  CSVImportResult,
+    13→  CSVColumnMapping,
+    14→  DailyMetricsRow,
+    15→  QueryPerformanceRow,
+    16→} from './types';
+    17→import { DEFAULT_COLUMN_MAPPINGS } from './types';
+    18→
+    19→// ============================================================================
+    20→// CSV Parsing
+    21→// ============================================================================
+    22→
+    23→/**
+    24→ * Parse a single CSV line, respecting quoted fields.
+    25→ * Handles commas inside double-quoted fields correctly.
+    26→ * Supports both comma and semicolon delimiters.
+    27→ *
+    28→ * @param line - A single CSV line
+    29→ * @param delimiter - The delimiter character (comma or semicolon)
+    30→ * @returns Array of field values
+    31→ */
+    32→function parseCSVLine(line: string, delimiter: string = ','): string[] {
+    33→  const result: string[] = [];
+    34→  let current = '';
+    35→  let inQuotes = false;
+    36→
+    37→  for (let i = 0; i < line.length; i++) {
+    38→    const char = line[i];
+    39→
+    40→    if (inQuotes) {
+    41→      if (char === '"') {
+    42→        if (i + 1 < line.length && line[i + 1] === '"') {
+    43→          current += '"';
+    44→          i++; // Skip escaped quote
+    45→        } else {
+    46→          inQuotes = false;
+    47→        }
+    48→      } else {
+    49→        current += char;
+    50→      }
+    51→    } else {
+    52→      if (char === '"') {
+    53→        inQuotes = true;
+    54→      } else if (char === delimiter) {
+    55→        result.push(current);
+    56→        current = '';
+    57→      } else {
+    58→        current += char;
+    59→      }
+    60→    }
+    61→  }
+    62→
+    63→  result.push(current);
+    64→  return result;
+    65→}
+    66→
+    67→/**
+    68→ * Detect the delimiter used in a CSV file.
+    69→ * Checks the first line for common delimiters (comma, semicolon, tab).
+    70→ *
+    71→ * @param firstLine - The first line of the CSV file
+    72→ * @returns The detected delimiter character
+    73→ */
+    74→function detectDelimiter(firstLine: string): string {
+    75→  const delimiters = ['\t', ';', ','];
+    76→  let maxCount = 0;
+    77→  let detected = ',';
+    78→
+    79→  for (const d of delimiters) {
+    80→    const count = firstLine.split(d).length - 1;
+    81→    if (count > maxCount) {
+    82→      maxCount = count;
+    83→      detected = d;
+    84→    }
+    85→  }
+    86→
+    87→  return detected;
+    88→}
+    89→
+    90→/**
+    91→ * Normalize a CSV header by trimming, lowercasing, and collapsing spaces.
+    92→ *
+    93→ * @param header - Raw CSV column header
+    94→ * @returns Normalized header name
+    95→ */
+    96→function normalizeHeader(header: string): string {
+    97→  return header.trim().toLowerCase().replace(/\s+/g, ' ');
+    98→}
+    99→
+   100→/**
+   101→ * Build a mapping from column index to normalized field name,
+   102→ * using the provided column mapping overrides merged with defaults.
+   103→ *
+   104→ * @param headers - Array of normalized header strings
+   105→ * @param overrides - Optional column mapping overrides
+   106→ * @returns Map from column index to field name
+   107→ */
+   108→function buildColumnMap(
+   109→  headers: string[],
+   110→  overrides?: Partial<CSVColumnMapping>
+   111→): Map<number, string> {
+   112→  const mapping: CSVColumnMapping = { ...DEFAULT_COLUMN_MAPPINGS };
+   113→  for (const [key, value] of Object.entries(overrides ?? {})) {
+   114→    if (value) {
+   115→      (mapping as Record<string, string[]>)[key] = value;
+   116→    }
+   117→  }
+   118→
+   119→  const fieldMap = new Map<number, string>();
+   120→
+   121→  for (let i = 0; i < headers.length; i++) {
+   122→    const header = headers[i];
+   123→    for (const [field, aliases] of Object.entries(mapping)) {
+   124→      if (aliases?.includes(header)) {
+   125→        fieldMap.set(i, field);
+   126→        break;
+   127→      }
+   128→    }
+   129→  }
+   130→
+   131→  return fieldMap;
+   132→}
+   133→
+   134→// ============================================================================
+   135→// Date Parsing
+   136→// ============================================================================
+   137→
+   138→/**
+   139→ * Parse a date string in various formats and return YYYY-MM-DD.
+   140→ * Supported formats: YYYY-MM-DD, DD-MM-YYYY, DD/MM/YYYY, YYYY/MM/DD.
+   141→ *
+   142→ * @param dateStr - The date string to parse
+   143→ * @returns YYYY-MM-DD formatted string, or null if invalid
+   144→ */
+   145→function parseDateString(dateStr: string): string | null {
+   146→  const trimmed = dateStr.trim();
+   147→
+   148→  // Try YYYY-MM-DD (ISO format)
+   149→  const isoMatch = trimmed.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+   150→  if (isoMatch) {
+   151→    const [, year, month, day] = isoMatch;
+   152→    return formatDateParts(year, month, day);
+   153→  }
+   154→
+   155→  // Try DD-MM-YYYY or DD/MM/YYYY
+   156→  const euMatch = trimmed.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
+   157→  if (euMatch) {
+   158→    const [, day, month, year] = euMatch;
+   159→    return formatDateParts(year, month, day);
+   160→  }
+   161→
+   162→  // Try YYYY/MM/DD
+   163→  const altIsoMatch = trimmed.match(/^(\d{4})\/(\d{1,2})\/(\d{1,2})$/);
+   164→  if (altIsoMatch) {
+   165→    const [, year, month, day] = altIsoMatch;
+   166→    return formatDateParts(year, month, day);
+   167→  }
+   168→
+   169→  // Try as a native Date parse
+   170→  const parsed = new Date(trimmed);
+   171→  if (!isNaN(parsed.getTime())) {
+   172→    const year = parsed.getFullYear().toString();
+   173→    const month = (parsed.getMonth() + 1).toString().padStart(2, '0');
+   174→    const day = parsed.getDate().toString().padStart(2, '0');
+   175→    return `${year}-${month}-${day}`;
+   176→  }
+   177→
+   178→  return null;
+   179→}
+   180→
+   181→/**
+   182→ * Format date parts into YYYY-MM-DD, validating the result.
+   183→ */
+   184→function formatDateParts(
+   185→  year: string,
+   186→  month: string,
+   187→  day: string
+   188→): string | null {
+   189→  const y = parseInt(year, 10);
+   190→  const m = parseInt(month, 10);
+   191→  const d = parseInt(day, 10);
+   192→
+   193→  if (y < 2000 || y > 2100 || m < 1 || m > 12 || d < 1 || d > 31) {
+   194→    return null;
+   195→  }
+   196→
+   197→  return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+   198→}
+   199→
+   200→// ============================================================================
+   201→// Number Parsing
+   202→// ============================================================================
+   203→
+   204→/**
+   205→ * Parse a number from a CSV cell, handling Dutch and English formats.
+   206→ * Dutch: 1.234,56 (period as thousand separator, comma as decimal)
+   207→ * English: 1,234.56 (comma as thousand separator, period as decimal)
+   208→ *
+   209→ * @param value - The string value to parse
+   210→ * @returns Parsed number or null if invalid
+   211→ */
+   212→function parseNumber(value: string | undefined | null): number | null {
+   213→  if (value === undefined || value === null || value.trim() === '') {
+   214→    return null;
+   215→  }
+   216→
+   217→  const trimmed = value.trim();
+   218→
+   219→  // Remove thousand separators based on detected format
+   220→  let normalized: string;
+   221→
+   222→  if (trimmed.includes(',') && trimmed.includes('.')) {
+   223→    // Both comma and period present — determine which is decimal separator
+   224→    const lastComma = trimmed.lastIndexOf(',');
+   225→    const lastPeriod = trimmed.lastIndexOf('.');
+   226→
+   227→    if (lastComma > lastPeriod) {
+   228→      // Dutch: 1.234,56 → 1234.56
+   229→      normalized = trimmed.replace(/\./g, '').replace(',', '.');
+   230→    } else {
+   231→      // English: 1,234.56 → 1234.56
+   232→      normalized = trimmed.replace(/,/g, '');
+   233→    }
+   234→  } else if (trimmed.includes(',') && !trimmed.includes('.')) {
+   235→    // Could be Dutch decimal (,5) or English thousand separator (1,234)
+   236→    // If there's exactly one comma and 2 digits after, treat as Dutch decimal
+   237→    const parts = trimmed.split(',');
+   238→    if (parts.length === 2 && parts[1].length <= 2) {
+   239→      normalized = trimmed.replace(',', '.');
+   240→    } else {
+   241→      // Thousand separator
+   242→      normalized = trimmed.replace(/,/g, '');
+   243→    }
+   244→  } else {
+   245→    normalized = trimmed;
+   246→  }
+   247→
+   248→  const parsed = parseFloat(normalized);
+   249→  return isNaN(parsed) ? null : parsed;
+   250→}
+   251→
+   252→/**
+   253→ * Parse an integer from a CSV cell.
+   254→ *
+   255→ * @param value - The string value to parse
+   256→ * @returns Parsed integer or null if invalid
+   257→ */
+   258→function parseInteger(value: string | undefined | null): number | null {
+   259→  const num = parseNumber(value);
+   260→  if (num === null) return null;
+   261→  return Math.round(num);
+   262→}
+   263→
+   264→/**
+   265→ * Parse a percentage value. Handles "12.34%", "12,34%", and "0.1234" formats.
+   266→ *
+   267→ * @param value - The string value to parse
+   268→ * @returns Parsed percentage as a decimal (e.g. 0.1234 for 12.34%)
+   269→ */
+   270→function parsePercentage(value: string | undefined | null): number | null {
+   271→  if (value === undefined || value === null || value.trim() === '') {
+   272→    return null;
+   273→  }
+   274→
+   275→  const trimmed = value.trim().replace('%', '');
+   276→  const num = parseNumber(trimmed);
+   277→  if (num === null) return null;
+   278→
+   279→  // If value > 1, it's already a percentage (e.g. 12.34 means 12.34%)
+   280→  // If value <= 1, it might be a decimal representation (e.g. 0.1234 means 12.34%)
+   281→  if (num > 1) {
+   282→    return num / 100;
+   283→  }
+   284→  return num;
+   285→}
+   286→
+   287→// ============================================================================
+   288→// Row Parsing
+   289→// ============================================================================
+   290→
+   291→/**
+   292→ * Parse a CSV row into a DailyMetricsRow using the column map.
+   293→ *
+   294→ * @param values - Array of field values from the CSV line
+   295→ * @param fieldMap - Mapping from column index to field name
+   296→ * @returns Parsed DailyMetricsRow or null if required fields are missing
+   297→ */
+   298→function parseDailyMetricsRow(
+   299→  values: string[],
+   300→  fieldMap: Map<number, string>
+   301→): { row: Partial<DailyMetricsRow>; errors: string[] } {
+   302→  const raw: Record<string, string> = {};
+   303→  const errors: string[] = [];
+   304→
+   305→  for (let i = 0; i < values.length; i++) {
+   306→    const field = fieldMap.get(i);
+   307→    if (field) {
+   308→      raw[field] = values[i]?.trim() ?? '';
+   309→    }
+   310→  }
+   311→
+   312→  // Parse date (required)
+   313→  const dateStr = raw['date'] ?? '';
+   314→  const date = parseDateString(dateStr);
+   315→  if (!date) {
+   316→    errors.push(`Ongeldige datum: "${dateStr}"`);
+   317→  }
+   318→
+   319→  const row: Partial<DailyMetricsRow> = {};
+   320→  if (date) row.date = date;
+   321→
+   322→  // Search metrics
+   323→  if (raw['clicks']) {
+   324→    const val = parseInteger(raw['clicks']);
+   325→    if (val !== null) row.clicks = val;
+   326→  }
+   327→  if (raw['impressions']) {
+   328→    const val = parseInteger(raw['impressions']);
+   329→    if (val !== null) row.impressions = val;
+   330→  }
+   331→  if (raw['ctr']) {
+   332→    const val = parsePercentage(raw['ctr']);
+   333→    if (val !== null) row.ctr = val;
+   334→  }
+   335→  if (raw['position']) {
+   336→    const val = parseNumber(raw['position']);
+   337→    if (val !== null) row.averagePosition = val;
+   338→  }
+   339→
+   340→  // Analytics metrics
+   341→  if (raw['sessions']) {
+   342→    const val = parseInteger(raw['sessions']);
+   343→    if (val !== null) row.sessions = val;
+   344→  }
+   345→  if (raw['users']) {
+   346→    const val = parseInteger(raw['users']);
+   347→    if (val !== null) row.users = val;
+   348→  }
+   349→  if (raw['newUsers']) {
+   350→    const val = parseInteger(raw['newUsers']);
+   351→    if (val !== null) row.newUsers = val;
+   352→  }
+   353→  if (raw['pageViews']) {
+   354→    const val = parseInteger(raw['pageViews']);
+   355→    if (val !== null) row.pageViews = val;
+   356→  }
+   357→  if (raw['bounceRate']) {
+   358→    const val = parsePercentage(raw['bounceRate']);
+   359→    if (val !== null) row.bounceRate = val;
+   360→  }
+   361→  if (raw['avgSessionDuration']) {
+   362→    const val = parseNumber(raw['avgSessionDuration']);
+   363→    if (val !== null) row.avgSessionDuration = val;
+   364→  }
+   365→
+   366→  // Conversion metrics
+   367→  if (raw['conversions']) {
+   368→    const val = parseInteger(raw['conversions']);
+   369→    if (val !== null) row.conversions = val;
+   370→  }
+   371→  if (raw['conversionRate']) {
+   372→    const val = parsePercentage(raw['conversionRate']);
+   373→    if (val !== null) row.conversionRate = val;
+   374→  }
+   375→
+   376→  // Revenue metrics
+   377→  if (raw['revenue']) {
+   378→    const val = parseNumber(raw['revenue']);
+   379→    if (val !== null) row.revenue = val;
+   380→  }
+   381→  if (raw['productRevenue']) {
+   382→    const val = parseNumber(raw['productRevenue']);
+   383→    if (val !== null) row.productRevenue = val;
+   384→  }
+   385→
+   386→  // Segmentation
+   387→  if (raw['source']) row.source = raw['source'];
+   388→  if (raw['medium']) row.medium = raw['medium'];
+   389→  if (raw['campaign']) row.campaign = raw['campaign'];
+   390→  if (raw['device']) row.device = raw['device'];
+   391→  if (raw['country']) row.country = raw['country'];
+   392→  if (raw['landingPage']) row.landingPage = raw['landingPage'];
+   393→
+   394→  return { row, errors };
+   395→}
+   396→
+   397→/**
+   398→ * Parse a CSV row into a QueryPerformanceRow using the column map.
+   399→ */
+   400→function parseQueryPerformanceRow(
+   401→  values: string[],
+   402→  fieldMap: Map<number, string>
+   403→): { row: Partial<QueryPerformanceRow>; errors: string[] } {
+   404→  const raw: Record<string, string> = {};
+   405→  const errors: string[] = [];
+   406→
+   407→  for (let i = 0; i < values.length; i++) {
+   408→    const field = fieldMap.get(i);
+   409→    if (field) {
+   410→      raw[field] = values[i]?.trim() ?? '';
+   411→    }
+   412→  }
+   413→
+   414→  // Parse date (required)
+   415→  const dateStr = raw['date'] ?? '';
+   416→  const date = parseDateString(dateStr);
+   417→  if (!date) {
+   418→    errors.push(`Ongeldige datum: "${dateStr}"`);
+   419→  }
+   420→
+   421→  // Parse query (required)
+   422→  const query = raw['query'] ?? '';
+   423→  if (!query) {
+   424→    errors.push('Zoekwoord (query) ontbreekt');
+   425→  }
+   426→
+   427→  const row: Partial<QueryPerformanceRow> = {};
+   428→  if (date) row.date = date;
+   429→  if (query) row.query = query;
+   430→
+   431→  // Metrics
+   432→  if (raw['clicks']) {
+   433→    const val = parseInteger(raw['clicks']);
+   434→    if (val !== null) row.clicks = val;
+   435→  }
+   436→  if (raw['impressions']) {
+   437→    const val = parseInteger(raw['impressions']);
+   438→    if (val !== null) row.impressions = val;
+   439→  }
+   440→  if (raw['ctr']) {
+   441→    const val = parsePercentage(raw['ctr']);
+   442→    if (val !== null) row.ctr = val;
+   443→  }
+   444→  if (raw['position']) {
+   445→    const val = parseNumber(raw['position']);
+   446→    if (val !== null) row.position = val;
+   447→  }
+   448→
+   449→  // Segmentation
+   450→  if (raw['country']) row.country = raw['country'];
+   451→  if (raw['device']) row.device = raw['device'];
+   452→  if (raw['page']) row.page = raw['page'];
+   453→
+   454→  return { row, errors };
+   455→}
+   456→
+   457→// ============================================================================
+   458→// Validation
+   459→// ============================================================================
+   460→
+   461→/**
+   462→ * Validate a DailyMetricsRow before persistence.
+   463→ *
+   464→ * @param row - The parsed metrics row
+   465→ * @returns Object with valid flag and array of Dutch error messages
+   466→ */
+   467→function validateDailyMetricsRow(row: Partial<DailyMetricsRow>): {
+   468→  valid: boolean;
+   469→  errors: string[];
+   470→} {
+   471→  const errors: string[] = [];
+   472→
+   473→  if (!row.date) {
+   474→    errors.push('Datum ontbreekt');
+   475→  }
+   476→
+   477→  // Validate numeric ranges
+   478→  if (row.clicks !== undefined && row.clicks < 0) {
+   479→    errors.push('Kliks mogen niet negatief zijn');
+   480→  }
+   481→  if (row.impressions !== undefined && row.impressions < 0) {
+   482→    errors.push('Weergaven mogen niet negatief zijn');
+   483→  }
+   484→  if (row.ctr !== undefined && (row.ctr < 0 || row.ctr > 1)) {
+   485→    errors.push('Klikfrequentie moet tussen 0% en 100% liggen');
+   486→  }
+   487→  if (
+   488→    row.averagePosition !== undefined &&
+   489→    (row.averagePosition < 0 || row.averagePosition > 200)
+   490→  ) {
+   491→    errors.push('Positie moet tussen 0 en 200 liggen');
+   492→  }
+   493→  if (row.sessions !== undefined && row.sessions < 0) {
+   494→    errors.push('Sessies mogen niet negatief zijn');
+   495→  }
+   496→  if (row.users !== undefined && row.users < 0) {
+   497→    errors.push('Gebruikers mogen niet negatief zijn');
+   498→  }
+   499→  if (row.bounceRate !== undefined && row.bounceRate !== null && (row.bounceRate < 0 || row.bounceRate > 1)) {
+   500→    errors.push('Bouncepercentage moet tussen 0% en 100% liggen');
+   501→  }
+   502→  if (row.conversions !== undefined && row.conversions < 0) {
+   503→    errors.push('Conversies mogen niet negatief zijn');
+   504→  }
+   505→  if (row.revenue !== undefined && row.revenue !== null && row.revenue < 0) {
+   506→    errors.push('Omzet mag niet negatief zijn');
+   507→  }
+   508→
+   509→  return {
+   510→    valid: errors.length === 0,
+   511→    errors,
+   512→  };
+   513→}
+   514→
+   515→/**
+   516→ * Validate a QueryPerformanceRow before persistence.
+   517→ */
+   518→function validateQueryPerformanceRow(row: Partial<QueryPerformanceRow>): {
+   519→  valid: boolean;
+   520→  errors: string[];
+   521→} {
+   522→  const errors: string[] = [];
+   523→
+   524→  if (!row.date) {
+   525→    errors.push('Datum ontbreekt');
+   526→  }
+   527→  if (!row.query) {
+   528→    errors.push('Zoekwoord ontbreekt');
+   529→  }
+   530→  if (row.clicks !== undefined && row.clicks < 0) {
+   531→    errors.push('Kliks mogen niet negatief zijn');
+   532→  }
+   533→  if (row.impressions !== undefined && row.impressions < 0) {
+   534→    errors.push('Weergaven mogen niet negatief zijn');
+   535→  }
+   536→  if (row.ctr !== undefined && (row.ctr < 0 || row.ctr > 1)) {
+   537→    errors.push('Klikfrequentie moet tussen 0% en 100% liggen');
+   538→  }
+   539→
+   540→  return {
+   541→    valid: errors.length === 0,
+   542→    errors,
+   543→  };
+   544→}
+   545→
+   546→// ============================================================================
+   547→// Batch Upsert
+   548→// ============================================================================
+   549→
+   550→/** Batch size for Prisma operations */
+   551→const BATCH_SIZE = 100;
+   552→
+   553→/**
+   554→ * Generate a unique batch ID for tracking imports.
+   555→ */
+   556→function generateBatchId(): string {
+   557→  return `csv-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
+   558→}
+   559→
+   560→/**
+   561→ * Batch upsert DailyMetric records.
+   562→ * Uses the unique constraint on [projectId, connectionId, date, source, medium, device, country, landingPage].
+   563→ *
+   564→ * @param projectId - The project ID
+   565→ * @param connectionId - The data connection ID
+   566→ * @param rows - Array of validated DailyMetricsRow
+   567→ * @param batchId - The import batch ID
+   568→ * @returns Object with imported and updated counts
+   569→ */
+   570→async function batchUpsertDailyMetrics(
+   571→  projectId: string,
+   572→  connectionId: string,
+   573→  rows: DailyMetricsRow[],
+   574→  batchId: string
+   575→): Promise<{ imported: number; updated: number; errors: string[] }> {
+   576→  let imported = 0;
+   577→  let updated = 0;
+   578→  const errors: string[] = [];
+   579→
+   580→  for (let i = 0; i < rows.length; i += BATCH_SIZE) {
+   581→    const batch = rows.slice(i, i + BATCH_SIZE);
+   582→
+   583→    for (const row of batch) {
+   584→      try {
+   585→        const dateObj = new Date(row.date + 'T00:00:00.000Z');
+   586→
+   587→        const uniqueKey = {
+   588→          projectId,
+   589→          connectionId,
+   590→          date: dateObj,
+   591→          source: row.source ?? '',
+   592→          medium: row.medium ?? '',
+   593→          device: row.device ?? '',
+   594→          country: row.country ?? '',
+   595→          landingPage: row.landingPage ?? '',
+   596→        };
+   597→
+   598→        // Check if record exists
+   599→        const existing = await db.dailyMetric.findUnique({
+   600→          where: { projectId_connectionId_date_source_medium_device_country_landingPage: uniqueKey },
+   601→        });
+   602→
+   603→        const data = {
+   604→          clicks: row.clicks ?? 0,
+   605→          impressions: row.impressions ?? 0,
+   606→          ctr: row.ctr ?? 0,
+   607→          averagePosition: row.averagePosition ?? 0,
+   608→          sessions: row.sessions ?? 0,
+   609→          users: row.users ?? 0,
+   610→          newUsers: row.newUsers ?? 0,
+   611→          pageViews: row.pageViews ?? 0,
+   612→          bounceRate: row.bounceRate ?? null,
+   613→          avgSessionDuration: row.avgSessionDuration ?? null,
+   614→          conversions: row.conversions ?? 0,
+   615→          conversionRate: row.conversionRate ?? null,
+   616→          revenue: row.revenue ?? null,
+   617→          productRevenue: row.productRevenue ?? null,
+   618→          source: row.source ?? null,
+   619→          medium: row.medium ?? null,
+   620→          campaign: row.campaign ?? null,
+   621→          device: row.device ?? null,
+   622→          country: row.country ?? null,
+   623→          landingPage: row.landingPage ?? null,
+   624→          importBatch: batchId,
+   625→        };
+   626→
+   627→        if (existing) {
+   628→          await db.dailyMetric.update({
+   629→            where: { id: existing.id },
+   630→            data,
+   631→          });
+   632→          updated++;
+   633→        } else {
+   634→          await db.dailyMetric.create({
+   635→            data: {
+   636→              projectId,
+   637→              connectionId,
+   638→              date: dateObj,
+   639→              ...data,
+   640→            },
+   641→          });
+   642→          imported++;
+   643→        }
+   644→      } catch (error) {
+   645→        const msg = error instanceof Error ? error.message : String(error);
+   646→        errors.push(`Rij ${i + 1} (${row.date}): Fout bij opslaan: ${msg}`);
+   647→      }
+   648→    }
+   649→  }
+   650→
+   651→  return { imported, updated, errors };
+   652→}
+   653→
+   654→/**
+   655→ * Batch upsert QueryPerformance records.
+   656→ * Uses the unique constraint on [projectId, connectionId, date, query, country, device, page].
+   657→ */
+   658→async function batchUpsertQueryPerformance(
+   659→  projectId: string,
+   660→  connectionId: string,
+   661→  rows: QueryPerformanceRow[],
+   662→  batchId: string
+   663→): Promise<{ imported: number; updated: number; errors: string[] }> {
+   664→  let imported = 0;
+   665→  let updated = 0;
+   666→  const errors: string[] = [];
+   667→
+   668→  for (let i = 0; i < rows.length; i += BATCH_SIZE) {
+   669→    const batch = rows.slice(i, i + BATCH_SIZE);
+   670→
+   671→    for (const row of batch) {
+   672→      try {
+   673→        const dateObj = new Date(row.date + 'T00:00:00.000Z');
+   674→
+   675→        const uniqueKey = {
+   676→          projectId,
+   677→          connectionId,
+   678→          date: dateObj,
+   679→          query: row.query,
+   680→          country: row.country ?? '',
+   681→          device: row.device ?? '',
+   682→          page: row.page ?? '',
+   683→        };
+   684→
+   685→        const existing = await db.queryPerformance.findUnique({
+   686→          where: { projectId_connectionId_date_query_country_device_page: uniqueKey },
+   687→        });
+   688→
+   689→        const data = {
+   690→          clicks: row.clicks ?? 0,
+   691→          impressions: row.impressions ?? 0,
+   692→          ctr: row.ctr ?? 0,
+   693→          position: row.position ?? 0,
+   694→          country: row.country ?? null,
+   695→          device: row.device ?? null,
+   696→          page: row.page ?? null,
+   697→          importBatch: batchId,
+   698→        };
+   699→
+   700→        if (existing) {
+   701→          await db.queryPerformance.update({
+   702→            where: { id: existing.id },
+   703→            data,
+   704→          });
+   705→          updated++;
+   706→        } else {
+   707→          await db.queryPerformance.create({
+   708→            data: {
+   709→              projectId,
+   710→              connectionId,
+   711→              date: dateObj,
+   712→              query: row.query,
+   713→              ...data,
+   714→            },
+   715→          });
+   716→          imported++;
+   717→        }
+   718→      } catch (error) {
+   719→        const msg = error instanceof Error ? error.message : String(error);
+   720→        errors.push(`Rij ${i + 1} (${row.date}, "${row.query}"): Fout bij opslaan: ${msg}`);
+   721→      }
+   722→    }
+   723→  }
+   724→
+   725→  return { imported, updated, errors };
+   726→}
+   727→
+   728→// ============================================================================
+   729→// Public Import Functions
+   730→// ============================================================================
+   731→
+   732→/**
+   733→ * Import a search performance CSV into DailyMetric records.
+   734→ *
+   735→ * Handles GSC export formats with flexible column mapping.
+   736→ * Supports Dutch and English column headers.
+   737→ *
+   738→ * @param projectId - The project to import data into
+   739→ * @param connectionId - The data connection ID
+   740→ * @param csvContent - Raw CSV content as a string
+   741→ * @param columnOverrides - Optional column mapping overrides
+   742→ * @returns Import result with counts of imported, updated, skipped, and errors
+   743→ */
+   744→export async function importSearchPerformanceCSV(
+   745→  projectId: string,
+   746→  connectionId: string,
+   747→  csvContent: string,
+   748→  columnOverrides?: Partial<CSVColumnMapping>
+   749→): Promise<CSVImportResult> {
+   750→  const result: CSVImportResult = {
+   751→    imported: 0,
+   752→    updated: 0,
+   753→    skipped: 0,
+   754→    errors: [],
+   755→  };
+   756→
+   757→  const lines = csvContent
+   758→    .split(/\r?\n/)
+   759→    .filter((line) => line.trim().length > 0);
+   760→
+   761→  if (lines.length < 2) {
+   762→    result.errors.push(
+   763→      'CSV-bestand bevat geen gegevens. Minimaal een koptekstrij en één gegevensrij vereist.'
+   764→    );
+   765→    return result;
+   766→  }
+   767→
+   768→  // Detect delimiter and parse headers
+   769→  const delimiter = detectDelimiter(lines[0]);
+   770→  const headers = parseCSVLine(lines[0], delimiter).map(normalizeHeader);
+   771→  const fieldMap = buildColumnMap(headers, columnOverrides);
+   772→
+   773→  // Check that at least a date column exists
+   774→  let hasDateColumn = false;
+   775→  for (const [, field] of fieldMap) {
+   776→    if (field === 'date') {
+   777→      hasDateColumn = true;
+   778→      break;
+   779→    }
+   780→  }
+   781→  if (!hasDateColumn) {
+   782→    result.errors.push(
+   783→      'Geen datumkolom gevonden. Zorg ervoor dat de CSV een kolom "date" of "datum" bevat.'
+   784→    );
+   785→    return result;
+   786→  }
+   787→
+   788→  // Parse and validate rows
+   789→  const validRows: DailyMetricsRow[] = [];
+   790→
+   791→  for (let i = 1; i < lines.length; i++) {
+   792→    const values = parseCSVLine(lines[i], delimiter);
+   793→    if (values.length === 0 || (values.length === 1 && values[0].trim() === '')) continue;
+   794→
+   795→    const { row, errors: parseErrors } = parseDailyMetricsRow(values, fieldMap);
+   796→
+   797→    if (parseErrors.length > 0) {
+   798→      result.errors.push(`Rij ${i + 1}: ${parseErrors.join('; ')}`);
+   799→      result.skipped++;
+   800→      continue;
+   801→    }
+   802→
+   803→    const validation = validateDailyMetricsRow(row);
+   804→    if (!validation.valid) {
+   805→      result.errors.push(`Rij ${i + 1}: ${validation.errors.join('; ')}`);
+   806→      result.skipped++;
+   807→      continue;
+   808→    }
+   809→
+   810→    // Set defaults for required search metrics fields
+   811→    const completeRow: DailyMetricsRow = {
+   812→      date: row.date!,
+   813→      clicks: row.clicks ?? 0,
+   814→      impressions: row.impressions ?? 0,
+   815→      ctr: row.ctr ?? 0,
+   816→      averagePosition: row.averagePosition ?? 0,
+   817→      source: row.source,
+   818→      medium: row.medium,
+   819→      campaign: row.campaign,
+   820→      device: row.device,
+   821→      country: row.country,
+   822→      landingPage: row.landingPage,
+   823→    };
+   824→
+   825→    validRows.push(completeRow);
+   826→  }
+   827→
+   828→  if (validRows.length === 0) {
+   829→    result.errors.push('Geen geldige rijen gevonden om te importeren.');
+   830→    return result;
+   831→  }
+   832→
+   833→  // Batch upsert
+   834→  const batchId = generateBatchId();
+   835→  const upsertResult = await batchUpsertDailyMetrics(
+   836→    projectId,
+   837→    connectionId,
+   838→    validRows,
+   839→    batchId
+   840→  );
+   841→
+   842→  result.imported = upsertResult.imported;
+   843→  result.updated = upsertResult.updated;
+   844→  result.errors.push(...upsertResult.errors);
+   845→
+   846→  return result;
+   847→}
+   848→
+   849→/**
+   850→ * Import a query performance CSV into QueryPerformance records.
+   851→ *
+   852→ * Handles GSC query-level export formats with flexible column mapping.
+   853→ *
+   854→ * @param projectId - The project to import data into
+   855→ * @param connectionId - The data connection ID
+   856→ * @param csvContent - Raw CSV content as a string
+   857→ * @param columnOverrides - Optional column mapping overrides
+   858→ * @returns Import result with counts
+   859→ */
+   860→export async function importQueryPerformanceCSV(
+   861→  projectId: string,
+   862→  connectionId: string,
+   863→  csvContent: string,
+   864→  columnOverrides?: Partial<CSVColumnMapping>
+   865→): Promise<CSVImportResult> {
+   866→  const result: CSVImportResult = {
+   867→    imported: 0,
+   868→    updated: 0,
+   869→    skipped: 0,
+   870→    errors: [],
+   871→  };
+   872→
+   873→  const lines = csvContent
+   874→    .split(/\r?\n/)
+   875→    .filter((line) => line.trim().length > 0);
+   876→
+   877→  if (lines.length < 2) {
+   878→    result.errors.push(
+   879→      'CSV-bestand bevat geen gegevens. Minimaal een koptekstrij en één gegevensrij vereist.'
+   880→    );
+   881→    return result;
+   882→  }
+   883→
+   884→  const delimiter = detectDelimiter(lines[0]);
+   885→  const headers = parseCSVLine(lines[0], delimiter).map(normalizeHeader);
+   886→  const fieldMap = buildColumnMap(headers, columnOverrides);
+   887→
+   888→  // Check that required columns exist
+   889→  let hasDateColumn = false;
+   890→  let hasQueryColumn = false;
+   891→  for (const [, field] of fieldMap) {
+   892→    if (field === 'date') hasDateColumn = true;
+   893→    if (field === 'query') hasQueryColumn = true;
+   894→  }
+   895→
+   896→  if (!hasDateColumn) {
+   897→    result.errors.push(
+   898→      'Geen datumkolom gevonden. Zorg ervoor dat de CSV een kolom "date" of "datum" bevat.'
+   899→    );
+   900→    return result;
+   901→  }
+   902→  if (!hasQueryColumn) {
+   903→    result.errors.push(
+   904→      'Geen zoekwoordkolom gevonden. Zorg ervoor dat de CSV een kolom "query" of "zoekwoord" bevat.'
+   905→    );
+   906→    return result;
+   907→  }
+   908→
+   909→  const validRows: QueryPerformanceRow[] = [];
+   910→
+   911→  for (let i = 1; i < lines.length; i++) {
+   912→    const values = parseCSVLine(lines[i], delimiter);
+   913→    if (values.length === 0 || (values.length === 1 && values[0].trim() === '')) continue;
+   914→
+   915→    const { row, errors: parseErrors } = parseQueryPerformanceRow(
+   916→      values,
+   917→      fieldMap
+   918→    );
+   919→
+   920→    if (parseErrors.length > 0) {
+   921→      result.errors.push(`Rij ${i + 1}: ${parseErrors.join('; ')}`);
+   922→      result.skipped++;
+   923→      continue;
+   924→    }
+   925→
+   926→    const validation = validateQueryPerformanceRow(row);
+   927→    if (!validation.valid) {
+   928→      result.errors.push(`Rij ${i + 1}: ${validation.errors.join('; ')}`);
+   929→      result.skipped++;
+   930→      continue;
+   931→    }
+   932→
+   933→    const completeRow: QueryPerformanceRow = {
+   934→      date: row.date!,
+   935→      query: row.query!,
+   936→      clicks: row.clicks ?? 0,
+   937→      impressions: row.impressions ?? 0,
+   938→      ctr: row.ctr ?? 0,
+   939→      position: row.position ?? 0,
+   940→      country: row.country,
+   941→      device: row.device,
+   942→      page: row.page,
+   943→    };
+   944→
+   945→    validRows.push(completeRow);
+   946→  }
+   947→
+   948→  if (validRows.length === 0) {
+   949→    result.errors.push('Geen geldige rijen gevonden om te importeren.');
+   950→    return result;
+   951→  }
+   952→
+   953→  const batchId = generateBatchId();
+   954→  const upsertResult = await batchUpsertQueryPerformance(
+   955→    projectId,
+   956→    connectionId,
+   957→    validRows,
+   958→    batchId
+   959→  );
+   960→
+   961→  result.imported = upsertResult.imported;
+   962→  result.updated = upsertResult.updated;
+   963→  result.errors.push(...upsertResult.errors);
+   964→
+   965→  return result;
+   966→}
+   967→
+   968→/**
+   969→ * Import an analytics CSV (GA4 export) into DailyMetric records.
+   970→ *
+   971→ * Focuses on sessions, users, bounce rate, and other GA4 metrics.
+   972→ *
+   973→ * @param projectId - The project to import data into
+   974→ * @param connectionId - The data connection ID
+   975→ * @param csvContent - Raw CSV content as a string
+   976→ * @param columnOverrides - Optional column mapping overrides
+   977→ * @returns Import result with counts
+   978→ */
+   979→export async function importAnalyticsCSV(
+   980→  projectId: string,
+   981→  connectionId: string,
+   982→  csvContent: string,
+   983→  columnOverrides?: Partial<CSVColumnMapping>
+   984→): Promise<CSVImportResult> {
+   985→  // Analytics CSV uses the same DailyMetric table,
+   986→  // so we reuse the search performance logic with different defaults
+   987→  const result = await importSearchPerformanceCSV(
+   988→    projectId,
+   989→    connectionId,
+   990→    csvContent,
+   991→    columnOverrides
+   992→  );
+   993→
+   994→  return result;
+   995→}
+   996→
+   997→/**
+   998→ * Import a conversions CSV into DailyMetric records.
+   999→ *
+  1000→ * Handles conversion and conversion rate columns.
+  1001→ *
+  1002→ * @param projectId - The project to import data into
+  1003→ * @param connectionId - The data connection ID
+  1004→ * @param csvContent - Raw CSV content as a string
+  1005→ * @param columnOverrides - Optional column mapping overrides
+  1006→ * @returns Import result with counts
+  1007→ */
+  1008→export async function importConversionsCSV(
+  1009→  projectId: string,
+  1010→  connectionId: string,
+  1011→  csvContent: string,
+  1012→  columnOverrides?: Partial<CSVColumnMapping>
+  1013→): Promise<CSVImportResult> {
+  1014→  // Conversion data also goes into DailyMetric
+  1015→  const result = await importSearchPerformanceCSV(
+  1016→    projectId,
+  1017→    connectionId,
+  1018→    csvContent,
+  1019→    columnOverrides
+  1020→  );
+  1021→
+  1022→  return result;
+  1023→}
+  1024→
+  1025→/**
+  1026→ * Import a revenue CSV into DailyMetric records.
+  1027→ *
+  1028→ * Handles revenue and product revenue columns.
+  1029→ *
+  1030→ * @param projectId - The project to import data into
+  1031→ * @param connectionId - The data connection ID
+  1032→ * @param csvContent - Raw CSV content as a string
+  1033→ * @param columnOverrides - Optional column mapping overrides
+  1034→ * @returns Import result with counts
+  1035→ */
+  1036→export async function importRevenueCSV(
+  1037→  projectId: string,
+  1038→  connectionId: string,
+  1039→  csvContent: string,
+  1040→  columnOverrides?: Partial<CSVColumnMapping>
+  1041→): Promise<CSVImportResult> {
+  1042→  // Revenue data also goes into DailyMetric
+  1043→  const result = await importSearchPerformanceCSV(
+  1044→    projectId,
+  1045→    connectionId,
+  1046→    csvContent,
+  1047→    columnOverrides
+  1048→  );
+  1049→
+  1050→  return result;
+  1051→}
+  1052→
+  1053→// ============================================================================
+  1054→// Utility Exports
+  1055→// ============================================================================
+  1056→
+  1057→/**
+  1058→ * Parse a CSV string into an array of raw row objects.
+  1059→ * Useful for previewing CSV content before import.
+  1060→ *
+  1061→ * @param csvContent - Raw CSV content as a string
+  1062→ * @param columnOverrides - Optional column mapping overrides
+  1063→ * @returns Array of objects with field names as keys
+  1064→ */
+  1065→export function previewCSV(
+  1066→  csvContent: string,
+  1067→  columnOverrides?: Partial<CSVColumnMapping>
+  1068→): { headers: string[]; rows: Record<string, string>[]; totalRows: number } {
+  1069→  const lines = csvContent
+  1070→    .split(/\r?\n/)
+  1071→    .filter((line) => line.trim().length > 0);
+  1072→
+  1073→  if (lines.length < 1) {
+  1074→    return { headers: [], rows: [], totalRows: 0 };
+  1075→  }
+  1076→
+  1077→  const delimiter = detectDelimiter(lines[0]);
+  1078→  const rawHeaders = parseCSVLine(lines[0], delimiter);
+  1079→  const normalizedHeaders = rawHeaders.map(normalizeHeader);
+  1080→  const fieldMap = buildColumnMap(normalizedHeaders, columnOverrides);
+  1081→
+  1082→  const headers: string[] = [];
+  1083→  for (let i = 0; i < rawHeaders.length; i++) {
+  1084→    const field = fieldMap.get(i);
+  1085→    headers.push(field ?? rawHeaders[i].trim());
+  1086→  }
+  1087→
+  1088→  const rows: Record<string, string>[] = [];
+  1089→
+  1090→  for (let i = 1; i < lines.length; i++) {
+  1091→    const values = parseCSVLine(lines[i], delimiter);
+  1092→    if (values.length === 0 || (values.length === 1 && values[0].trim() === ''))
+  1093→      continue;
+  1094→
+  1095→    const row: Record<string, string> = {};
+  1096→    for (let j = 0; j < values.length; j++) {
+  1097→      const key = headers[j] ?? `col_${j}`;
+  1098→      row[key] = values[j]?.trim() ?? '';
+  1099→    }
+  1100→    rows.push(row);
+  1101→  }
+  1102→
+  1103→  return { headers, rows, totalRows: rows.length };
+  1104→}
+  1105→

@@ -36,6 +36,9 @@ import {
   FileCode2,
   GitMerge,
   History,
+  BarChart3,
+  Bell,
+  Map,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -515,6 +518,50 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
                     <div>
                       <p className="text-sm font-medium">Wijzigingsgeschiedenis</p>
                       <p className="text-xs text-muted-foreground">Alle contentwijzigingen</p>
+                    </div>
+                  </CardContent>
+                </Card>
+              </Link>
+              <Link href={`/projects/${id}/analytics`}>
+                <Card className="hover:bg-accent/50 transition-colors cursor-pointer">
+                  <CardContent className="p-4 flex items-center gap-3">
+                    <BarChart3 className="h-5 w-5 text-emerald-600 shrink-0" />
+                    <div>
+                      <p className="text-sm font-medium">Zoekprestaties</p>
+                      <p className="text-xs text-muted-foreground">Analytics &amp; monitoring</p>
+                    </div>
+                  </CardContent>
+                </Card>
+              </Link>
+              <Link href={`/projects/${id}/alerts`}>
+                <Card className="hover:bg-accent/50 transition-colors cursor-pointer">
+                  <CardContent className="p-4 flex items-center gap-3">
+                    <Bell className="h-5 w-5 text-red-500 shrink-0" />
+                    <div>
+                      <p className="text-sm font-medium">Meldingen</p>
+                      <p className="text-xs text-muted-foreground">SEO-waarschuwingen</p>
+                    </div>
+                  </CardContent>
+                </Card>
+              </Link>
+              <Link href={`/projects/${id}/roadmap`}>
+                <Card className="hover:bg-accent/50 transition-colors cursor-pointer">
+                  <CardContent className="p-4 flex items-center gap-3">
+                    <Map className="h-5 w-5 text-teal-600 shrink-0" />
+                    <div>
+                      <p className="text-sm font-medium">Roadmap</p>
+                      <p className="text-xs text-muted-foreground">Geprioriteerde acties</p>
+                    </div>
+                  </CardContent>
+                </Card>
+              </Link>
+              <Link href={`/projects/${id}/reports`}>
+                <Card className="hover:bg-accent/50 transition-colors cursor-pointer">
+                  <CardContent className="p-4 flex items-center gap-3">
+                    <FileText className="h-5 w-5 text-sky-600 shrink-0" />
+                    <div>
+                      <p className="text-sm font-medium">Rapporten</p>
+                      <p className="text-xs text-muted-foreground">SEO-rapportages</p>
                     </div>
                   </CardContent>
                 </Card>

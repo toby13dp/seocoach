@@ -1,6 +1,6 @@
 # SEOCoach — Implementation Status
 
-**Document version:** 2.0  
+**Document version:** 3.0  
 **Date:** 2026-03-04  
 **Last updated:** 2026-06-13  
 
@@ -14,7 +14,7 @@
 | 2 | Crawling & Technical SEO | 🟢 Complete | 2026-06-13 | 2026-06-13 | 100% |
 | 3 | Keywords & Content Intelligence | 🟢 Complete | 2026-06-13 | 2026-06-13 | 100% |
 | 4 | Content Automation & CMS | 🟢 Complete | 2026-06-13 | 2026-06-13 | 100% |
-| 5 | Analytics & Monitoring | ⚪ Planned | — | — | 0% |
+| 5 | Analytics & Monitoring | 🟢 Complete | 2026-06-13 | 2026-06-13 | 100% |
 | 6 | GEO & Competitive Intelligence | ⚪ Planned | — | — | 0% |
 | 7 | Local SEO & Reputation | ⚪ Planned | — | — | 0% |
 | 8 | E-commerce SEO | ⚪ Planned | — | — | 0% |
@@ -276,25 +276,68 @@
 
 ## Phase 5: Analytics & Monitoring
 
-**Status:** ⚪ Planned  
+**Status:** 🟢 Complete  
 **Description:** Implement search performance and analytics adapters, monitoring and alerts, roadmap generation, and white-label reporting.
 
-### Planned Sub-Deliverables
+### Implemented Sub-Deliverables
 
-| Sub-Deliverable | Key Requirements | Dependencies |
-|----------------|-----------------|-------------|
-| A. Search performance & analytics | PERF-001 through PERF-003 | Google API adapters, time-series model |
-| B. Monitoring & alerts | ALERT-001 through ALERT-003 | Time-series data, notification system |
-| C. Roadmap | ROAD-001, ROAD-002 | Issues, opportunities, keyword data |
-| D. White-label reporting | REPORT-001 through REPORT-005 | All data modules, PDF generation, snapshot model |
+| Sub-Deliverable | Key Requirements | Status | Implementation |
+|----------------|-----------------|--------|---------------|
+| A. Search performance & analytics | PERF-001 through PERF-003 | 🟢 Complete | `src/lib/analytics/` — DataConnection management, CSV imports (5 types: search performance, analytics, conversions, revenue, query performance), GSC/GA4 adapter architecture, time-series calculations, period comparison, YoY, dashboard data, Dutch data freshness notes, CSV export |
+| B. Monitoring & alerts | ALERT-001 through ALERT-003 | 🟢 Complete | `src/lib/alerts/` — 16 alert types with Dutch labels, threshold-based & anomaly detection (Z-score + IQR), alert lifecycle (acknowledge/snooze/resolve/dismiss/assign), deduplication, digest generation, notification preferences with quiet hours |
+| C. Roadmap | ROAD-001, ROAD-002 | 🟢 Complete | `src/lib/roadmap/` — Recommendation generation from technical issues, keyword opportunities, content decay, internal links; 5 time views (Vandaag/Deze week/Deze maand/90 dagen/Later); drag-to-reorder; auto-refresh |
+| D. White-label reporting | REPORT-001 through REPORT-005 | 🟢 Complete | `src/lib/reporting/` — 14 report types, report builder with sections (KPI cards, charts, tables, text, recommendations, roadmap, page breaks), snapshot data (reports don't change when source data changes), white-label profiles (logo, colors, fonts, company details, intro/closing text), share links with password & expiry, comments, HTML rendering with Dutch formatting |
+
+### Phase 5 Database Models
+
+| Model | Purpose |
+|-------|---------|
+| DataConnection | GSC/GA4/CSV connection management with sync tracking |
+| DailyMetric | Time-series metrics (clicks, impressions, sessions, conversions, revenue) with segmentation |
+| QueryPerformance | GSC query-level data with position and CTR |
+| Alert | 16 alert types with severity, lifecycle, anomaly detection |
+| AlertPreference | User notification preferences per alert type |
+| RoadmapItem | Prioritized recommendations with time views |
+| WhiteLabelProfile | Organization branding for reports |
+| Report | Report with sections, snapshots, sharing, comments |
+| ReportComment | Client/colleague feedback on report sections |
+
+### Phase 5 API Routes (27 files)
+
+| Category | Count | Endpoints |
+|----------|-------|-----------|
+| Data Connections | 5 | CRUD, test, sync, CSV import |
+| Metrics | 4 | Time-series, comparison, dashboard, export |
+| Query Performance | 2 | Top queries, top landing pages |
+| Alerts | 4 | List/run, details, snooze, preferences |
+| Roadmap | 3 | List/refresh, details, reorder |
+| Reporting | 6 | CRUD, preview, approve, share, comments |
+| White-Label | 2 | Organization profiles CRUD |
+| Shared Reports | 1 | Public access via token |
+
+### Phase 5 Frontend Pages (6 pages)
+
+| Page | Route | Purpose |
+|------|-------|---------|
+| Zoekprestaties | `/projects/[id]/analytics` | Search performance dashboard |
+| Gegevensbronnen | `/projects/[id]/analytics/connections` | Data connection management |
+| Meldingen | `/projects/[id]/alerts` | Alert monitoring & management |
+| Roadmap | `/projects/[id]/roadmap` | Prioritized action roadmap |
+| Rapporten | `/projects/[id]/reports` | Report list & creation |
+| Rapport detail | `/projects/[id]/reports/[reportId]` | Report builder & sharing |
 
 ### Phase 5 Definition of Done
 
-- [ ] A user can import or connect performance data
-- [ ] A user can understand trends with period comparisons
-- [ ] A user can receive and manage alerts
-- [ ] A user can view a prioritised roadmap
-- [ ] A user can create, preview, and export a white-label report
+- [x] A user can import or connect performance data
+- [x] A user can understand trends with period comparisons
+- [x] A user can receive and manage alerts
+- [x] A user can view a prioritised roadmap
+- [x] A user can create, preview, and export a white-label report
+
+### Phase 5 Test Results
+
+- **180 tests** across 8 test suites — all passing
+- 388 assertions covering: CSV imports, time-series calculations, sync management, alert engine, anomaly detection, roadmap generation, report builder, report sharing
 
 ---
 
@@ -492,7 +535,7 @@
 | 2. Crawling & Technical SEO | 22 | 22 | 0 | 0 | 0 |
 | 3. Keywords & Content Intelligence | 28 | 28 | 0 | 0 | 0 |
 | 4. Content Automation & CMS | 27 | 27 | 0 | 0 | 0 |
-| 5. Analytics & Monitoring | 14 | 0 | 0 | 14 | 0 |
+| 5. Analytics & Monitoring | 14 | 14 | 0 | 0 | 0 |
 | 6. GEO & Competitive Intelligence | 12 | 0 | 0 | 12 | 0 |
 | 7. Local SEO & Reputation | 8 | 0 | 0 | 8 | 0 |
 | 8. E-commerce SEO | 6 | 0 | 0 | 6 | 0 |
@@ -502,7 +545,7 @@
 | 12. Migrations & Deployments | 8 | 0 | 0 | 8 | 0 |
 | 13. Production Hardening | 10 | 0 | 0 | 10 | 0 |
 | Cross-Cutting | 10 | 2 | 0 | 8 | 0 |
-| **Total** | **218** | **126** | **0** | **92** | **0** |
+| **Total** | **218** | **140** | **0** | **78** | **0** |
 
 ### Critical Path
 
@@ -533,6 +576,7 @@ Phase 1 (Foundation)
 | 2026-06-13 | 2 | Phase 2 Crawling & Technical SEO implemented and tested | System |
 | 2026-06-13 | 3 | Phase 3 Keywords & Content Intelligence implemented and tested | System |
 | 2026-06-13 | 4 | Phase 4 Content Automation & CMS implemented and tested | System |
+| 2026-06-13 | 5 | Phase 5 Analytics & Monitoring implemented and tested (180 tests) | System |
 
 ---
 

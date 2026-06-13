@@ -1,0 +1,858 @@
+     1→"use client";
+     2→
+     3→import { useState, useEffect, use, useCallback } from "react";
+     4→import { useRouter } from "@/i18n/routing";
+     5→import { useTranslations } from "@/i18n/client";
+     6→import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+     7→import { Button } from "@/components/ui/button";
+     8→import { Badge } from "@/components/ui/badge";
+     9→import { Input } from "@/components/ui/input";
+    10→import { Label } from "@/components/ui/label";
+    11→import { Textarea } from "@/components/ui/textarea";
+    12→import {
+    13→  Table,
+    14→  TableBody,
+    15→  TableCell,
+    16→  TableHead,
+    17→  TableHeader,
+    18→  TableRow,
+    19→} from "@/components/ui/table";
+    20→import {
+    21→  Select,
+    22→  SelectContent,
+    23→  SelectItem,
+    24→  SelectTrigger,
+    25→  SelectValue,
+    26→} from "@/components/ui/select";
+    27→import {
+    28→  Dialog,
+    29→  DialogContent,
+    30→  DialogDescription,
+    31→  DialogFooter,
+    32→  DialogHeader,
+    33→  DialogTitle,
+    34→  DialogTrigger,
+    35→} from "@/components/ui/dialog";
+    36→import { motion } from "framer-motion";
+    37→import {
+    38→  ArrowLeft,
+    39→  Plus,
+    40→  Upload,
+    41→  Search,
+    42→  Loader2,
+    43→  Tag,
+    44→  ArrowUpDown,
+    45→  ChevronLeft,
+    46→  ChevronRight,
+    47→  Sparkles,
+    48→  FileUp,
+    49→} from "lucide-react";
+    50→import { toast } from "sonner";
+    51→
+    52→// --- Types ---
+    53→interface KeywordEntry {
+    54→  id: string;
+    55→  keyword: string;
+    56→  searchIntent: string;
+    57→  funnelStage: string;
+    58→  searchVolume: number | null;
+    59→  difficulty: number | null;
+    60→  cpc: number | null;
+    61→  currentRanking: number | null;
+    62→  currentUrl: string | null;
+    63→  groupId: string | null;
+    64→  tags: string | null;
+    65→  notes: string | null;
+    66→  source: string;
+    67→  createdAt: string;
+    68→  updatedAt: string;
+    69→  opportunity: {
+    70→    totalScore: number;
+    71→    volumeScore: number;
+    72→    difficultyScore: number;
+    73→    relevanceScore: number;
+    74→    currentRankScore: number;
+    75→    intentScore: number;
+    76→    funnelScore: number;
+    77→    competitionScore: number;
+    78→    calculatedAt: string;
+    79→  } | null;
+    80→}
+    81→
+    82→interface KeywordMeta {
+    83→  page: number;
+    84→  limit: number;
+    85→  total: number;
+    86→  totalPages: number;
+    87→}
+    88→
+    89→// --- Badge helpers ---
+    90→const intentBadgeStyle = (intent: string) => {
+    91→  switch (intent) {
+    92→    case "INFORMATIONAL":
+    93→      return "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300";
+    94→    case "NAVIGATIONAL":
+    95→      return "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300";
+    96→    case "TRANSACTIONAL":
+    97→      return "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-300";
+    98→    case "COMMERCIAL_INVESTIGATION":
+    99→      return "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300";
+   100→    case "LOCAL":
+   101→      return "bg-teal-100 text-teal-800 dark:bg-teal-900 dark:text-teal-300";
+   102→    case "BRANDED":
+   103→      return "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-300";
+   104→    default:
+   105→      return "bg-muted text-muted-foreground";
+   106→  }
+   107→};
+   108→
+   109→const funnelBadgeStyle = (stage: string) => {
+   110→  switch (stage) {
+   111→    case "AWARENESS":
+   112→      return "bg-sky-100 text-sky-800 dark:bg-sky-900 dark:text-sky-300";
+   113→    case "CONSIDERATION":
+   114→      return "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300";
+   115→    case "DECISION":
+   116→      return "bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-300";
+   117→    case "RETENTION":
+   118→      return "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-300";
+   119→    default:
+   120→      return "bg-muted text-muted-foreground";
+   121→  }
+   122→};
+   123→
+   124→const intentLabel = (intent: string, t: (k: string) => string) => {
+   125→  switch (intent) {
+   126→    case "INFORMATIONAL": return t("informational");
+   127→    case "NAVIGATIONAL": return t("navigational");
+   128→    case "TRANSACTIONAL": return t("transactional");
+   129→    case "COMMERCIAL_INVESTIGATION": return t("commercialInvestigation");
+   130→    case "LOCAL": return t("local");
+   131→    case "BRANDED": return t("branded");
+   132→    default: return t("unknown");
+   133→  }
+   134→};
+   135→
+   136→const funnelLabel = (stage: string, t: (k: string) => string) => {
+   137→  switch (stage) {
+   138→    case "AWARENESS": return t("awareness");
+   139→    case "CONSIDERATION": return t("consideration");
+   140→    case "DECISION": return t("decision");
+   141→    case "RETENTION": return t("retention");
+   142→    default: return t("unknown");
+   143→  }
+   144→};
+   145→
+   146→const scoreColor = (score: number) => {
+   147→  if (score >= 70) return "text-emerald-600 dark:text-emerald-400";
+   148→  if (score >= 40) return "text-yellow-600 dark:text-yellow-400";
+   149→  return "text-red-600 dark:text-red-400";
+   150→};
+   151→
+   152→export default function KeywordsPage({
+   153→  params,
+   154→}: {
+   155→  params: Promise<{ id: string }>;
+   156→}) {
+   157→  const { id: projectId } = use(params);
+   158→  const router = useRouter();
+   159→  const t = useTranslations("keywords");
+   160→  const tCommon = useTranslations("common");
+   161→
+   162→  // State
+   163→  const [keywords, setKeywords] = useState<KeywordEntry[]>([]);
+   164→  const [meta, setMeta] = useState<KeywordMeta>({
+   165→    page: 1,
+   166→    limit: 20,
+   167→    total: 0,
+   168→    totalPages: 0,
+   169→  });
+   170→  const [isLoading, setIsLoading] = useState(true);
+   171→  const [classifyingIds, setClassifyingIds] = useState<Set<string>>(new Set());
+   172→
+   173→  // Filters
+   174→  const [searchText, setSearchText] = useState("");
+   175→  const [filterIntent, setFilterIntent] = useState<string>("ALL");
+   176→  const [filterFunnel, setFilterFunnel] = useState<string>("ALL");
+   177→  const [filterGroup, setFilterGroup] = useState<string>("ALL");
+   178→  const [minVolume, setMinVolume] = useState("");
+   179→  const [maxDifficulty, setMaxDifficulty] = useState("");
+   180→
+   181→  // Sorting
+   182→  const [sortField, setSortField] = useState("createdAt");
+   183→  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
+   184→
+   185→  // Dialogs
+   186→  const [addDialogOpen, setAddDialogOpen] = useState(false);
+   187→  const [importDialogOpen, setImportDialogOpen] = useState(false);
+   188→  const [isCreating, setIsCreating] = useState(false);
+   189→  const [isImporting, setIsImporting] = useState(false);
+   190→
+   191→  // Form state
+   192→  const [addForm, setAddForm] = useState({
+   193→    keyword: "",
+   194→    searchVolume: "",
+   195→    difficulty: "",
+   196→    cpc: "",
+   197→    currentRanking: "",
+   198→    currentUrl: "",
+   199→    groupId: "",
+   200→    tags: "",
+   201→    notes: "",
+   202→  });
+   203→
+   204→  const [importFile, setImportFile] = useState<File | null>(null);
+   205→
+   206→  // Groups for filter
+   207→  const [groups, setGroups] = useState<string[]>([]);
+   208→
+   209→  // Fetch keywords
+   210→  const fetchKeywords = useCallback(
+   211→    async (page = 1) => {
+   212→      setIsLoading(true);
+   213→      try {
+   214→        const params = new URLSearchParams();
+   215→        params.set("page", String(page));
+   216→        params.set("limit", "20");
+   217→        params.set("sort", sortField);
+   218→        params.set("order", sortOrder);
+   219→        if (searchText) params.set("search", searchText);
+   220→        if (filterIntent !== "ALL") params.set("searchIntent", filterIntent);
+   221→        if (filterFunnel !== "ALL") params.set("funnelStage", filterFunnel);
+   222→        if (filterGroup !== "ALL") params.set("groupId", filterGroup);
+   223→        if (minVolume) params.set("minVolume", minVolume);
+   224→        if (maxDifficulty) params.set("maxDifficulty", maxDifficulty);
+   225→
+   226→        const res = await fetch(
+   227→          `/api/projects/${projectId}/keywords?${params.toString()}`
+   228→        );
+   229→        if (res.ok) {
+   230→          const data = await res.json();
+   231→          setKeywords(data.data || []);
+   232→          setMeta(data.meta || { page: 1, limit: 20, total: 0, totalPages: 0 });
+   233→        }
+   234→      } catch {
+   235→        // silently fail
+   236→      } finally {
+   237→        setIsLoading(false);
+   238→      }
+   239→    },
+   240→    [projectId, sortField, sortOrder, searchText, filterIntent, filterFunnel, filterGroup, minVolume, maxDifficulty]
+   241→  );
+   242→
+   243→  // Fetch groups
+   244→  useEffect(() => {
+   245→    async function fetchGroups() {
+   246→      try {
+   247→        const res = await fetch(
+   248→          `/api/projects/${projectId}/keywords?limit=1000`
+   249→        );
+   250→        if (res.ok) {
+   251→          const data = await res.json();
+   252→          const uniqueGroups = Array.from(
+   253→            new Set(
+   254→              (data.data || [])
+   255→                .map((k: KeywordEntry) => k.groupId)
+   256→                .filter(Boolean) as string[]
+   257→            )
+   258→          );
+   259→          setGroups(uniqueGroups);
+   260→        }
+   261→      } catch {
+   262→        // silently fail
+   263→      }
+   264→    }
+   265→    fetchGroups();
+   266→  }, [projectId]);
+   267→
+   268→  useEffect(() => {
+   269→    fetchKeywords(1);
+   270→  }, [fetchKeywords]);
+   271→
+   272→  // Handle sort
+   273→  const handleSort = (field: string) => {
+   274→    if (sortField === field) {
+   275→      setSortOrder(sortOrder === "asc" ? "desc" : "asc");
+   276→    } else {
+   277→      setSortField(field);
+   278→      setSortOrder("asc");
+   279→    }
+   280→  };
+   281→
+   282→  // Add keyword
+   283→  const handleAddKeyword = async () => {
+   284→    if (!addForm.keyword.trim()) return;
+   285→    setIsCreating(true);
+   286→    try {
+   287→      const res = await fetch(`/api/projects/${projectId}/keywords`, {
+   288→        method: "POST",
+   289→        headers: { "Content-Type": "application/json" },
+   290→        body: JSON.stringify({
+   291→          keyword: addForm.keyword.trim(),
+   292→          searchVolume: addForm.searchVolume ? parseInt(addForm.searchVolume) : undefined,
+   293→          difficulty: addForm.difficulty ? parseFloat(addForm.difficulty) : undefined,
+   294→          cpc: addForm.cpc ? parseFloat(addForm.cpc) : undefined,
+   295→          currentRanking: addForm.currentRanking ? parseInt(addForm.currentRanking) : undefined,
+   296→          currentUrl: addForm.currentUrl || undefined,
+   297→          groupId: addForm.groupId || undefined,
+   298→          tags: addForm.tags ? addForm.tags.split(",").map((t) => t.trim()) : undefined,
+   299→          notes: addForm.notes || undefined,
+   300→        }),
+   301→      });
+   302→      if (res.ok) {
+   303→        toast.success(t("createSuccess"));
+   304→        setAddForm({ keyword: "", searchVolume: "", difficulty: "", cpc: "", currentRanking: "", currentUrl: "", groupId: "", tags: "", notes: "" });
+   305→        setAddDialogOpen(false);
+   306→        fetchKeywords(meta.page);
+   307→      } else {
+   308→        toast.error(t("createError"));
+   309→      }
+   310→    } catch {
+   311→      toast.error(t("createError"));
+   312→    } finally {
+   313→      setIsCreating(false);
+   314→    }
+   315→  };
+   316→
+   317→  // Import CSV
+   318→  const handleImport = async () => {
+   319→    if (!importFile) return;
+   320→    setIsImporting(true);
+   321→    try {
+   322→      const formData = new FormData();
+   323→      formData.append("file", importFile);
+   324→      const res = await fetch(`/api/projects/${projectId}/keywords/import`, {
+   325→        method: "POST",
+   326→        body: formData,
+   327→      });
+   328→      if (res.ok) {
+   329→        const data = await res.json();
+   330→        const count = data.data?.imported || 0;
+   331→        toast.success(t("importSuccess", { count }));
+   332→        setImportFile(null);
+   333→        setImportDialogOpen(false);
+   334→        fetchKeywords(1);
+   335→      } else {
+   336→        toast.error(t("importError"));
+   337→      }
+   338→    } catch {
+   339→      toast.error(t("importError"));
+   340→    } finally {
+   341→      setIsImporting(false);
+   342→    }
+   343→  };
+   344→
+   345→  // Classify intent
+   346→  const handleClassify = async (keywordId: string, useAI = false) => {
+   347→    setClassifyingIds((prev) => new Set(prev).add(keywordId));
+   348→    try {
+   349→      const res = await fetch(
+   350→        `/api/projects/${projectId}/keywords/${keywordId}/classify`,
+   351→        {
+   352→          method: "POST",
+   353→          headers: { "Content-Type": "application/json" },
+   354→          body: JSON.stringify({ useAI }),
+   355→        }
+   356→      );
+   357→      if (res.ok) {
+   358→        toast.success(t("classifySuccess"));
+   359→        fetchKeywords(meta.page);
+   360→      } else {
+   361→        toast.error(t("classifyError"));
+   362→      }
+   363→    } catch {
+   364→      toast.error(t("classifyError"));
+   365→    } finally {
+   366→      setClassifyingIds((prev) => {
+   367→        const next = new Set(prev);
+   368→        next.delete(keywordId);
+   369→        return next;
+   370→      });
+   371→    }
+   372→  };
+   373→
+   374→  // Navigate to keyword detail
+   375→  const goToKeywordDetail = (keywordId: string) => {
+   376→    router.push(`/projects/${projectId}/keywords/${keywordId}`);
+   377→  };
+   378→
+   379→  const SortIcon = ({ field }: { field: string }) => (
+   380→    <ArrowUpDown
+   381→      className={`ml-1 h-3 w-3 inline ${
+   382→        sortField === field ? "opacity-100" : "opacity-30"
+   383→      }`}
+   384→    />
+   385→  );
+   386→
+   387→  return (
+   388→    <motion.div
+   389→      initial={{ opacity: 0 }}
+   390→      animate={{ opacity: 1 }}
+   391→      className="p-4 md:p-6 space-y-6"
+   392→    >
+   393→      {/* Header */}
+   394→      <div className="flex items-center gap-4">
+   395→        <Button
+   396→          variant="ghost"
+   397→          size="icon"
+   398→          onClick={() => router.push(`/projects/${projectId}`)}
+   399→        >
+   400→          <ArrowLeft className="h-4 w-4" />
+   401→        </Button>
+   402→        <div className="flex-1">
+   403→          <h1 className="text-2xl font-bold tracking-tight">{t("title")}</h1>
+   404→          <p className="text-sm text-muted-foreground">
+   405→            {meta.total} trefwoord{meta.total !== 1 ? "en" : ""}
+   406→          </p>
+   407→        </div>
+   408→        <div className="flex items-center gap-2">
+   409→          <Dialog open={importDialogOpen} onOpenChange={setImportDialogOpen}>
+   410→            <DialogTrigger asChild>
+   411→              <Button variant="outline" size="sm">
+   412→                <Upload className="mr-2 h-4 w-4" />
+   413→                {t("importCsv")}
+   414→              </Button>
+   415→            </DialogTrigger>
+   416→            <DialogContent>
+   417→              <DialogHeader>
+   418→                <DialogTitle>{t("importTitle")}</DialogTitle>
+   419→                <DialogDescription>{t("importDesc")}</DialogDescription>
+   420→              </DialogHeader>
+   421→              <div className="space-y-4">
+   422→                <div className="border-2 border-dashed rounded-lg p-6 text-center">
+   423→                  <FileUp className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
+   424→                  <Label htmlFor="csv-upload" className="cursor-pointer">
+   425→                    <span className="text-sm text-primary underline">
+   426→                      {importFile ? importFile.name : "Kies een CSV-bestand"}
+   427→                    </span>
+   428→                    <Input
+   429→                      id="csv-upload"
+   430→                      type="file"
+   431→                      accept=".csv"
+   432→                      className="hidden"
+   433→                      onChange={(e) =>
+   434→                        setImportFile(e.target.files?.[0] || null)
+   435→                      }
+   436→                    />
+   437→                  </Label>
+   438→                </div>
+   439→              </div>
+   440→              <DialogFooter>
+   441→                <Button
+   442→                  variant="outline"
+   443→                  onClick={() => setImportDialogOpen(false)}
+   444→                >
+   445→                  {tCommon("cancel")}
+   446→                </Button>
+   447→                <Button
+   448→                  onClick={handleImport}
+   449→                  disabled={!importFile || isImporting}
+   450→                >
+   451→                  {isImporting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+   452→                  {tCommon("import")}
+   453→                </Button>
+   454→              </DialogFooter>
+   455→            </DialogContent>
+   456→          </Dialog>
+   457→
+   458→          <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
+   459→            <DialogTrigger asChild>
+   460→              <Button size="sm">
+   461→                <Plus className="mr-2 h-4 w-4" />
+   462→                {t("addKeyword")}
+   463→              </Button>
+   464→            </DialogTrigger>
+   465→            <DialogContent className="max-w-lg">
+   466→              <DialogHeader>
+   467→                <DialogTitle>{t("addTitle")}</DialogTitle>
+   468→                <DialogDescription>{t("addDesc")}</DialogDescription>
+   469→              </DialogHeader>
+   470→              <div className="space-y-4">
+   471→                <div className="space-y-2">
+   472→                  <Label>{t("keywordLabel")}</Label>
+   473→                  <Input
+   474→                    value={addForm.keyword}
+   475→                    onChange={(e) =>
+   476→                      setAddForm({ ...addForm, keyword: e.target.value })
+   477→                    }
+   478→                    placeholder={t("keywordPlaceholder")}
+   479→                  />
+   480→                </div>
+   481→                <div className="grid grid-cols-2 gap-4">
+   482→                  <div className="space-y-2">
+   483→                    <Label>{t("volumeLabel")}</Label>
+   484→                    <Input
+   485→                      type="number"
+   486→                      value={addForm.searchVolume}
+   487→                      onChange={(e) =>
+   488→                        setAddForm({ ...addForm, searchVolume: e.target.value })
+   489→                      }
+   490→                      placeholder="1000"
+   491→                    />
+   492→                  </div>
+   493→                  <div className="space-y-2">
+   494→                    <Label>{t("difficultyLabel")}</Label>
+   495→                    <Input
+   496→                      type="number"
+   497→                      value={addForm.difficulty}
+   498→                      onChange={(e) =>
+   499→                        setAddForm({ ...addForm, difficulty: e.target.value })
+   500→                      }
+   501→                      placeholder="50"
+   502→                    />
+   503→                  </div>
+   504→                </div>
+   505→                <div className="grid grid-cols-2 gap-4">
+   506→                  <div className="space-y-2">
+   507→                    <Label>{t("cpcLabel")}</Label>
+   508→                    <Input
+   509→                      type="number"
+   510→                      step="0.01"
+   511→                      value={addForm.cpc}
+   512→                      onChange={(e) =>
+   513→                        setAddForm({ ...addForm, cpc: e.target.value })
+   514→                      }
+   515→                      placeholder="1.50"
+   516→                    />
+   517→                  </div>
+   518→                  <div className="space-y-2">
+   519→                    <Label>{t("positionLabel")}</Label>
+   520→                    <Input
+   521→                      type="number"
+   522→                      value={addForm.currentRanking}
+   523→                      onChange={(e) =>
+   524→                        setAddForm({ ...addForm, currentRanking: e.target.value })
+   525→                      }
+   526→                      placeholder="15"
+   527→                    />
+   528→                  </div>
+   529→                </div>
+   530→                <div className="space-y-2">
+   531→                  <Label>{t("urlLabel")}</Label>
+   532→                  <Input
+   533→                    value={addForm.currentUrl}
+   534→                    onChange={(e) =>
+   535→                      setAddForm({ ...addForm, currentUrl: e.target.value })
+   536→                    }
+   537→                    placeholder="https://voorbeeld.nl/pagina"
+   538→                  />
+   539→                </div>
+   540→                <div className="grid grid-cols-2 gap-4">
+   541→                  <div className="space-y-2">
+   542→                    <Label>{t("groupLabel")}</Label>
+   543→                    <Input
+   544→                      value={addForm.groupId}
+   545→                      onChange={(e) =>
+   546→                        setAddForm({ ...addForm, groupId: e.target.value })
+   547→                      }
+   548→                      placeholder="groep-naam"
+   549→                    />
+   550→                  </div>
+   551→                  <div className="space-y-2">
+   552→                    <Label>{t("tagsLabel")}</Label>
+   553→                    <Input
+   554→                      value={addForm.tags}
+   555→                      onChange={(e) =>
+   556→                        setAddForm({ ...addForm, tags: e.target.value })
+   557→                      }
+   558→                      placeholder="seo, tools"
+   559→                    />
+   560→                  </div>
+   561→                </div>
+   562→                <div className="space-y-2">
+   563→                  <Label>{t("notesLabel")}</Label>
+   564→                  <Textarea
+   565→                    value={addForm.notes}
+   566→                    onChange={(e) =>
+   567→                      setAddForm({ ...addForm, notes: e.target.value })
+   568→                    }
+   569→                    rows={2}
+   570→                  />
+   571→                </div>
+   572→              </div>
+   573→              <DialogFooter>
+   574→                <Button
+   575→                  variant="outline"
+   576→                  onClick={() => setAddDialogOpen(false)}
+   577→                >
+   578→                  {tCommon("cancel")}
+   579→                </Button>
+   580→                <Button
+   581→                  onClick={handleAddKeyword}
+   582→                  disabled={!addForm.keyword.trim() || isCreating}
+   583→                >
+   584→                  {isCreating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+   585→                  {tCommon("create")}
+   586→                </Button>
+   587→              </DialogFooter>
+   588→            </DialogContent>
+   589→          </Dialog>
+   590→        </div>
+   591→      </div>
+   592→
+   593→      {/* Filters */}
+   594→      <Card>
+   595→        <CardContent className="pt-4 pb-4">
+   596→          <div className="flex flex-wrap gap-3 items-end">
+   597→            <div className="flex-1 min-w-[200px]">
+   598→              <div className="relative">
+   599→                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+   600→                <Input
+   601→                  className="pl-9"
+   602→                  placeholder={t("searchPlaceholder")}
+   603→                  value={searchText}
+   604→                  onChange={(e) => setSearchText(e.target.value)}
+   605→                />
+   606→              </div>
+   607→            </div>
+   608→            <Select value={filterIntent} onValueChange={setFilterIntent}>
+   609→              <SelectTrigger className="w-[180px]">
+   610→                <SelectValue placeholder={t("filterIntent")} />
+   611→              </SelectTrigger>
+   612→              <SelectContent>
+   613→                <SelectItem value="ALL">{tCommon("all")}</SelectItem>
+   614→                <SelectItem value="INFORMATIONAL">{t("informational")}</SelectItem>
+   615→                <SelectItem value="NAVIGATIONAL">{t("navigational")}</SelectItem>
+   616→                <SelectItem value="TRANSACTIONAL">{t("transactional")}</SelectItem>
+   617→                <SelectItem value="COMMERCIAL_INVESTIGATION">{t("commercialInvestigation")}</SelectItem>
+   618→                <SelectItem value="LOCAL">{t("local")}</SelectItem>
+   619→                <SelectItem value="BRANDED">{t("branded")}</SelectItem>
+   620→              </SelectContent>
+   621→            </Select>
+   622→            <Select value={filterFunnel} onValueChange={setFilterFunnel}>
+   623→              <SelectTrigger className="w-[160px]">
+   624→                <SelectValue placeholder={t("filterFunnel")} />
+   625→              </SelectTrigger>
+   626→              <SelectContent>
+   627→                <SelectItem value="ALL">{tCommon("all")}</SelectItem>
+   628→                <SelectItem value="AWARENESS">{t("awareness")}</SelectItem>
+   629→                <SelectItem value="CONSIDERATION">{t("consideration")}</SelectItem>
+   630→                <SelectItem value="DECISION">{t("decision")}</SelectItem>
+   631→                <SelectItem value="RETENTION">{t("retention")}</SelectItem>
+   632→              </SelectContent>
+   633→            </Select>
+   634→            {groups.length > 0 && (
+   635→              <Select value={filterGroup} onValueChange={setFilterGroup}>
+   636→                <SelectTrigger className="w-[160px]">
+   637→                  <SelectValue placeholder={t("filterGroup")} />
+   638→                </SelectTrigger>
+   639→                <SelectContent>
+   640→                  <SelectItem value="ALL">{tCommon("all")}</SelectItem>
+   641→                  {groups.map((g) => (
+   642→                    <SelectItem key={g} value={g}>
+   643→                      {g}
+   644→                    </SelectItem>
+   645→                  ))}
+   646→                </SelectContent>
+   647→              </Select>
+   648→            )}
+   649→            <Input
+   650→              type="number"
+   651→              className="w-[120px]"
+   652→              placeholder={t("minVolume")}
+   653→              value={minVolume}
+   654→              onChange={(e) => setMinVolume(e.target.value)}
+   655→            />
+   656→            <Input
+   657→              type="number"
+   658→              className="w-[140px]"
+   659→              placeholder={t("maxDifficulty")}
+   660→              value={maxDifficulty}
+   661→              onChange={(e) => setMaxDifficulty(e.target.value)}
+   662→            />
+   663→          </div>
+   664→        </CardContent>
+   665→      </Card>
+   666→
+   667→      {/* Keywords table */}
+   668→      <Card>
+   669→        <CardContent className="p-0">
+   670→          {isLoading ? (
+   671→            <div className="flex items-center justify-center py-12">
+   672→              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+   673→            </div>
+   674→          ) : keywords.length === 0 ? (
+   675→            <div className="flex flex-col items-center justify-center py-12 text-center">
+   676→              <Tag className="h-12 w-12 text-muted-foreground/30 mb-3" />
+   677→              <h3 className="text-lg font-medium">{t("emptyTitle")}</h3>
+   678→              <p className="text-sm text-muted-foreground mt-1 max-w-md">
+   679→                {t("emptyDesc")}
+   680→              </p>
+   681→              <Button
+   682→                className="mt-4"
+   683→                onClick={() => setAddDialogOpen(true)}
+   684→              >
+   685→                <Plus className="mr-2 h-4 w-4" />
+   686→                {t("addKeyword")}
+   687→              </Button>
+   688→            </div>
+   689→          ) : (
+   690→            <>
+   691→              <div className="overflow-x-auto">
+   692→                <Table>
+   693→                  <TableHeader>
+   694→                    <TableRow>
+   695→                      <TableHead
+   696→                        className="cursor-pointer select-none"
+   697→                        onClick={() => handleSort("keyword")}
+   698→                      >
+   699→                        {t("keyword")} <SortIcon field="keyword" />
+   700→                      </TableHead>
+   701→                      <TableHead>{t("searchIntent")}</TableHead>
+   702→                      <TableHead>{t("funnelStage")}</TableHead>
+   703→                      <TableHead
+   704→                        className="cursor-pointer select-none text-right"
+   705→                        onClick={() => handleSort("searchVolume")}
+   706→                      >
+   707→                        {t("volume")} <SortIcon field="searchVolume" />
+   708→                      </TableHead>
+   709→                      <TableHead
+   710→                        className="cursor-pointer select-none text-right"
+   711→                        onClick={() => handleSort("difficulty")}
+   712→                      >
+   713→                        {t("difficulty")} <SortIcon field="difficulty" />
+   714→                      </TableHead>
+   715→                      <TableHead
+   716→                        className="cursor-pointer select-none text-right"
+   717→                        onClick={() => handleSort("cpc")}
+   718→                      >
+   719→                        {t("cpc")} <SortIcon field="cpc" />
+   720→                      </TableHead>
+   721→                      <TableHead
+   722→                        className="cursor-pointer select-none text-right"
+   723→                        onClick={() => handleSort("currentRanking")}
+   724→                      >
+   725→                        {t("position")} <SortIcon field="currentRanking" />
+   726→                      </TableHead>
+   727→                      <TableHead className="text-right">
+   728→                        {t("opportunityScore")}
+   729→                      </TableHead>
+   730→                      <TableHead className="w-[100px]" />
+   731→                    </TableRow>
+   732→                  </TableHeader>
+   733→                  <TableBody>
+   734→                    {keywords.map((kw) => (
+   735→                      <TableRow
+   736→                        key={kw.id}
+   737→                        className="cursor-pointer hover:bg-muted/50"
+   738→                        onClick={() => goToKeywordDetail(kw.id)}
+   739→                      >
+   740→                        <TableCell className="font-medium max-w-[200px] truncate">
+   741→                          {kw.keyword}
+   742→                        </TableCell>
+   743→                        <TableCell>
+   744→                          <Badge
+   745→                            variant="outline"
+   746→                            className={`text-xs ${intentBadgeStyle(kw.searchIntent)}`}
+   747→                          >
+   748→                            {intentLabel(kw.searchIntent, t)}
+   749→                          </Badge>
+   750→                        </TableCell>
+   751→                        <TableCell>
+   752→                          <Badge
+   753→                            variant="outline"
+   754→                            className={`text-xs ${funnelBadgeStyle(kw.funnelStage)}`}
+   755→                          >
+   756→                            {funnelLabel(kw.funnelStage, t)}
+   757→                          </Badge>
+   758→                        </TableCell>
+   759→                        <TableCell className="text-right tabular-nums">
+   760→                          {kw.searchVolume?.toLocaleString("nl-NL") ?? "-"}
+   761→                        </TableCell>
+   762→                        <TableCell className="text-right tabular-nums">
+   763→                          {kw.difficulty != null ? (
+   764→                            <span
+   765→                              className={
+   766→                                kw.difficulty > 60
+   767→                                  ? "text-red-600"
+   768→                                  : kw.difficulty > 30
+   769→                                  ? "text-yellow-600"
+   770→                                  : "text-emerald-600"
+   771→                              }
+   772→                            >
+   773→                              {kw.difficulty.toFixed(0)}
+   774→                            </span>
+   775→                          ) : (
+   776→                            "-"
+   777→                          )}
+   778→                        </TableCell>
+   779→                        <TableCell className="text-right tabular-nums">
+   780→                          {kw.cpc != null
+   781→                            ? `€${kw.cpc.toFixed(2)}`
+   782→                            : "-"}
+   783→                        </TableCell>
+   784→                        <TableCell className="text-right tabular-nums">
+   785→                          {kw.currentRanking ?? "-"}
+   786→                        </TableCell>
+   787→                        <TableCell className="text-right">
+   788→                          {kw.opportunity ? (
+   789→                            <span
+   790→                              className={`font-semibold tabular-nums ${scoreColor(kw.opportunity.totalScore)}`}
+   791→                            >
+   792→                              {kw.opportunity.totalScore.toFixed(0)}
+   793→                            </span>
+   794→                          ) : (
+   795→                            <span className="text-muted-foreground text-xs">
+   796→                              {t("noScore")}
+   797→                            </span>
+   798→                          )}
+   799→                        </TableCell>
+   800→                        <TableCell>
+   801→                          <Button
+   802→                            variant="ghost"
+   803→                            size="sm"
+   804→                            onClick={(e) => {
+   805→                              e.stopPropagation();
+   806→                              handleClassify(kw.id);
+   807→                            }}
+   808→                            disabled={classifyingIds.has(kw.id)}
+   809→                            title={t("classify")}
+   810→                          >
+   811→                            {classifyingIds.has(kw.id) ? (
+   812→                              <Loader2 className="h-4 w-4 animate-spin" />
+   813→                            ) : (
+   814→                              <Sparkles className="h-4 w-4" />
+   815→                            )}
+   816→                          </Button>
+   817→                        </TableCell>
+   818→                      </TableRow>
+   819→                    ))}
+   820→                  </TableBody>
+   821→                </Table>
+   822→              </div>
+   823→
+   824→              {/* Pagination */}
+   825→              {meta.totalPages > 1 && (
+   826→                <div className="flex items-center justify-between px-4 py-3 border-t">
+   827→                  <p className="text-sm text-muted-foreground">
+   828→                    {meta.total} trefwoord{meta.total !== 1 ? "en" : ""} &middot;{" "}
+   829→                    {tCommon("page")} {meta.page} van {meta.totalPages}
+   830→                  </p>
+   831→                  <div className="flex items-center gap-2">
+   832→                    <Button
+   833→                      variant="outline"
+   834→                      size="sm"
+   835→                      onClick={() => fetchKeywords(meta.page - 1)}
+   836→                      disabled={meta.page <= 1}
+   837→                    >
+   838→                      <ChevronLeft className="h-4 w-4" />
+   839→                    </Button>
+   840→                    <Button
+   841→                      variant="outline"
+   842→                      size="sm"
+   843→                      onClick={() => fetchKeywords(meta.page + 1)}
+   844→                      disabled={meta.page >= meta.totalPages}
+   845→                    >
+   846→                      <ChevronRight className="h-4 w-4" />
+   847→                    </Button>
+   848→                  </div>
+   849→                </div>
+   850→              )}
+   851→            </>
+   852→          )}
+   853→        </CardContent>
+   854→      </Card>
+   855→    </motion.div>
+   856→  );
+   857→}
+   858→
