@@ -44,7 +44,6 @@ import {
   MapPin,
   Star,
   ShoppingBag,
-  Database,
   Target,
   TrendingUp,
 } from "lucide-react";

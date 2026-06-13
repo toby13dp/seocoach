@@ -4,7 +4,7 @@
 // Integrates:
 // 1. next-intl locale routing (existing functionality)
 // 2. Rate limiting on all API routes (SEC-001)
-// 3. CSRF protection on mutation requests (SEC-001)
+// 3. CSRF protection on mutation requests (SEC-001) — Edge-compatible
 // 4. Security headers on all responses (SEC-001)
 // ============================================================================
 
@@ -14,11 +14,20 @@ import type { NextRequest } from "next/server";
 import { routing } from "./i18n/routing";
 
 // ---------------------------------------------------------------------------
-// Security imports
+// Security imports (Edge-compatible only — no node:crypto)
 // ---------------------------------------------------------------------------
 
 import { createRateLimitMiddleware } from "@/lib/security/rate-limiter";
-import { checkCsrf, CSRF_COOKIE_NAME } from "@/lib/security/csrf-protection";
+
+// ---------------------------------------------------------------------------
+// CSRF constants (duplicated from csrf-protection.ts to avoid node:crypto)
+// ---------------------------------------------------------------------------
+
+/** Name of the cookie used to store the CSRF token */
+const CSRF_COOKIE_NAME = "__Host-csrf-token";
+
+/** Name of the header used to send the CSRF token */
+const CSRF_HEADER_NAME = "x-csrf-token";
 
 // ---------------------------------------------------------------------------
 // Create the next-intl middleware (preserves existing functionality)
@@ -84,6 +93,91 @@ const SECURITY_HEADERS: Record<string, string> = {
     "payment=()",
   ].join(", "),
 };
+
+// ---------------------------------------------------------------------------
+// Edge-compatible CSRF helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Validate the Origin or Referer header of a request against NEXTAUTH_URL.
+ * This provides an additional layer of CSRF protection by ensuring that
+ * mutation requests originate from the same application domain.
+ */
+function validateOrigin(request: NextRequest): boolean {
+  const nextauthUrl = process.env.NEXTAUTH_URL;
+  if (!nextauthUrl) {
+    // If NEXTAUTH_URL is not configured, skip origin validation
+    // (should be configured in production!)
+    return true;
+  }
+
+  let allowedOrigin: string;
+  try {
+    const parsed = new URL(nextauthUrl);
+    allowedOrigin = parsed.origin;
+  } catch {
+    return false;
+  }
+
+  // Check Origin header first (preferred for CSRF protection)
+  const origin = request.headers.get("origin");
+  if (origin) {
+    return origin === allowedOrigin;
+  }
+
+  // Fall back to Referer header
+  const referer = request.headers.get("referer");
+  if (referer) {
+    try {
+      const refererOrigin = new URL(referer).origin;
+      return refererOrigin === allowedOrigin;
+    } catch {
+      return false;
+    }
+  }
+
+  // If neither Origin nor Referer is present, reject the request
+  return false;
+}
+
+/**
+ * Extract a specific cookie value from a cookie header string.
+ */
+function extractCookieValue(cookieHeader: string, name: string): string {
+  const cookies = cookieHeader.split(";");
+  for (const cookie of cookies) {
+    const trimmed = cookie.trim();
+    if (trimmed.startsWith(`${name}=`)) {
+      return decodeURIComponent(trimmed.slice(name.length + 1));
+    }
+  }
+  return "";
+}
+
+/**
+ * Edge-compatible CSRF check using origin validation and double-submit cookie.
+ * Avoids node:crypto (not available in Edge Runtime).
+ */
+function checkCsrfEdge(request: NextRequest): boolean {
+  // Step 1: Validate origin/referer
+  if (!validateOrigin(request)) {
+    return false;
+  }
+
+  // Step 2: Double-submit cookie pattern
+  const token = request.headers.get(CSRF_HEADER_NAME) ?? "";
+  const cookieHeader = request.headers.get("cookie") ?? "";
+  const cookie = extractCookieValue(cookieHeader, CSRF_COOKIE_NAME);
+
+  // Both header and cookie must be present
+  if (!token || !cookie) {
+    return false;
+  }
+
+  // Step 3: Simple string comparison (timing-safe not available in Edge)
+  // Note: API routes can use the full timing-safe check via csrf-protection.ts
+  return token === cookie;
+}
 
 // ---------------------------------------------------------------------------
 // Rate limiting helpers
@@ -213,9 +307,7 @@ function handleApiRoute(request: NextRequest): NextResponse {
     // Skip CSRF for auth routes (login/register have their own protections)
     const isAuthRoute = pathname.startsWith("/api/auth");
 
-    if (!isAuthRoute && !checkCsrf(request)) {
-      // If CSRF check fails, check origin validation separately
-      // to provide a more specific error message
+    if (!isAuthRoute && !checkCsrfEdge(request)) {
       const response = NextResponse.json(
         { error: "CSRF-validatie mislukt. Herlaad de pagina en probeer opnieuw." },
         { status: 403 }
