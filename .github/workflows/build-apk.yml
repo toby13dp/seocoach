@@ -3,10 +3,6 @@
 # ============================================================================
 # Bouwt automatisch een APK bij elke push naar main.
 # APK verschijnt als artifact + GitHub Release.
-#
-# Secrets (optioneel, heeft anders fallback wachtwoord):
-#   KEYSTORE_PASSWORD — wachtwoord voor de signing keystore
-#   KEY_PASSWORD      — wachtwoord voor de signing key
 # ============================================================================
 
 name: Build Android APK
@@ -23,10 +19,6 @@ jobs:
   build-apk:
     name: Build APK
     runs-on: ubuntu-latest
-
-    env:
-      STORE_PASS: ${{ secrets.KEYSTORE_PASSWORD || 'seocoach2024' }}
-      KEY_PASS: ${{ secrets.KEY_PASSWORD || 'seocoach2024' }}
 
     steps:
       - name: Checkout code
@@ -73,8 +65,6 @@ jobs:
               @keyframes spin { to { transform: rotate(360deg); } }
               h1 { font-size: 24px; margin-bottom: 8px; color: #f8fafc; }
               p { color: #94a3b8; font-size: 14px; }
-              .retry-btn { margin-top: 24px; padding: 12px 32px; background: #3b82f6; color: white; border: none; border-radius: 8px; font-size: 16px; cursor: pointer; }
-              .retry-btn:hover { background: #2563eb; }
             </style>
           </head>
           <body>
@@ -82,25 +72,13 @@ jobs:
               <div class="loader"></div>
               <h1>SEOCoach</h1>
               <p>Verbinding maken met server...</p>
-              <p id="error-msg" style="display:none; margin-top:16px; color:#f87171;">Kan geen verbinding maken. Controleer je internetverbinding.</p>
-              <button id="retry-btn" class="retry-btn" style="display:none;" onclick="location.reload()">Opnieuw proberen</button>
             </div>
-            <script>
-              setTimeout(function() {
-                document.querySelector('.loader').style.display = 'none';
-                document.getElementById('error-msg').style.display = 'block';
-                document.getElementById('retry-btn').style.display = 'inline-block';
-              }, 10000);
-            </script>
           </body>
           </html>
           EOF
           fi
 
-      - name: Add Capacitor Android platform
-        run: npx cap add android || true
-
-      - name: Sync Capacitor
+      - name: Sync Capacitor Android
         run: npx cap sync android
 
       - name: Generate release keystore
@@ -109,42 +87,9 @@ jobs:
             -keystore seocoach-release-key.jks \
             -keyalg RSA -keysize 2048 -validity 10000 \
             -alias seocoach \
-            -storepass "$STORE_PASS" \
-            -keypass "$KEY_PASS" \
+            -storepass seocoach2024 \
+            -keypass seocoach2024 \
             -dname "CN=SEOCoach, OU=Mobile, O=SEOCoach, L=Amsterdam, ST=Noord-Holland, C=NL"
-
-      - name: Configure signing in build.gradle
-        run: |
-          cd android/app
-          cat build.gradle
-          echo "---PATCHING---"
-          # Voeg signingConfigs toe vóór buildTypes als het nog niet bestaat
-          if ! grep -q 'signingConfigs' build.gradle; then
-            sed -i '/buildTypes {/i\
-              signingConfigs {\
-                  release {\
-                      storeFile file('\''../../seocoach-release-key.jks'\'')\
-                      storePassword '\'''$STORE_PASS''\''\
-                      keyAlias '\''seocoach'\''\
-                      keyPassword '\'''$KEY_PASS''\''\
-                  }\
-              }\
-          ' build.gradle
-          fi
-          # Voeg signingConfig toe aan release buildType
-          if ! grep -q 'signingConfig signingConfigs.release' build.gradle; then
-            sed -i 's/proguardFiles getDefaultProguardFile/signingConfig signingConfigs.release\n            proguardFiles getDefaultProguardFile/' build.gradle
-          fi
-          # Voeg Java 21 compat toe
-          if ! grep -q 'sourceCompatibility' build.gradle; then
-            sed -i 's/    defaultConfig {/    compileOptions {\
-                  sourceCompatibility JavaVersion.VERSION_21\
-                  targetCompatibility JavaVersion.VERSION_21\
-              }\
-              defaultConfig {/' build.gradle
-          fi
-          echo "---RESULT---"
-          cat build.gradle
 
       - name: Build Release APK
         working-directory: android

@@ -8,8 +8,6 @@ on:
 
 env:
   NODE_VERSION: "24"
-  STORE_PASS: ${{ secrets.KEYSTORE_PASSWORD || 'seocoach2024' }}
-  KEY_PASS: ${{ secrets.KEY_PASSWORD || 'seocoach2024' }}
 
 jobs:
   # ============================================================
@@ -115,10 +113,7 @@ jobs:
           EOF
           fi
 
-      - name: Add Capacitor Android platform
-        run: npx cap add android || true
-
-      - name: Sync Capacitor
+      - name: Sync Capacitor Android
         run: npx cap sync android
 
       - name: Generate release keystore
@@ -127,35 +122,9 @@ jobs:
             -keystore seocoach-release-key.jks \
             -keyalg RSA -keysize 2048 -validity 10000 \
             -alias seocoach \
-            -storepass "$STORE_PASS" \
-            -keypass "$KEY_PASS" \
+            -storepass seocoach2024 \
+            -keypass seocoach2024 \
             -dname "CN=SEOCoach, OU=Mobile, O=SEOCoach, L=Amsterdam, ST=Noord-Holland, C=NL"
-
-      - name: Configure signing in build.gradle
-        run: |
-          cd android/app
-          if ! grep -q 'signingConfigs' build.gradle; then
-            sed -i '/buildTypes {/i\
-              signingConfigs {\
-                  release {\
-                      storeFile file('\''../../seocoach-release-key.jks'\'')\
-                      storePassword '\'''$STORE_PASS''\''\
-                      keyAlias '\''seocoach'\''\
-                      keyPassword '\'''$KEY_PASS''\''\
-                  }\
-              }\
-          ' build.gradle
-          fi
-          if ! grep -q 'signingConfig signingConfigs.release' build.gradle; then
-            sed -i 's/proguardFiles getDefaultProguardFile/signingConfig signingConfigs.release\n            proguardFiles getDefaultProguardFile/' build.gradle
-          fi
-          if ! grep -q 'sourceCompatibility' build.gradle; then
-            sed -i 's/    defaultConfig {/    compileOptions {\
-                  sourceCompatibility JavaVersion.VERSION_21\
-                  targetCompatibility JavaVersion.VERSION_21\
-              }\
-              defaultConfig {/' build.gradle
-          fi
 
       - name: Build Release APK
         working-directory: android
@@ -185,7 +154,7 @@ jobs:
             1. Download `app-release.apk` hieronder
             2. Open op je Android telefoon
             3. Sta installatie uit onbekende bronnen toe
-            4. Installeer en open — de app verbindt automatisch met de SEOCoach server
+            4. Installeer en open
           files: |
             android/app/build/outputs/apk/release/app-release.apk
 
