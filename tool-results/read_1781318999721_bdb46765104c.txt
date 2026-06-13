@@ -1,0 +1,1126 @@
+     1→// ============================================================================
+     2→// Content Quality Analyzer — SEOCoach
+     3→// AI-Driven SEO Automation Platform (Dutch Market)
+     4→// ============================================================================
+     5→// Analyzes content quality across 11 dimensions, each scored 0-100 with
+     6→// Dutch-language explanations and recommendations. Supports both AI-powered
+     7→// and rule-based analysis paths. Results are persisted to the ContentQuality
+     8→// model in the database.
+     9→// ============================================================================
+    10→
+    11→import { db } from '@/lib/db';
+    12→import { providerManager } from '@/lib/ai/provider-manager';
+    13→import type { QualityDimension } from './types';
+    14→
+    15→// ============================================================================
+    16→// Quality Dimension Definitions
+    17→// ============================================================================
+    18→
+    19→/**
+    20→ * All quality dimension definitions with their Dutch names.
+    21→ *
+    22→ * Each dimension represents a specific aspect of content quality
+    23→ * that is independently scored and explained. The weights determine
+    24→ * the contribution of each dimension to the overall score.
+    25→ */
+    26→const QUALITY_DIMENSIONS: Array<{
+    27→  name: string;
+    28→  dutchName: string;
+    29→  description: string;
+    30→  weight: number;
+    31→}> = [
+    32→  {
+    33→    name: 'intentScore',
+    34→    dutchName: 'Zoekintentie-overeenkomst',
+    35→    description: 'In hoeverre beantwoordt de content de zoekintentie van de gebruiker?',
+    36→    weight: 0.12,
+    37→  },
+    38→  {
+    39→    name: 'coverageScore',
+    40→    dutchName: 'Onderwerpdekking',
+    41→    description: 'Is het onderwerp volledig en diepgaand behandeld?',
+    42→    weight: 0.12,
+    43→  },
+    44→  {
+    45→    name: 'readabilityScore',
+    46→    dutchName: 'Leesbaarheid',
+    47→    description: 'Is de tekst goed leesbaar voor de doelgroep? (Flesch-Kincaid aangepast voor Nederlands)',
+    48→    weight: 0.10,
+    49→  },
+    50→  {
+    51→    name: 'originalityScore',
+    52→    dutchName: 'Originaliteit',
+    53→    description: 'Biedt de content unieke waarde ten opzichte van bestaande content?',
+    54→    weight: 0.08,
+    55→  },
+    56→  {
+    57→    name: 'brandConsistencyScore',
+    58→    dutchName: 'Merkconsistentie',
+    59→    description: 'Komt de content overeen met de merkrichtlijnen?',
+    60→    weight: 0.08,
+    61→  },
+    62→  {
+    63→    name: 'eeatScore',
+    64→    dutchName: 'E-E-A-T signalen',
+    65→    description: 'Ervaring, Expertise, Autoriteit en Betrouwbaarheid (Experience, Expertise, Authoritativeness, Trustworthiness)',
+    66→    weight: 0.12,
+    67→  },
+    68→  {
+    69→    name: 'internalLinkScore',
+    70→    dutchName: 'Interne links',
+    71→    description: 'Zijn er relevante interne links aanwezig?',
+    72→    weight: 0.07,
+    73→  },
+    74→  {
+    75→    name: 'entityScore',
+    76→    dutchName: 'Entiteitendekking',
+    77→    description: 'Worden relevante entiteiten (begrippen, concepten) genoemd?',
+    78→    weight: 0.07,
+    79→  },
+    80→  {
+    81→    name: 'conversionScore',
+    82→    dutchName: 'Conversie-elementen',
+    83→    description: 'Zijn er duidelijke conversie-elementen aanwezig (call-to-action, formulieren, etc.)?',
+    84→    weight: 0.08,
+    85→  },
+    86→  {
+    87→    name: 'geoReadinessScore',
+    88→    dutchName: 'AI-zoekgereedheid',
+    89→    description: 'Is de content geoptimaliseerd voor AI-gedreven zoekmachines (Generative Engine Optimization)?',
+    90→    weight: 0.08,
+    91→  },
+    92→  {
+    93→    name: 'publicationReadinessScore',
+    94→    dutchName: 'Publicatiegereedheid',
+    95→    description: 'Is de content klaar om gepubliceerd te worden (technisch en inhoudelijk)?',
+    96→    weight: 0.08,
+    97→  },
+    98→];
+    99→
+   100→// ============================================================================
+   101→// Public API
+   102→// ============================================================================
+   103→
+   104→/**
+   105→ * Get all quality dimension definitions.
+   106→ *
+   107→ * Returns the metadata for each dimension including the Dutch name,
+   108→ * description, and weight in the overall score calculation.
+   109→ *
+   110→ * @returns Array of dimension definitions
+   111→ */
+   112→export function getQualityDimensions(): QualityDimension[] {
+   113→  return QUALITY_DIMENSIONS.map((d) => ({
+   114→    name: d.name,
+   115→    dutchName: d.dutchName,
+   116→    score: 0,
+   117→    explanation: d.description,
+   118→    recommendations: [],
+   119→  }));
+   120→}
+   121→
+   122→/**
+   123→ * Run a full quality analysis on a content version.
+   124→ *
+   125→ * The analysis covers 11 quality dimensions, each scored from 0-100
+   126→ * with Dutch-language explanations and actionable recommendations.
+   127→ *
+   128→ * The analysis follows this process:
+   129→ * 1. Load the content version and brief context
+   130→ * 2. Try AI-powered analysis for detailed insights
+   131→ * 3. Fall back to rule-based analysis when AI is unavailable
+   132→ * 4. Calculate the weighted overall score
+   133→ * 5. Persist results to the ContentQuality table
+   134→ *
+   135→ * @param contentVersionId - The content version to analyze
+   136→ * @param projectId - The project context (for AI provider selection)
+   137→ * @returns The ContentQuality record with all dimension scores
+   138→ * @throws Error if the content version does not exist
+   139→ */
+   140→export async function analyzeQuality(
+   141→  contentVersionId: string,
+   142→  projectId: string
+   143→): Promise<{
+   144→  id: string;
+   145→  contentVersionId: string;
+   146→  intentScore: number;
+   147→  coverageScore: number;
+   148→  readabilityScore: number;
+   149→  originalityScore: number;
+   150→  brandConsistencyScore: number;
+   151→  eeatScore: number;
+   152→  internalLinkScore: number;
+   153→  entityScore: number;
+   154→  conversionScore: number;
+   155→  geoReadinessScore: number;
+   156→  publicationReadinessScore: number;
+   157→  overallScore: number;
+   158→  details: string;
+   159→  recommendations: string[];
+   160→  createdAt: Date;
+   161→}> {
+   162→  // Load the content version
+   163→  const version = await db.contentVersion.findUnique({
+   164→    where: { id: contentVersionId },
+   165→    include: {
+   166→      brief: {
+   167→        select: {
+   168→          projectId: true,
+   169→          title: true,
+   170→          targetKeyword: true,
+   171→          searchIntent: true,
+   172→          funnelStage: true,
+   173→          toneOfVoice: true,
+   174→          targetAudience: true,
+   175→          secondaryKeywords: true,
+   176→          brandProfileUsed: true,
+   177→          outline: true,
+   178→          targetWordCount: true,
+   179→        },
+   180→      },
+   181→    },
+   182→  });
+   183→
+   184→  if (!version) {
+   185→    throw new Error(`Content versie "${contentVersionId}" niet gevonden`);
+   186→  }
+   187→
+   188→  const content = version.content;
+   189→  const brief = version.brief;
+   190→
+   191→  // Strip claim markers for analysis
+   192→  const cleanContent = content
+   193→    .replace(/\[VERIFICATIE_NODIG\]/g, '')
+   194→    .replace(/\[\/VERIFICATIE_NODIG\]/g, '');
+   195→
+   196→  // Try AI-powered quality analysis
+   197→  let dimensions: QualityDimension[];
+   198→
+   199→  try {
+   200→    dimensions = await aiQualityAnalysis(
+   201→      projectId,
+   202→      cleanContent,
+   203→      brief.targetKeyword ?? undefined,
+   204→      brief.title
+   205→    );
+   206→  } catch {
+   207→    // Fall back to rule-based analysis
+   208→    dimensions = ruleBasedQualityAnalysis(
+   209→      cleanContent,
+   210→      brief.targetKeyword ?? undefined,
+   211→      brief.searchIntent,
+   212→      brief.toneOfVoice ?? undefined,
+   213→      brief.targetWordCount ?? undefined
+   214→    );
+   215→  }
+   216→
+   217→  // Calculate weighted overall score
+   218→  const overallScore = calculateOverallScore(dimensions);
+   219→
+   220→  // Build detailed JSON for each dimension
+   221→  const detailsRecord: Record<string, QualityDimension> = {};
+   222→  for (const dim of dimensions) {
+   223→    detailsRecord[dim.name] = dim;
+   224→  }
+   225→
+   226→  // Collect top recommendations (from all dimensions, sorted by impact)
+   227→  const allRecommendations = dimensions
+   228→    .flatMap((dim) =>
+   229→      dim.recommendations.map((rec) => ({
+   230→        dimension: dim.dutchName,
+   231→        recommendation: rec,
+   232→        score: dim.score,
+   233→      }))
+   234→    )
+   235→    .sort((a, b) => a.score - b.score) // Lowest scores first = highest priority
+   236→    .slice(0, 10)
+   237→    .map((r) => `[${r.dimension}] ${r.recommendation}`);
+   238→
+   239→  // Check if a quality record already exists for this version
+   240→  const existing = await db.contentQuality.findUnique({
+   241→    where: { contentVersionId },
+   242→  });
+   243→
+   244→  let qualityRecord;
+   245→
+   246→  if (existing) {
+   247→    qualityRecord = await db.contentQuality.update({
+   248→      where: { contentVersionId },
+   249→      data: {
+   250→        intentScore: getDimensionScore(dimensions, 'intentScore'),
+   251→        coverageScore: getDimensionScore(dimensions, 'coverageScore'),
+   252→        readabilityScore: getDimensionScore(dimensions, 'readabilityScore'),
+   253→        originalityScore: getDimensionScore(dimensions, 'originalityScore'),
+   254→        brandConsistencyScore: getDimensionScore(
+   255→          dimensions,
+   256→          'brandConsistencyScore'
+   257→        ),
+   258→        eeatScore: getDimensionScore(dimensions, 'eeatScore'),
+   259→        internalLinkScore: getDimensionScore(dimensions, 'internalLinkScore'),
+   260→        entityScore: getDimensionScore(dimensions, 'entityScore'),
+   261→        conversionScore: getDimensionScore(dimensions, 'conversionScore'),
+   262→        geoReadinessScore: getDimensionScore(dimensions, 'geoReadinessScore'),
+   263→        publicationReadinessScore: getDimensionScore(
+   264→          dimensions,
+   265→          'publicationReadinessScore'
+   266→        ),
+   267→        overallScore,
+   268→        details: JSON.stringify(detailsRecord),
+   269→        recommendations: JSON.stringify(allRecommendations),
+   270→      },
+   271→    });
+   272→  } else {
+   273→    qualityRecord = await db.contentQuality.create({
+   274→      data: {
+   275→        contentVersionId,
+   276→        intentScore: getDimensionScore(dimensions, 'intentScore'),
+   277→        coverageScore: getDimensionScore(dimensions, 'coverageScore'),
+   278→        readabilityScore: getDimensionScore(dimensions, 'readabilityScore'),
+   279→        originalityScore: getDimensionScore(dimensions, 'originalityScore'),
+   280→        brandConsistencyScore: getDimensionScore(
+   281→          dimensions,
+   282→          'brandConsistencyScore'
+   283→        ),
+   284→        eeatScore: getDimensionScore(dimensions, 'eeatScore'),
+   285→        internalLinkScore: getDimensionScore(dimensions, 'internalLinkScore'),
+   286→        entityScore: getDimensionScore(dimensions, 'entityScore'),
+   287→        conversionScore: getDimensionScore(dimensions, 'conversionScore'),
+   288→        geoReadinessScore: getDimensionScore(dimensions, 'geoReadinessScore'),
+   289→        publicationReadinessScore: getDimensionScore(
+   290→          dimensions,
+   291→          'publicationReadinessScore'
+   292→        ),
+   293→        overallScore,
+   294→        details: JSON.stringify(detailsRecord),
+   295→        recommendations: JSON.stringify(allRecommendations),
+   296→      },
+   297→    });
+   298→  }
+   299→
+   300→  return {
+   301→    id: qualityRecord.id,
+   302→    contentVersionId: qualityRecord.contentVersionId,
+   303→    intentScore: qualityRecord.intentScore,
+   304→    coverageScore: qualityRecord.coverageScore,
+   305→    readabilityScore: qualityRecord.readabilityScore,
+   306→    originalityScore: qualityRecord.originalityScore,
+   307→    brandConsistencyScore: qualityRecord.brandConsistencyScore,
+   308→    eeatScore: qualityRecord.eeatScore,
+   309→    internalLinkScore: qualityRecord.internalLinkScore,
+   310→    entityScore: qualityRecord.entityScore,
+   311→    conversionScore: qualityRecord.conversionScore,
+   312→    geoReadinessScore: qualityRecord.geoReadinessScore,
+   313→    publicationReadinessScore: qualityRecord.publicationReadinessScore,
+   314→    overallScore: qualityRecord.overallScore,
+   315→    details: qualityRecord.details ?? '',
+   316→    recommendations: allRecommendations,
+   317→    createdAt: qualityRecord.createdAt,
+   318→  };
+   319→}
+   320→
+   321→// ============================================================================
+   322→// AI-Powered Quality Analysis
+   323→// ============================================================================
+   324→
+   325→/**
+   326→ * Run AI-powered quality analysis on content.
+   327→ *
+   328→ * Sends the content to the AI provider with a structured prompt
+   329→ * that requests scores and Dutch-language explanations for each
+   330→ * quality dimension.
+   331→ *
+   332→ * @param projectId - The project for AI provider selection
+   333→ * @param content - The content to analyze
+   334→ * @param targetKeyword - The target keyword for intent matching
+   335→ * @param title - The content title
+   336→ * @returns Array of quality dimensions with scores and explanations
+   337→ */
+   338→async function aiQualityAnalysis(
+   339→  projectId: string,
+   340→  content: string,
+   341→  targetKeyword?: string,
+   342→  title?: string
+   343→): Promise<QualityDimension[]> {
+   344→  const truncatedContent =
+   345→    content.length > 8000
+   346→      ? content.substring(0, 8000) + '\n...(afgekort voor analyse)'
+   347→      : content;
+   348→
+   349→  const aiResponse = await providerManager.fallbackGenerate(projectId, {
+   350→    messages: [
+   351→      {
+   352→        role: 'system',
+   353→        content: `Je bent een kritische SEO-contentanalist met diepe kennis van Google E-E-A-T richtlijnen en de Nederlandse contentmarkt. Analyseer content op kwaliteit en geef gestructureerde JSON-output. Wees constructief maar eerlijk in je beoordeling. Alle uitleg en aanbevelingen moeten in het Nederlands zijn.`,
+   354→      },
+   355→      {
+   356→        role: 'user',
+   357→        content: `Analyseer de volgende content op kwaliteit en SEO-effectiviteit:
+   358→
+   359→**Titel:** ${title ?? 'Onbekend'}
+   360→**Doelzoekwoord:** ${targetKeyword ?? 'Niet opgegeven'}
+   361→**Content:**
+   362→${truncatedContent}
+   363→
+   364→Beoordeel de content op de volgende 11 criteria (schaal 0-100):
+   365→
+   366→1. intentScore — Komt de content overeen met de zoekintentie?
+   367→2. coverageScore — Is het onderwerp volledig behandeld?
+   368→3. readabilityScore — Is de tekst goed leesbaar (Nederlands)?
+   369→4. originalityScore — Biedt de content unieke waarde?
+   370→5. brandConsistencyScore — Is de content consistent met merkrichtlijnen?
+   371→6. eeatScore — Zijn er signalen van Ervaring, Expertise, Autoriteit en Betrouwbaarheid?
+   372→7. internalLinkScore — Zijn er relevante interne linksuggesties?
+   373→8. entityScore — Worden relevante entiteiten en begrippen genoemd?
+   374→9. conversionScore — Zijn er conversie-elementen aanwezig?
+   375→10. geoReadinessScore — Is de content klaar voor AI-zoekmachines?
+   376→11. publicationReadinessScore — Is de content klaar om te publiceren?
+   377→
+   378→Geef ALLEEN geldige JSON in het volgende formaat:
+   379→{
+   380→  "dimensions": [
+   381→    {
+   382→      "name": "intentScore",
+   383→      "score": 75,
+   384→      "explanation": "Nederlandse uitleg",
+   385→      "recommendations": ["Nederlandse aanbeveling 1", "Nederlandse aanbeveling 2"]
+   386→    }
+   387→  ]
+   388→}`,
+   389→      },
+   390→    ],
+   391→    purpose: 'quality-analysis',
+   392→    maxTokens: 4000,
+   393→    temperature: 0.3,
+   394→    jsonMode: true,
+   395→  });
+   396→
+   397→  if (!aiResponse.success || !aiResponse.content.trim()) {
+   398→    throw new Error('AI-kwaliteitsanalyse mislukt');
+   399→  }
+   400→
+   401→  const parsed = JSON.parse(aiResponse.content.trim());
+   402→
+   403→  if (!parsed.dimensions || !Array.isArray(parsed.dimensions)) {
+   404→    throw new Error('Ongeldig AI-antwoord formaat');
+   405→  }
+   406→
+   407→  // Map AI results to dimension objects, ensuring all dimensions are covered
+   408→  const aiMap = new Map<string, QualityDimension>();
+   409→  for (const dim of parsed.dimensions) {
+   410→    if (dim.name && typeof dim.score === 'number') {
+   411→      aiMap.set(dim.name, {
+   412→        name: dim.name,
+   413→        dutchName:
+   414→          QUALITY_DIMENSIONS.find((d) => d.name === dim.name)?.dutchName ??
+   415→          dim.name,
+   416→        score: Math.max(0, Math.min(100, Math.round(dim.score))),
+   417→        explanation:
+   418→          typeof dim.explanation === 'string'
+   419→            ? dim.explanation
+   420→            : 'Geen uitleg beschikbaar.',
+   421→        recommendations: Array.isArray(dim.recommendations)
+   422→          ? dim.recommendations.filter(
+   423→              (r: unknown) => typeof r === 'string'
+   424→            )
+   425→          : [],
+   426→      });
+   427→    }
+   428→  }
+   429→
+   430→  // Ensure all dimensions are present, filling in defaults for missing ones
+   431→  return QUALITY_DIMENSIONS.map((def) => {
+   432→    const aiResult = aiMap.get(def.name);
+   433→    if (aiResult) return aiResult;
+   434→
+   435→    // Fallback for dimensions the AI didn't return
+   436→    return {
+   437→      name: def.name,
+   438→      dutchName: def.dutchName,
+   439→      score: 50,
+   440→      explanation: `${def.dutchName} kon niet door AI worden geanalyseerd.`,
+   441→      recommendations: [
+   442→        `Beoordeel zelf de ${def.dutchName.toLowerCase()} van deze content.`,
+   443→      ],
+   444→    };
+   445→  });
+   446→}
+   447→
+   448→// ============================================================================
+   449→// Rule-Based Quality Analysis (Fallback)
+   450→// ============================================================================
+   451→
+   452→/**
+   453→ * Run rule-based quality analysis on content.
+   454→ *
+   455→ * Used when AI is unavailable. Applies heuristic rules to estimate
+   456→ * quality scores for each dimension. These scores are less precise
+   457→ * than AI-generated ones but provide a reasonable baseline.
+   458→ *
+   459→ * @param content - The content to analyze
+   460→ * @param targetKeyword - The target keyword for intent matching
+   461→ * @param searchIntent - The search intent classification
+   462→ * @param toneOfVoice - Expected tone of voice
+   463→ * @param targetWordCount - Target word count
+   464→ * @returns Array of quality dimensions with scores and Dutch explanations
+   465→ */
+   466→function ruleBasedQualityAnalysis(
+   467→  content: string,
+   468→  targetKeyword?: string,
+   469→  searchIntent?: string,
+   470→  toneOfVoice?: string,
+   471→  targetWordCount?: number
+   472→): QualityDimension[] {
+   473→  const wordCount = content.split(/\s+/).filter((w) => w.length > 0).length;
+   474→  const sentences = content.split(/[.!?]+/).filter((s) => s.trim().length > 0);
+   475→  const avgSentenceLength =
+   476→    sentences.length > 0 ? wordCount / sentences.length : 0;
+   477→
+   478→  // Heading detection
+   479→  const h2Count = (content.match(/^##\s/gm) || []).length;
+   480→  const h3Count = (content.match(/^###\s/gm) || []).length;
+   481→  const headingCount = h2Count + h3Count;
+   482→
+   483→  // Keyword presence
+   484→  const keywordPresent =
+   485→    !!(targetKeyword && content.toLowerCase().includes(targetKeyword.toLowerCase()));
+   486→
+   487→  // Internal link detection
+   488→  const internalLinkPatterns = [
+   489→    /\[interne link/gi,
+   490→    /\[.*?\]\(\/[^)]*\)/g,
+   491→    /href=["']\/[^"']*["']/gi,
+   492→  ];
+   493→  const internalLinkCount = internalLinkPatterns.reduce(
+   494→    (count, pattern) => count + (content.match(pattern) || []).length,
+   495→    0
+   496→  );
+   497→
+   498→  // CTA detection
+   499→  const ctaPatterns = [
+   500→    /probeer/i,
+   501→    /ontdek/i,
+   502→    /start/i,
+   503→    /bekijk/i,
+   504→    /download/i,
+   505→    /schrijf je in/i,
+   506→    /neem contact/i,
+   507→    /vraag aan/i,
+   508→    /bestel/i,
+   509→    /reserveer/i,
+   510→    /maak een afspraak/i,
+   511→    /lees meer/i,
+   512→  ];
+   513→  const ctaCount = ctaPatterns.reduce(
+   514→    (count, pattern) => count + (content.match(pattern) || []).length,
+   515→    0
+   516→  );
+   517→
+   518→  // List detection (bulleted or numbered)
+   519→  const listItems = (content.match(/^[\s]*[-*•]\s/gm) || []).length +
+   520→    (content.match(/^[\s]*\d+[.)]\s/gm) || []).length;
+   521→
+   522→  // ===== Individual Dimension Scores =====
+   523→
+   524→  // 1. Intent Score
+   525→  const intentScore = calculateIntentScore(
+   526→    keywordPresent,
+   527→    searchIntent,
+   528→    wordCount,
+   529→    headingCount
+   530→  );
+   531→
+   532→  // 2. Coverage Score
+   533→  const coverageScore = calculateCoverageScore(
+   534→    wordCount,
+   535→    targetWordCount,
+   536→    headingCount,
+   537→    listItems
+   538→  );
+   539→
+   540→  // 3. Readability Score
+   541→  const readabilityScore = calculateReadabilityScore(avgSentenceLength, wordCount, headingCount);
+   542→
+   543→  // 4. Originality Score
+   544→  const originalityScore = calculateOriginalityScore(content, wordCount);
+   545→
+   546→  // 5. Brand Consistency Score
+   547→  const brandConsistencyScore = calculateBrandConsistencyScore(
+   548→    content,
+   549→    toneOfVoice
+   550→  );
+   551→
+   552→  // 6. E-E-A-T Score
+   553→  const eeatScore = calculateEeatScore(content, wordCount);
+   554→
+   555→  // 7. Internal Link Score
+   556→  const internalLinkScore = calculateInternalLinkScore(internalLinkCount);
+   557→
+   558→  // 8. Entity Score
+   559→  const entityScore = calculateEntityScore(content, wordCount);
+   560→
+   561→  // 9. Conversion Score
+   562→  const conversionScore = calculateConversionScore(ctaCount, wordCount);
+   563→
+   564→  // 10. GEO Readiness Score
+   565→  const geoReadinessScore = calculateGeoReadinessScore(
+   566→    content,
+   567→    headingCount,
+   568→    listItems,
+   569→    wordCount
+   570→  );
+   571→
+   572→  // 11. Publication Readiness Score
+   573→  const publicationReadinessScore = calculatePublicationReadinessScore(
+   574→    wordCount,
+   575→    targetWordCount,
+   576→    headingCount,
+   577→    keywordPresent
+   578→  );
+   579→
+   580→  return [
+   581→    {
+   582→      name: 'intentScore',
+   583→      dutchName: 'Zoekintentie-overeenkomst',
+   584→      score: intentScore,
+   585→      explanation: getScoreExplanation('intentScore', intentScore, keywordPresent, searchIntent),
+   586→      recommendations: getScoreRecommendations('intentScore', intentScore, keywordPresent, targetKeyword),
+   587→    },
+   588→    {
+   589→      name: 'coverageScore',
+   590→      dutchName: 'Onderwerpdekking',
+   591→      score: coverageScore,
+   592→      explanation: getScoreExplanation('coverageScore', coverageScore, wordCount, targetWordCount),
+   593→      recommendations: getScoreRecommendations('coverageScore', coverageScore, wordCount, targetWordCount),
+   594→    },
+   595→    {
+   596→      name: 'readabilityScore',
+   597→      dutchName: 'Leesbaarheid',
+   598→      score: readabilityScore,
+   599→      explanation: getScoreExplanation('readabilityScore', readabilityScore, avgSentenceLength),
+   600→      recommendations: getScoreRecommendations('readabilityScore', readabilityScore, avgSentenceLength),
+   601→    },
+   602→    {
+   603→      name: 'originalityScore',
+   604→      dutchName: 'Originaliteit',
+   605→      score: originalityScore,
+   606→      explanation: getScoreExplanation('originalityScore', originalityScore),
+   607→      recommendations: getScoreRecommendations('originalityScore', originalityScore),
+   608→    },
+   609→    {
+   610→      name: 'brandConsistencyScore',
+   611→      dutchName: 'Merkconsistentie',
+   612→      score: brandConsistencyScore,
+   613→      explanation: getScoreExplanation('brandConsistencyScore', brandConsistencyScore, toneOfVoice),
+   614→      recommendations: getScoreRecommendations('brandConsistencyScore', brandConsistencyScore, toneOfVoice),
+   615→    },
+   616→    {
+   617→      name: 'eeatScore',
+   618→      dutchName: 'E-E-A-T signalen',
+   619→      score: eeatScore,
+   620→      explanation: getScoreExplanation('eeatScore', eeatScore),
+   621→      recommendations: getScoreRecommendations('eeatScore', eeatScore),
+   622→    },
+   623→    {
+   624→      name: 'internalLinkScore',
+   625→      dutchName: 'Interne links',
+   626→      score: internalLinkScore,
+   627→      explanation: getScoreExplanation('internalLinkScore', internalLinkScore, internalLinkCount),
+   628→      recommendations: getScoreRecommendations('internalLinkScore', internalLinkScore),
+   629→    },
+   630→    {
+   631→      name: 'entityScore',
+   632→      dutchName: 'Entiteitendekking',
+   633→      score: entityScore,
+   634→      explanation: getScoreExplanation('entityScore', entityScore),
+   635→      recommendations: getScoreRecommendations('entityScore', entityScore),
+   636→    },
+   637→    {
+   638→      name: 'conversionScore',
+   639→      dutchName: 'Conversie-elementen',
+   640→      score: conversionScore,
+   641→      explanation: getScoreExplanation('conversionScore', conversionScore, ctaCount),
+   642→      recommendations: getScoreRecommendations('conversionScore', conversionScore, ctaCount),
+   643→    },
+   644→    {
+   645→      name: 'geoReadinessScore',
+   646→      dutchName: 'AI-zoekgereedheid',
+   647→      score: geoReadinessScore,
+   648→      explanation: getScoreExplanation('geoReadinessScore', geoReadinessScore),
+   649→      recommendations: getScoreRecommendations('geoReadinessScore', geoReadinessScore),
+   650→    },
+   651→    {
+   652→      name: 'publicationReadinessScore',
+   653→      dutchName: 'Publicatiegereedheid',
+   654→      score: publicationReadinessScore,
+   655→      explanation: getScoreExplanation('publicationReadinessScore', publicationReadinessScore),
+   656→      recommendations: getScoreRecommendations('publicationReadinessScore', publicationReadinessScore),
+   657→    },
+   658→  ];
+   659→}
+   660→
+   661→// ============================================================================
+   662→// Score Calculation Functions
+   663→// ============================================================================
+   664→
+   665→function calculateIntentScore(
+   666→  keywordPresent: boolean | undefined,
+   667→  searchIntent?: string,
+   668→  wordCount?: number,
+   669→  headingCount?: number
+   670→): number {
+   671→  let score = 40; // Base score
+   672→
+   673→  if (keywordPresent) score += 25;
+   674→  if (searchIntent && searchIntent !== 'UNKNOWN') score += 15;
+   675→  if (wordCount && wordCount >= 300) score += 10;
+   676→  if (headingCount && headingCount >= 3) score += 10;
+   677→
+   678→  return Math.min(100, score);
+   679→}
+   680→
+   681→function calculateCoverageScore(
+   682→  wordCount: number,
+   683→  targetWordCount?: number,
+   684→  headingCount?: number,
+   685→  listItems?: number
+   686→): number {
+   687→  let score = 30;
+   688→
+   689→  if (wordCount >= 300) score += 15;
+   690→  if (wordCount >= 800) score += 10;
+   691→  if (wordCount >= 1500) score += 10;
+   692→
+   693→  if (targetWordCount) {
+   694→    const ratio = wordCount / targetWordCount;
+   695→    if (ratio >= 0.8 && ratio <= 1.2) score += 15;
+   696→    else if (ratio >= 0.6) score += 8;
+   697→  } else {
+   698→    if (wordCount >= 800) score += 10;
+   699→  }
+   700→
+   701→  if (headingCount && headingCount >= 4) score += 10;
+   702→  if (listItems && listItems >= 3) score += 10;
+   703→
+   704→  return Math.min(100, score);
+   705→}
+   706→
+   707→function calculateReadabilityScore(
+   708→  avgSentenceLength: number,
+   709→  wordCount: number,
+   710→  headingCount?: number
+   711→): number {
+   712→  let score = 50;
+   713→
+   714→  // Dutch readability: sentences between 12-18 words are ideal
+   715→  if (avgSentenceLength >= 10 && avgSentenceLength <= 18) score += 25;
+   716→  else if (avgSentenceLength >= 8 && avgSentenceLength <= 22) score += 15;
+   717→  else if (avgSentenceLength > 25) score -= 10;
+   718→
+   719→  // Short paragraphs help readability
+   720→  if (wordCount > 0 && headingCount && headingCount >= 3) score += 15;
+   721→  if (wordCount >= 300) score += 10;
+   722→
+   723→  return Math.max(0, Math.min(100, score));
+   724→}
+   725→
+   726→function calculateOriginalityScore(
+   727→  content: string,
+   728→  wordCount: number
+   729→): number {
+   730→  let score = 45; // Default medium score without AI comparison
+   731→
+   732→  // Check for unique structural elements
+   733→  const hasExamples = /bijvoorbeeld|voorbeeld|zoals|denk aan/gi.test(content);
+   734→  const hasQuotes = /[""]([^""]+)[""]|'([^']+)'/g.test(content);
+   735→  const hasData = /\d+([.,]\d+)?\s*(procent|%|per|van de|van het)/gi.test(content);
+   736→
+   737→  if (hasExamples) score += 15;
+   738→  if (hasQuotes) score += 10;
+   739→  if (hasData) score += 10;
+   740→
+   741→  // Longer content tends to have more original depth
+   742→  if (wordCount >= 1000) score += 10;
+   743→  if (wordCount >= 2000) score += 10;
+   744→
+   745→  return Math.min(100, score);
+   746→}
+   747→
+   748→function calculateBrandConsistencyScore(
+   749→  content: string,
+   750→  toneOfVoice?: string
+   751→): number {
+   752→  let score = 60; // Default: assume basic consistency
+   753→
+   754→  if (toneOfVoice) {
+   755→    // Check if content tone indicators are present
+   756→    const formalIndicators =
+   757→      /(wij|ons|onze|u|uw|tevreden|graag|vanzelfsprekend)/gi.test(content);
+   758→    const informalIndicators =
+   759→      /(je|jij|jouw|leuk|makkelijk|simpel|handig|top)/gi.test(content);
+   760→
+   761→    const expectedFormal =
+   762→      toneOfVoice.toLowerCase().includes('formee') ||
+   763→      toneOfVoice.toLowerCase().includes('zakelijk') ||
+   764→      toneOfVoice.toLowerCase().includes('professioneel');
+   765→    const expectedInformal =
+   766→      toneOfVoice.toLowerCase().includes('informeel') ||
+   767→      toneOfVoice.toLowerCase().includes('vriendelijk') ||
+   768→      toneOfVoice.toLowerCase().includes('toegankelijk');
+   769→
+   770→    if (expectedFormal && formalIndicators) score += 20;
+   771→    else if (expectedInformal && informalIndicators) score += 20;
+   772→    else if (formalIndicators || informalIndicators) score += 10;
+   773→  }
+   774→
+   775→  return Math.min(100, score);
+   776→}
+   777→
+   778→function calculateEeatScore(content: string, wordCount: number): number {
+   779→  let score = 35;
+   780→
+   781→  // Experience signals
+   782→  const hasExperience =
+   783→    /ervaring|ik heb|in de praktijk|uit eigen ervaring|onze ervaring/gi.test(
+   784→      content
+   785→    );
+   786→  if (hasExperience) score += 15;
+   787→
+   788→  // Expertise signals
+   789→  const hasExpertise =
+   790→    /onderzoek|studie|analyse|data|statistiek|bewijs|volgens|specialist|expert/gi.test(
+   791→      content
+   792→    );
+   793→  if (hasExpertise) score += 15;
+   794→
+   795→  // Authoritativeness signals
+   796→  const hasAuthority =
+   797→    /bron|referentie|citatie|publicatie|waarheid|geverifieerd|gecertificeerd/gi.test(
+   798→      content
+   799→    );
+   800→  if (hasAuthority) score += 10;
+   801→
+   802→  // Trustworthiness signals
+   803→  const hasTrust =
+   804→    /transparant|eerlijk|betrouwbaar|onafhankelijk|objectief/gi.test(content);
+   805→  if (hasTrust) score += 10;
+   806→
+   807→  // Longer content can demonstrate more depth
+   808→  if (wordCount >= 1500) score += 5;
+   809→  if (wordCount >= 2500) score += 10;
+   810→
+   811→  return Math.min(100, score);
+   812→}
+   813→
+   814→function calculateInternalLinkScore(internalLinkCount: number): number {
+   815→  if (internalLinkCount === 0) return 20;
+   816→  if (internalLinkCount === 1) return 45;
+   817→  if (internalLinkCount === 2) return 65;
+   818→  if (internalLinkCount <= 5) return 85;
+   819→  return 95;
+   820→}
+   821→
+   822→function calculateEntityScore(content: string, wordCount: number): number {
+   823→  let score = 40;
+   824→
+   825→  // Check for named entities and technical terms
+   826→  const entityPatterns = [
+   827→    /\b[A-Z][a-z]+(?:\s[A-Z][a-z]+)+\b/g, // Multi-word proper nouns
+   828→  ];
+   829→
+   830→  let entityCount = 0;
+   831→  for (const pattern of entityPatterns) {
+   832→    const matches = content.match(pattern);
+   833→    if (matches) entityCount += matches.length;
+   834→  }
+   835→
+   836→  if (entityCount >= 5) score += 20;
+   837→  if (entityCount >= 10) score += 15;
+   838→  if (wordCount >= 1000) score += 10;
+   839→  if (wordCount >= 2000) score += 15;
+   840→
+   841→  return Math.min(100, score);
+   842→}
+   843→
+   844→function calculateConversionScore(ctaCount: number, wordCount: number): number {
+   845→  let score = 30;
+   846→
+   847→  if (ctaCount >= 1) score += 25;
+   848→  if (ctaCount >= 2) score += 15;
+   849→  if (ctaCount >= 3) score += 10;
+   850→
+   851→  // Content structure helps conversion
+   852→  if (wordCount >= 500) score += 10;
+   853→  if (wordCount >= 1000) score += 10;
+   854→
+   855→  return Math.min(100, score);
+   856→}
+   857→
+   858→function calculateGeoReadinessScore(
+   859→  content: string,
+   860→  headingCount: number,
+   861→  listItems: number,
+   862→  wordCount: number
+   863→): number {
+   864→  let score = 35;
+   865→
+   866→  // Structured content is better for AI extraction
+   867→  if (headingCount >= 4) score += 15;
+   868→  if (headingCount >= 6) score += 10;
+   869→
+   870→  // Lists and tables help AI understand content
+   871→  if (listItems >= 3) score += 10;
+   872→  if (listItems >= 6) score += 5;
+   873→
+   874→  // Question-answer patterns help AI search
+   875→  const hasQuestions = /\?/g.test(content);
+   876→  if (hasQuestions) score += 10;
+   877→
+   878→  // Definitions and explanations
+   879→  const hasDefinitions =
+   880→    /is een|betekent|definitie|omschrijving|houdt in|valt onder/gi.test(
+   881→      content
+   882→    );
+   883→  if (hasDefinitions) score += 10;
+   884→
+   885→  // Adequate length
+   886→  if (wordCount >= 800) score += 5;
+   887→
+   888→  return Math.min(100, score);
+   889→}
+   890→
+   891→function calculatePublicationReadinessScore(
+   892→  wordCount: number,
+   893→  targetWordCount?: number,
+   894→  headingCount?: number,
+   895→  keywordPresent?: boolean | undefined
+   896→): number {
+   897→  let score = 30;
+   898→
+   899→  // Minimum content length
+   900→  if (wordCount >= 300) score += 15;
+   901→  if (wordCount >= 800) score += 10;
+   902→
+   903→  // Target word count alignment
+   904→  if (targetWordCount) {
+   905→    const ratio = wordCount / targetWordCount;
+   906→    if (ratio >= 0.8 && ratio <= 1.3) score += 15;
+   907→    else if (ratio >= 0.5) score += 5;
+   908→  }
+   909→
+   910→  // Structure present
+   911→  if (headingCount && headingCount >= 2) score += 10;
+   912→
+   913→  // Keyword optimization
+   914→  if (keywordPresent) score += 10;
+   915→
+   916→  // No placeholder text (basic check)
+   917→  // These are already stripped but check for other markers
+   918→  const hasPlaceholders = /\[Schrijf hier|\[Vul in|\[TODO/i.test(
+   919→    wordCount > 0 ? '' : '[placeholder]'
+   920→  );
+   921→  if (!hasPlaceholders && wordCount > 0) score += 10;
+   922→
+   923→  return Math.min(100, score);
+   924→}
+   925→
+   926→// ============================================================================
+   927→// Dutch Explanation & Recommendation Generators
+   928→// ============================================================================
+   929→
+   930→/**
+   931→ * Get a Dutch explanation for a dimension score.
+   932→ * Uses the dimension name and score to generate context-appropriate feedback.
+   933→ */
+   934→function getScoreExplanation(
+   935→  dimension: string,
+   936→  score: number,
+   937→  ..._args: unknown[]
+   938→): string {
+   939→  const dimDef = QUALITY_DIMENSIONS.find((d) => d.name === dimension);
+   940→  const dimName = dimDef?.dutchName ?? dimension;
+   941→
+   942→  if (score >= 80) {
+   943→    return `${dimName} is goed: score ${score}/100. De content voldoet op dit aspect ruimschoots aan de verwachtingen.`;
+   944→  }
+   945→  if (score >= 60) {
+   946→    return `${dimName} is voldoende: score ${score}/100. Er is ruimte voor verbetering, maar het basisniveau is aanwezig.`;
+   947→  }
+   948→  if (score >= 40) {
+   949→    return `${dimName} is matig: score ${score}/100. Dit aspect verdient aandacht om de content te verbeteren.`;
+   950→  }
+   951→  return `${dimName} is onvoldoende: score ${score}/100. Dit is een belangrijk verbeterpunt voor de content.`;
+   952→}
+   953→
+   954→/**
+   955→ * Get Dutch recommendations for improving a dimension score.
+   956→ */
+   957→function getScoreRecommendations(
+   958→  dimension: string,
+   959→  score: number,
+   960→  ..._args: unknown[]
+   961→): string[] {
+   962→  if (score >= 80) return []; // No recommendations for good scores
+   963→
+   964→  const recommendations: string[] = [];
+   965→
+   966→  switch (dimension) {
+   967→    case 'intentScore':
+   968→      if (score < 60)
+   969→        recommendations.push(
+   970→          'Zorg dat de content direct antwoord geeft op de vraag achter het zoekwoord.'
+   971→        );
+   972→      if (score < 40)
+   973→        recommendations.push(
+   974→          'Analyseer de zoekintentie opnieuw en pas de contentstructuur aan.'
+   975→        );
+   976→      recommendations.push(
+   977→        'Plaats het hoofdzoekwoord in de eerste alinea en H1-titel.'
+   978→      );
+   979→      break;
+   980→
+   981→    case 'coverageScore':
+   982→      if (score < 60)
+   983→        recommendations.push(
+   984→          'Breid de content uit met meer diepgang en voorbeelden.'
+   985→        );
+   986→      recommendations.push(
+   987→        'Voeg ontbrekende subonderwerpen toe op basis van gerelateerde zoekwoorden.'
+   988→      );
+   989→      if (score < 40)
+   990→        recommendations.push(
+   991→          'Het onderwerp is onvoldoende behandeld. Overweeg de content grondig te herschrijven.'
+   992→        );
+   993→      break;
+   994→
+   995→    case 'readabilityScore':
+   996→      recommendations.push(
+   997→        'Gebruik kortere zinnen (gemiddeld 12-18 woorden per zin).'
+   998→      );
+   999→      recommendations.push(
+  1000→        'Voeg vaker tussenkoppen toe om de tekst scannabler te maken.'
+  1001→      );
+  1002→      if (score < 50)
+  1003→        recommendations.push(
+  1004→          'Vervang lange, complexe zinnen door actieve, duidelijke taal op B1-niveau.'
+  1005→        );
+  1006→      break;
+  1007→
+  1008→    case 'originalityScore':
+  1009→      recommendations.push(
+  1010→        'Voeg unieke voorbeelden, cases of perspectieven toe die concurrenten niet bieden.'
+  1011→      );
+  1012→      if (score < 50)
+  1013→        recommendations.push(
+  1014→          'Deel eigen ervaringen of onderzoek om de content onderscheidend te maken.'
+  1015→        );
+  1016→      break;
+  1017→
+  1018→    case 'brandConsistencyScore':
+  1019→      recommendations.push(
+  1020→        'Controleer of de tone of voice overeenkomt met de merkrichtlijnen.'
+  1021→      );
+  1022→      if (score < 50)
+  1023→        recommendations.push(
+  1024→          'Pas de woordkeuze en schrijfstijl aan volgens het merkprofiel.'
+  1025→        );
+  1026→      break;
+  1027→
+  1028→    case 'eeatScore':
+  1029→      recommendations.push(
+  1030→        'Voeg ervaringsverhalen of praktijkvoorbeelden toe (Ervaring).'
+  1031→      );
+  1032→      recommendations.push(
+  1033→        'Onderbouw beweringen met bronnen, data of onderzoek (Expertise).'
+  1034→      );
+  1035→      if (score < 50)
+  1036→        recommendations.push(
+  1037→          'Voeg auteurinformatie en kwalificaties toe (Autoriteit en Betrouwbaarheid).'
+  1038→        );
+  1039→      break;
+  1040→
+  1041→    case 'internalLinkScore':
+  1042→      recommendations.push(
+  1043→        'Voeg interne links toe naar gerelateerde pagina\'s op de website.'
+  1044→      );
+  1045→      if (score < 40)
+  1046→        recommendations.push(
+  1047→          'Er zijn geen interne links aanwezig. Dit is belangrijk voor SEO en gebruikersnavigatie.'
+  1048→        );
+  1049→      break;
+  1050→
+  1051→    case 'entityScore':
+  1052→      recommendations.push(
+  1053→        'Noem relevante begrippen, concepten en entiteiten die bij het onderwerp horen.'
+  1054→      );
+  1055→      if (score < 50)
+  1056→        recommendations.push(
+  1057→          'Verrijk de content met specifieke termen en concepten uit het vakgebied.'
+  1058→        );
+  1059→      break;
+  1060→
+  1061→    case 'conversionScore':
+  1062→      recommendations.push(
+  1063→        'Voeg een duidelijke call-to-action toe aan het einde van de content.'
+  1064→      );
+  1065→      if (score < 50)
+  1066→        recommendations.push(
+  1067→          'Plaats conversie-elementen op strategische plekken in de tekst.'
+  1068→        );
+  1069→      break;
+  1070→
+  1071→    case 'geoReadinessScore':
+  1072→      recommendations.push(
+  1073→        'Gebruik vraag-antwoord structuren die AI-zoekmachines kunnen extraheren.'
+  1074→      );
+  1075→      recommendations.push(
+  1076→        'Voeg definitieblokken en gestructureerde lijsten toe voor betere extractie.'
+  1077→      );
+  1078→      break;
+  1079→
+  1080→    case 'publicationReadinessScore':
+  1081→      recommendations.push(
+  1082→        'Zorg dat alle placeholder-teksten zijn vervangen door echte content.'
+  1083→      );
+  1084→      if (score < 50)
+  1085→        recommendations.push(
+  1086→          'De content is niet klaar voor publicatie. Werk eerst de ontbrekende secties bij.'
+  1087→        );
+  1088→      break;
+  1089→  }
+  1090→
+  1091→  return recommendations;
+  1092→}
+  1093→
+  1094→// ============================================================================
+  1095→// Helpers
+  1096→// ============================================================================
+  1097→
+  1098→/**
+  1099→ * Get the score for a specific dimension from the dimensions array.
+  1100→ */
+  1101→function getDimensionScore(
+  1102→  dimensions: QualityDimension[],
+  1103→  name: string
+  1104→): number {
+  1105→  return dimensions.find((d) => d.name === name)?.score ?? 0;
+  1106→}
+  1107→
+  1108→/**
+  1109→ * Calculate the weighted overall score from all dimensions.
+  1110→ */
+  1111→function calculateOverallScore(dimensions: QualityDimension[]): number {
+  1112→  let totalWeight = 0;
+  1113→  let weightedSum = 0;
+  1114→
+  1115→  for (const dim of dimensions) {
+  1116→    const def = QUALITY_DIMENSIONS.find((d) => d.name === dim.name);
+  1117→    const weight = def?.weight ?? 0.05; // Default weight for unknown dimensions
+  1118→    weightedSum += dim.score * weight;
+  1119→    totalWeight += weight;
+  1120→  }
+  1121→
+  1122→  return totalWeight > 0
+  1123→    ? Math.round(weightedSum / totalWeight)
+  1124→    : 0;
+  1125→}
+  1126→

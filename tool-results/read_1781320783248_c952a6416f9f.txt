@@ -1,0 +1,1331 @@
+     1→// ============================================================================
+     2→// SEOCoach — WordPress CMS Integration Module
+     3→// ============================================================================
+     4→// Provides connection management, content operations, media uploads,
+     5→// category/tag management, SEO metadata updates, and capability detection
+     6→// for WordPress sites via the WP REST API.
+     7→// ============================================================================
+     8→
+     9→import { db } from '@/lib/db';
+    10→
+    11→// ============================================================================
+    12→// Types
+    13→// ============================================================================
+    14→
+    15→export interface WPConnectionConfig {
+    16→  name: string;
+    17→  baseUrl: string; // e.g. https://example.com
+    18→  username: string;
+    19→  applicationPassword: string; // WP application password
+    20→}
+    21→
+    22→export interface WPListParams {
+    23→  page?: number;
+    24→  perPage?: number;
+    25→  status?: string;
+    26→  search?: string;
+    27→  type?: 'post' | 'page';
+    28→}
+    29→
+    30→export interface WPCreateDraft {
+    31→  title: string;
+    32→  content: string;
+    33→  slug?: string;
+    34→  excerpt?: string;
+    35→  type?: 'post' | 'page';
+    36→  categories?: number[];
+    37→  tags?: number[];
+    38→  featuredMedia?: number;
+    39→  meta?: Record<string, string>;
+    40→}
+    41→
+    42→export interface WPSEOMeta {
+    43→  metaTitle?: string;
+    44→  metaDescription?: string;
+    45→  focusKeyword?: string;
+    46→  canonical?: string;
+    47→  noIndex?: boolean;
+    48→}
+    49→
+    50→export interface WPMediaUpload {
+    51→  fileName: string;
+    52→  data: string; // base64 encoded
+    53→  title?: string;
+    54→  altText?: string;
+    55→}
+    56→
+    57→export interface WPCapabilities {
+    58→  canCreatePosts: boolean;
+    59→  canCreatePages: boolean;
+    60→  canUploadMedia: boolean;
+    61→  canManageCategories: boolean;
+    62→  canSchedulePosts: boolean;
+    63→  seoPlugin: 'yoast' | 'rank-math' | 'aioseo' | 'none';
+    64→  version: string;
+    65→}
+    66→
+    67→export interface WPTestResult {
+    68→  success: boolean;
+    69→  capabilities: WPCapabilities;
+    70→  error?: string;
+    71→}
+    72→
+    73→interface WPAPIError {
+    74→  code: string;
+    75→  message: string;
+    76→  data?: { status?: number };
+    77→}
+    78→
+    79→interface WPPostResponse {
+    80→  id: number;
+    81→  title: { rendered: string };
+    82→  content: { rendered: string };
+    83→  excerpt: { rendered: string };
+    84→  slug: string;
+    85→  status: string;
+    86→  type: string;
+    87→  date: string;
+    88→  modified: string;
+    89→  categories: number[];
+    90→  tags: number[];
+    91→  featured_media: number;
+    92→  meta: Record<string, unknown>;
+    93→  _links?: Record<string, unknown>;
+    94→}
+    95→
+    96→interface WPCategoryResponse {
+    97→  id: number;
+    98→  name: string;
+    99→  slug: string;
+   100→  count: number;
+   101→  parent: number;
+   102→}
+   103→
+   104→interface WPTagResponse {
+   105→  id: number;
+   106→  name: string;
+   107→  slug: string;
+   108→  count: number;
+   109→}
+   110→
+   111→interface WPMediaResponse {
+   112→  id: number;
+   113→  title: { rendered: string };
+   114→  source_url: string;
+   115→  alt_text: string;
+   116→  media_type: string;
+   117→}
+   118→
+   119→interface WPListResponse<T> {
+   120→  data: T[];
+   121→  totalPages: number;
+   122→  totalItems: number;
+   123→}
+   124→
+   125→// ============================================================================
+   126→// Constants
+   127→// ============================================================================
+   128→
+   129→const MAX_RETRIES = 3;
+   130→const BASE_DELAY_MS = 1000;
+   131→const RATE_LIMIT_DELAY_MS = 600; // ~100 requests/minute budget
+   132→const WP_API_PREFIX = '/wp-json/wp/v2/';
+   133→
+   134→// ============================================================================
+   135→// Internal Helpers
+   136→// ============================================================================
+   137→
+   138→/**
+   139→ * Build the Basic Authorization header value from username and application password.
+   140→ */
+   141→function buildAuthHeader(username: string, applicationPassword: string): string {
+   142→  const credentials = Buffer.from(`${username}:${applicationPassword}`).toString('base64');
+   143→  return `Basic ${credentials}`;
+   144→}
+   145→
+   146→/**
+   147→ * Get a CMSConnection record by ID, throwing if not found or soft-deleted.
+   148→ */
+   149→async function getConnectionOrThrow(connectionId: string) {
+   150→  const connection = await db.cMSConnection.findUnique({
+   151→    where: { id: connectionId },
+   152→  });
+   153→
+   154→  if (!connection) {
+   155→    throw new Error(`Verbinding met ID "${connectionId}" niet gevonden.`);
+   156→  }
+   157→
+   158→  if (connection.deletedAt) {
+   159→    throw new Error(`Verbinding "${connection.name}" is verwijderd en kan niet worden gebruikt.`);
+   160→  }
+   161→
+   162→  if (connection.providerType !== 'WORDPRESS') {
+   163→    throw new Error(`Verbinding "${connection.name}" is geen WordPress-verbinding.`);
+   164→  }
+   165→
+   166→  return connection;
+   167→}
+   168→
+   169→/**
+   170→ * Sleep for a given number of milliseconds.
+   171→ */
+   172→function sleep(ms: number): Promise<void> {
+   173→  return new Promise((resolve) => setTimeout(resolve, ms));
+   174→}
+   175→
+   176→/**
+   177→ * Parse capabilities from the JSON string stored in the database.
+   178→ */
+   179→function parseCapabilities(raw: string | null | undefined): WPCapabilities | null {
+   180→  if (!raw) return null;
+   181→  try {
+   182→    return JSON.parse(raw) as WPCapabilities;
+   183→  } catch {
+   184→    return null;
+   185→  }
+   186→}
+   187→
+   188→/**
+   189→ * Parse metadata from the JSON string stored in the database.
+   190→ */
+   191→function parseMetadata(raw: string | null | undefined): Record<string, unknown> | null {
+   192→  if (!raw) return null;
+   193→  try {
+   194→    return JSON.parse(raw);
+   195→  } catch {
+   196→    return null;
+   197→  }
+   198→}
+   199→
+   200→/**
+   201→ * Create a ContentChange audit record.
+   202→ */
+   203→async function logContentChange(params: {
+   204→  projectId: string;
+   205→  changeType: 'CREATE' | 'UPDATE' | 'DELETE' | 'PUBLISH' | 'SCHEDULE';
+   206→  summary: string;
+   207→  previousContent?: string;
+   208→  newContent?: string;
+   209→  cmsResult?: string;
+   210→  userId?: string;
+   211→}) {
+   212→  await db.contentChange.create({
+   213→    data: {
+   214→      projectId: params.projectId,
+   215→      changeType: params.changeType,
+   216→      summary: params.summary,
+   217→      previousContent: params.previousContent ?? null,
+   218→      newContent: params.newContent ?? null,
+   219→      cmsResult: params.cmsResult ?? null,
+   220→      userId: params.userId ?? null,
+   221→    },
+   222→  });
+   223→}
+   224→
+   225→/**
+   226→ * Make a fetch request to the WordPress REST API with retry logic,
+   227→ * exponential backoff, and rate-limit awareness.
+   228→ */
+   229→async function wpFetch<T>(
+   230→  connection: {
+   231→    baseUrl: string;
+   232→    username: string | null;
+   233→    apiKey: string | null;
+   234→  },
+   235→  endpoint: string,
+   236→  options: RequestInit = {},
+   237→): Promise<T> {
+   238→  if (!connection.username || !connection.apiKey) {
+   239→    throw new Error('Gebruikersnaam en applicatiewachtwoord zijn vereist voor WordPress-verbinding.');
+   240→  }
+   241→
+   242→  const url = `${connection.baseUrl.replace(/\/+$/, '')}${WP_API_PREFIX}${endpoint.replace(/^\/+/, '')}`;
+   243→  const authHeader = buildAuthHeader(connection.username, connection.apiKey);
+   244→
+   245→  const headers: Record<string, string> = {
+   246→    Authorization: authHeader,
+   247→    'Content-Type': 'application/json',
+   248→    Accept: 'application/json',
+   249→    ...(options.headers as Record<string, string> | undefined),
+   250→  };
+   251→
+   252→  let lastError: Error | null = null;
+   253→
+   254→  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+   255→    try {
+   256→      // Rate limit: space out requests
+   257→      if (attempt > 1) {
+   258→        const delay = BASE_DELAY_MS * Math.pow(2, attempt - 2);
+   259→        await sleep(delay);
+   260→      } else {
+   261→        await sleep(RATE_LIMIT_DELAY_MS);
+   262→      }
+   263→
+   264→      const response = await fetch(url, {
+   265→        ...options,
+   266→        headers,
+   267→      });
+   268→
+   269→      // Handle rate limiting (429 Too Many Requests)
+   270→      if (response.status === 429) {
+   271→        const retryAfter = response.headers.get('Retry-After');
+   272→        const waitMs = retryAfter ? parseInt(retryAfter, 10) * 1000 : BASE_DELAY_MS * Math.pow(2, attempt);
+   273→        if (attempt < MAX_RETRIES) {
+   274→          await sleep(waitMs);
+   275→          continue;
+   276→        }
+   277→        throw new Error('WordPress-aanvraaglimiet bereikt. Probeer het later opnieuw.');
+   278→      }
+   279→
+   280→      if (!response.ok) {
+   281→        let errorBody: WPAPIError | null = null;
+   282→        try {
+   283→          errorBody = (await response.json()) as WPAPIError;
+   284→        } catch {
+   285→          // Response body is not JSON
+   286→        }
+   287→
+   288→        const errorMessage = errorBody?.message ?? `HTTP ${response.status}`;
+   289→        const isRetryable = response.status >= 500 || response.status === 429;
+   290→
+   291→        if (isRetryable && attempt < MAX_RETRIES) {
+   292→          lastError = new Error(`WordPress API-fout (poging ${attempt}/${MAX_RETRIES}): ${errorMessage}`);
+   293→          continue;
+   294→        }
+   295→
+   296→        // Map common status codes to Dutch messages
+   297→        switch (response.status) {
+   298→          case 401:
+   299→            throw new Error('Authenticatie mislukt. Controleer gebruikersnaam en applicatiewachtwoord.');
+   300→          case 403:
+   301→            throw new Error('Geen toestemming voor deze WordPress-actie. Controleer de gebruikersrechten.');
+   302→          case 404:
+   303→            throw new Error('De gevraagde WordPress-bron is niet gevonden.');
+   304→          case 400:
+   305→            throw new Error(`Ongeldig verzoek: ${errorMessage}`);
+   306→          default:
+   307→            throw new Error(`WordPress API-fout: ${errorMessage}`);
+   308→        }
+   309→      }
+   310→
+   311→      // For list endpoints, extract pagination from headers
+   312→      const totalPages = parseInt(response.headers.get('X-WP-TotalPages') ?? '1', 10);
+   313→      const totalItems = parseInt(response.headers.get('X-WP-Total') ?? '0', 10);
+   314→
+   315→      if (totalPages > 0 || totalItems > 0) {
+   316→        const data = (await response.json()) as T[];
+   317→        return { data, totalPages, totalItems } as unknown as T;
+   318→      }
+   319→
+   320→      return (await response.json()) as T;
+   321→    } catch (error) {
+   322→      if (error instanceof Error && error.message.includes('WordPress')) {
+   323→        throw error;
+   324→      }
+   325→      lastError = error instanceof Error ? error : new Error(String(error));
+   326→
+   327→      if (attempt < MAX_RETRIES) {
+   328→        continue;
+   329→      }
+   330→    }
+   331→  }
+   332→
+   333→  throw new Error(
+   334→    `Kon geen verbinding maken met WordPress na ${MAX_RETRIES} pogingen. ${lastError?.message ?? 'Onbekende fout.'}`,
+   335→  );
+   336→}
+   337→
+   338→// ============================================================================
+   339→// Connection Management
+   340→// ============================================================================
+   341→
+   342→/**
+   343→ * Create a new WordPress CMSConnection record.
+   344→ */
+   345→export async function createWordPressConnection(
+   346→  projectId: string,
+   347→  config: WPConnectionConfig,
+   348→): Promise<{ id: string; name: string }> {
+   349→  // Validate the base URL
+   350→  try {
+   351→    new URL(config.baseUrl);
+   352→  } catch {
+   353→    throw new Error(`Ongeldige basis-URL: "${config.baseUrl}". Geef een geldige URL op, bijv. https://example.com.`);
+   354→  }
+   355→
+   356→  if (!config.username.trim()) {
+   357→    throw new Error('Gebruikersnaam is vereist voor een WordPress-verbinding.');
+   358→  }
+   359→
+   360→  if (!config.applicationPassword.trim()) {
+   361→    throw new Error('Applicatiewachtwoord is vereist voor een WordPress-verbinding.');
+   362→  }
+   363→
+   364→  // Normalize base URL (remove trailing slashes)
+   365→  const baseUrl = config.baseUrl.replace(/\/+$/, '');
+   366→
+   367→  const connection = await db.cMSConnection.create({
+   368→    data: {
+   369→      projectId,
+   370→      name: config.name,
+   371→      providerType: 'WORDPRESS',
+   372→      status: 'PENDING',
+   373→      baseUrl,
+   374→      apiKey: config.applicationPassword,
+   375→      username: config.username,
+   376→      capabilities: null,
+   377→      metadata: JSON.stringify({
+   378→        connectionType: 'application_password',
+   379→        createdAtInit: new Date().toISOString(),
+   380→      }),
+   381→    },
+   382→  });
+   383→
+   384→  await logContentChange({
+   385→    projectId,
+   386→    changeType: 'CREATE',
+   387→    summary: `WordPress-verbinding "${config.name}" aangemaakt voor ${baseUrl}.`,
+   388→    newContent: JSON.stringify({ connectionId: connection.id, name: config.name, baseUrl }),
+   389→  });
+   390→
+   391→  return { id: connection.id, name: connection.name };
+   392→}
+   393→
+   394→/**
+   395→ * Test a WordPress connection by calling the WP REST API,
+   396→ * detecting capabilities, and updating the connection status.
+   397→ */
+   398→export async function testWordPressConnection(
+   399→  connectionId: string,
+   400→): Promise<WPTestResult> {
+   401→  const connection = await getConnectionOrThrow(connectionId);
+   402→
+   403→  try {
+   404→    // Test basic connectivity by fetching site info
+   405→    const siteUrl = `${connection.baseUrl.replace(/\/+$/, '')}/wp-json/`;
+   406→    const authHeader = buildAuthHeader(connection.username ?? '', connection.apiKey ?? '');
+   407→
+   408→    const response = await fetch(siteUrl, {
+   409→      method: 'GET',
+   410→      headers: {
+   411→        Authorization: authHeader,
+   412→        Accept: 'application/json',
+   413→      },
+   414→    });
+   415→
+   416→    if (!response.ok) {
+   417→      if (response.status === 401) {
+   418→        await db.cMSConnection.update({
+   419→          where: { id: connectionId },
+   420→          data: {
+   421→            status: 'ERROR',
+   422→            lastError: 'Authenticatie mislukt. Controleer gebruikersnaam en applicatiewachtwoord.',
+   423→            lastTestedAt: new Date(),
+   424→          },
+   425→        });
+   426→        return {
+   427→          success: false,
+   428→          capabilities: getEmptyCapabilities(),
+   429→          error: 'Authenticatie mislukt. Controleer gebruikersnaam en applicatiewachtwoord.',
+   430→        };
+   431→      }
+   432→
+   433→      if (response.status === 403) {
+   434→        await db.cMSConnection.update({
+   435→          where: { id: connectionId },
+   436→          data: {
+   437→            status: 'ERROR',
+   438→            lastError: 'Geen toestemming. Controleer de gebruikersrechten in WordPress.',
+   439→            lastTestedAt: new Date(),
+   440→          },
+   441→        });
+   442→        return {
+   443→          success: false,
+   444→          capabilities: getEmptyCapabilities(),
+   445→          error: 'Geen toestemming. Controleer de gebruikersrechten in WordPress.',
+   446→        };
+   447→      }
+   448→
+   449→      await db.cMSConnection.update({
+   450→        where: { id: connectionId },
+   451→        data: {
+   452→          status: 'ERROR',
+   453→          lastError: `Kan geen verbinding maken met WordPress (HTTP ${response.status}).`,
+   454→          lastTestedAt: new Date(),
+   455→        },
+   456→      });
+   457→      return {
+   458→        success: false,
+   459→        capabilities: getEmptyCapabilities(),
+   460→        error: `Kan geen verbinding maken met WordPress (HTTP ${response.status}).`,
+   461→      };
+   462→    }
+   463→
+   464→    // Detect capabilities
+   465→    const capabilities = await detectWPCapabilitiesDirect(connection);
+   466→
+   467→    await db.cMSConnection.update({
+   468→      where: { id: connectionId },
+   469→      data: {
+   470→        status: 'CONNECTED',
+   471→        lastTestedAt: new Date(),
+   472→        lastError: null,
+   473→        capabilities: JSON.stringify(capabilities),
+   474→      },
+   475→    });
+   476→
+   477→    return {
+   478→      success: true,
+   479→      capabilities,
+   480→    };
+   481→  } catch (error) {
+   482→    const errorMessage = error instanceof Error ? error.message : 'Onbekende fout bij verbindingscontrole.';
+   483→
+   484→    await db.cMSConnection.update({
+   485→      where: { id: connectionId },
+   486→      data: {
+   487→        status: 'ERROR',
+   488→        lastError: errorMessage,
+   489→        lastTestedAt: new Date(),
+   490→      },
+   491→    });
+   492→
+   493→    return {
+   494→      success: false,
+   495→      capabilities: getEmptyCapabilities(),
+   496→      error: errorMessage,
+   497→    };
+   498→  }
+   499→}
+   500→
+   501→/**
+   502→ * Update an existing WordPress connection's settings.
+   503→ */
+   504→export async function updateWordPressConnection(
+   505→  connectionId: string,
+   506→  config: Partial<WPConnectionConfig>,
+   507→): Promise<{ id: string; name: string }> {
+   508→  const connection = await getConnectionOrThrow(connectionId);
+   509→
+   510→  // Validate base URL if provided
+   511→  if (config.baseUrl !== undefined) {
+   512→    try {
+   513→      new URL(config.baseUrl);
+   514→    } catch {
+   515→      throw new Error(`Ongeldige basis-URL: "${config.baseUrl}". Geef een geldige URL op.`);
+   516→    }
+   517→  }
+   518→
+   519→  const updateData: Record<string, unknown> = {};
+   520→
+   521→  if (config.name !== undefined) updateData.name = config.name;
+   522→  if (config.baseUrl !== undefined) updateData.baseUrl = config.baseUrl.replace(/\/+$/, '');
+   523→  if (config.username !== undefined) updateData.username = config.username;
+   524→  if (config.applicationPassword !== undefined) updateData.apiKey = config.applicationPassword;
+   525→
+   526→  // Reset status to PENDING when credentials change
+   527→  if (config.username !== undefined || config.applicationPassword !== undefined || config.baseUrl !== undefined) {
+   528→    updateData.status = 'PENDING';
+   529→    updateData.lastError = null;
+   530→  }
+   531→
+   532→  const previousData = JSON.stringify({
+   533→    name: connection.name,
+   534→    baseUrl: connection.baseUrl,
+   535→    username: connection.username,
+   536→  });
+   537→
+   538→  const updated = await db.cMSConnection.update({
+   539→    where: { id: connectionId },
+   540→    data: updateData,
+   541→  });
+   542→
+   543→  await logContentChange({
+   544→    projectId: connection.projectId,
+   545→    changeType: 'UPDATE',
+   546→    summary: `WordPress-verbinding "${updated.name}" bijgewerkt.`,
+   547→    previousContent: previousData,
+   548→    newContent: JSON.stringify(updateData),
+   549→  });
+   550→
+   551→  return { id: updated.id, name: updated.name };
+   552→}
+   553→
+   554→/**
+   555→ * Soft-delete a WordPress connection.
+   556→ */
+   557→export async function deleteWordPressConnection(connectionId: string): Promise<void> {
+   558→  const connection = await getConnectionOrThrow(connectionId);
+   559→
+   560→  await db.cMSConnection.update({
+   561→    where: { id: connectionId },
+   562→    data: {
+   563→      deletedAt: new Date(),
+   564→      status: 'DISCONNECTED',
+   565→    },
+   566→  });
+   567→
+   568→  await logContentChange({
+   569→    projectId: connection.projectId,
+   570→    changeType: 'DELETE',
+   571→    summary: `WordPress-verbinding "${connection.name}" verwijderd.`,
+   572→    previousContent: JSON.stringify({
+   573→      connectionId: connection.id,
+   574→      name: connection.name,
+   575→      baseUrl: connection.baseUrl,
+   576→    }),
+   577→  });
+   578→}
+   579→
+   580→// ============================================================================
+   581→// Content Operations
+   582→// ============================================================================
+   583→
+   584→/**
+   585→ * List posts or pages from WordPress with pagination support.
+   586→ */
+   587→export async function wpListPosts(
+   588→  connectionId: string,
+   589→  params?: WPListParams,
+   590→): Promise<WPListResponse<WPPostResponse>> {
+   591→  const connection = await getConnectionOrThrow(connectionId);
+   592→
+   593→  const type = params?.type ?? 'post';
+   594→  const queryParams = new URLSearchParams();
+   595→
+   596→  if (params?.page) queryParams.set('page', String(params.page));
+   597→  if (params?.perPage) queryParams.set('per_page', String(params.perPage));
+   598→  if (params?.status) queryParams.set('status', params.status);
+   599→  if (params?.search) queryParams.set('search', params.search);
+   600→
+   601→  const endpoint = `${type}s?${queryParams.toString()}`;
+   602→
+   603→  return wpFetch<WPListResponse<WPPostResponse>>(connection, endpoint);
+   604→}
+   605→
+   606→/**
+   607→ * Get a single post or page by ID.
+   608→ */
+   609→export async function wpGetPost(
+   610→  connectionId: string,
+   611→  postId: number,
+   612→): Promise<WPPostResponse> {
+   613→  const connection = await getConnectionOrThrow(connectionId);
+   614→
+   615→  return wpFetch<WPPostResponse>(connection, `posts/${postId}`);
+   616→}
+   617→
+   618→/**
+   619→ * Create a draft post or page in WordPress.
+   620→ */
+   621→export async function wpCreateDraft(
+   622→  connectionId: string,
+   623→  draft: WPCreateDraft,
+   624→): Promise<WPPostResponse> {
+   625→  const connection = await getConnectionOrThrow(connectionId);
+   626→
+   627→  const type = draft.type ?? 'post';
+   628→  const endpoint = type === 'page' ? 'pages' : 'posts';
+   629→
+   630→  const body: Record<string, unknown> = {
+   631→    title: draft.title,
+   632→    content: draft.content,
+   633→    status: 'draft',
+   634→  };
+   635→
+   636→  if (draft.slug) body.slug = draft.slug;
+   637→  if (draft.excerpt) body.excerpt = draft.excerpt;
+   638→  if (draft.categories && draft.categories.length > 0) body.categories = draft.categories;
+   639→  if (draft.tags && draft.tags.length > 0) body.tags = draft.tags;
+   640→  if (draft.featuredMedia) body.featured_media = draft.featuredMedia;
+   641→  if (draft.meta && Object.keys(draft.meta).length > 0) body.meta = draft.meta;
+   642→
+   643→  const result = await wpFetch<WPPostResponse>(connection, endpoint, {
+   644→    method: 'POST',
+   645→    body: JSON.stringify(body),
+   646→  });
+   647→
+   648→  await logContentChange({
+   649→    projectId: connection.projectId,
+   650→    changeType: 'CREATE',
+   651→    summary: `Concept-${type === 'page' ? 'pagina' : 'bericht'} "${draft.title}" aangemaakt in WordPress (ID: ${result.id}).`,
+   652→    newContent: JSON.stringify({
+   653→      wpId: result.id,
+   654→      title: draft.title,
+   655→      type,
+   656→      status: 'draft',
+   657→    }),
+   658→  });
+   659→
+   660→  return result;
+   661→}
+   662→
+   663→/**
+   664→ * Update an existing draft post or page in WordPress.
+   665→ */
+   666→export async function wpUpdateDraft(
+   667→  connectionId: string,
+   668→  postId: number,
+   669→  draft: Partial<WPCreateDraft>,
+   670→): Promise<WPPostResponse> {
+   671→  const connection = await getConnectionOrThrow(connectionId);
+   672→
+   673→  // First get the current post for audit trail
+   674→  const currentPost = await wpFetch<WPPostResponse>(connection, `posts/${postId}`);
+   675→
+   676→  const type = draft.type ?? currentPost.type ?? 'post';
+   677→  const endpoint = type === 'page' ? `pages/${postId}` : `posts/${postId}`;
+   678→
+   679→  const body: Record<string, unknown> = {};
+   680→
+   681→  if (draft.title !== undefined) body.title = draft.title;
+   682→  if (draft.content !== undefined) body.content = draft.content;
+   683→  if (draft.slug !== undefined) body.slug = draft.slug;
+   684→  if (draft.excerpt !== undefined) body.excerpt = draft.excerpt;
+   685→  if (draft.categories !== undefined) body.categories = draft.categories;
+   686→  if (draft.tags !== undefined) body.tags = draft.tags;
+   687→  if (draft.featuredMedia !== undefined) body.featured_media = draft.featuredMedia;
+   688→  if (draft.meta !== undefined) body.meta = draft.meta;
+   689→
+   690→  const result = await wpFetch<WPPostResponse>(connection, endpoint, {
+   691→    method: 'POST',
+   692→    body: JSON.stringify(body),
+   693→  });
+   694→
+   695→  await logContentChange({
+   696→    projectId: connection.projectId,
+   697→    changeType: 'UPDATE',
+   698→    summary: `${type === 'page' ? 'Pagina' : 'Bericht'} "${currentPost.title.rendered}" bijgewerkt in WordPress (ID: ${postId}).`,
+   699→    previousContent: JSON.stringify({
+   700→      title: currentPost.title.rendered,
+   701→      status: currentPost.status,
+   702→    }),
+   703→    newContent: JSON.stringify(body),
+   704→    cmsResult: JSON.stringify({ wpId: result.id, status: result.status }),
+   705→  });
+   706→
+   707→  return result;
+   708→}
+   709→
+   710→/**
+   711→ * Schedule a post for future publishing.
+   712→ */
+   713→export async function wpSchedulePost(
+   714→  connectionId: string,
+   715→  postId: number,
+   716→  publishDate: Date,
+   717→): Promise<WPPostResponse> {
+   718→  const connection = await getConnectionOrThrow(connectionId);
+   719→
+   720→  // Validate publish date is in the future
+   721→  if (publishDate <= new Date()) {
+   722→    throw new Error('De publicatiedatum moet in de toekomst liggen om een bericht in te plannen.');
+   723→  }
+   724→
+   725→  // Get current post for audit
+   726→  const currentPost = await wpFetch<WPPostResponse>(connection, `posts/${postId}`);
+   727→
+   728→  const endpoint = currentPost.type === 'page' ? `pages/${postId}` : `posts/${postId}`;
+   729→
+   730→  const result = await wpFetch<WPPostResponse>(connection, endpoint, {
+   731→    method: 'POST',
+   732→    body: JSON.stringify({
+   733→      status: 'future',
+   734→      date: publishDate.toISOString(),
+   735→    }),
+   736→  });
+   737→
+   738→  await logContentChange({
+   739→    projectId: connection.projectId,
+   740→    changeType: 'SCHEDULE',
+   741→    summary: `${currentPost.type === 'page' ? 'Pagina' : 'Bericht'} "${currentPost.title.rendered}" ingepland voor publicatie op ${publishDate.toLocaleDateString('nl-NL')} (ID: ${postId}).`,
+   742→    previousContent: JSON.stringify({
+   743→      wpId: postId,
+   744→      previousStatus: currentPost.status,
+   745→    }),
+   746→    newContent: JSON.stringify({
+   747→      wpId: postId,
+   748→      status: 'future',
+   749→      scheduledDate: publishDate.toISOString(),
+   750→    }),
+   751→  });
+   752→
+   753→  return result;
+   754→}
+   755→
+   756→/**
+   757→ * Publish a draft post immediately.
+   758→ */
+   759→export async function wpPublishPost(
+   760→  connectionId: string,
+   761→  postId: number,
+   762→): Promise<WPPostResponse> {
+   763→  const connection = await getConnectionOrThrow(connectionId);
+   764→
+   765→  // Get current post for audit
+   766→  const currentPost = await wpFetch<WPPostResponse>(connection, `posts/${postId}`);
+   767→
+   768→  if (currentPost.status === 'publish') {
+   769→    throw new Error('Dit bericht is al gepubliceerd.');
+   770→  }
+   771→
+   772→  const endpoint = currentPost.type === 'page' ? `pages/${postId}` : `posts/${postId}`;
+   773→
+   774→  const result = await wpFetch<WPPostResponse>(connection, endpoint, {
+   775→    method: 'POST',
+   776→    body: JSON.stringify({
+   777→      status: 'publish',
+   778→    }),
+   779→  });
+   780→
+   781→  await logContentChange({
+   782→    projectId: connection.projectId,
+   783→    changeType: 'PUBLISH',
+   784→    summary: `${currentPost.type === 'page' ? 'Pagina' : 'Bericht'} "${currentPost.title.rendered}" gepubliceerd in WordPress (ID: ${postId}).`,
+   785→    previousContent: JSON.stringify({
+   786→      wpId: postId,
+   787→      previousStatus: currentPost.status,
+   788→    }),
+   789→    newContent: JSON.stringify({
+   790→      wpId: postId,
+   791→      status: 'publish',
+   792→      publishedAt: new Date().toISOString(),
+   793→    }),
+   794→  });
+   795→
+   796→  return result;
+   797→}
+   798→
+   799→/**
+   800→ * Check the publication status of a post.
+   801→ */
+   802→export async function wpGetPostStatus(
+   803→  connectionId: string,
+   804→  postId: number,
+   805→): Promise<{
+   806→  id: number;
+   807→  status: string;
+   808→  type: string;
+   809→  date: string;
+   810→  modified: string;
+   811→  title: string;
+   812→  link: string;
+   813→}> {
+   814→  const connection = await getConnectionOrThrow(connectionId);
+   815→
+   816→  const post = await wpFetch<WPPostResponse>(connection, `posts/${postId}`);
+   817→
+   818→  return {
+   819→    id: post.id,
+   820→    status: post.status,
+   821→    type: post.type,
+   822→    date: post.date,
+   823→    modified: post.modified,
+   824→    title: post.title.rendered,
+   825→    link: (post._links?.self as Array<{ href: string }>)?.[0]?.href ?? '',
+   826→  };
+   827→}
+   828→
+   829→// ============================================================================
+   830→// Media
+   831→// ============================================================================
+   832→
+   833→/**
+   834→ * Upload a media file to WordPress.
+   835→ */
+   836→export async function wpUploadMedia(
+   837→  connectionId: string,
+   838→  file: WPMediaUpload,
+   839→): Promise<WPMediaResponse> {
+   840→  const connection = await getConnectionOrThrow(connectionId);
+   841→
+   842→  if (!connection.username || !connection.apiKey) {
+   843→    throw new Error('Gebruikersnaam en applicatiewachtwoord zijn vereist voor media-upload.');
+   844→  }
+   845→
+   846→  const authHeader = buildAuthHeader(connection.username, connection.apiKey);
+   847→  const url = `${connection.baseUrl.replace(/\/+$/, '')}${WP_API_PREFIX}media`;
+   848→
+   849→  // Decode base64 to buffer
+   850→  const buffer = Buffer.from(file.data, 'base64');
+   851→
+   852→  let lastError: Error | null = null;
+   853→
+   854→  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+   855→    try {
+   856→      if (attempt > 1) {
+   857→        const delay = BASE_DELAY_MS * Math.pow(2, attempt - 2);
+   858→        await sleep(delay);
+   859→      }
+   860→
+   861→      const response = await fetch(url, {
+   862→        method: 'POST',
+   863→        headers: {
+   864→          Authorization: authHeader,
+   865→          'Content-Disposition': `attachment; filename="${file.fileName}"`,
+   866→          'Content-Type': 'application/octet-stream',
+   867→        },
+   868→        body: buffer,
+   869→      });
+   870→
+   871→      if (!response.ok) {
+   872→        let errorBody: WPAPIError | null = null;
+   873→        try {
+   874→          errorBody = (await response.json()) as WPAPIError;
+   875→        } catch {
+   876→          // not JSON
+   877→        }
+   878→
+   879→        const errorMessage = errorBody?.message ?? `HTTP ${response.status}`;
+   880→        const isRetryable = response.status >= 500;
+   881→
+   882→        if (isRetryable && attempt < MAX_RETRIES) {
+   883→          lastError = new Error(`Media-upload mislukt (poging ${attempt}/${MAX_RETRIES}): ${errorMessage}`);
+   884→          continue;
+   885→        }
+   886→
+   887→        switch (response.status) {
+   888→          case 401:
+   889→            throw new Error('Authenticatie mislukt bij media-upload. Controleer de inloggegevens.');
+   890→          case 403:
+   891→            throw new Error('Geen toestemming om media te uploaden. Controleer de gebruikersrechten.');
+   892→          case 413:
+   893→            throw new Error('Het bestand is te groot om te uploaden naar WordPress.');
+   894→          default:
+   895→            throw new Error(`Media-upload mislukt: ${errorMessage}`);
+   896→        }
+   897→      }
+   898→
+   899→      const result = (await response.json()) as WPMediaResponse;
+   900→
+   901→      // If alt text or title provided, update the media item
+   902→      if (file.altText || file.title) {
+   903→        const updateBody: Record<string, string> = {};
+   904→        if (file.altText) updateBody.alt_text = file.altText;
+   905→        if (file.title) updateBody.title = file.title;
+   906→
+   907→        try {
+   908→          await fetch(`${url}/${result.id}`, {
+   909→            method: 'POST',
+   910→            headers: {
+   911→              Authorization: authHeader,
+   912→              'Content-Type': 'application/json',
+   913→            },
+   914→            body: JSON.stringify(updateBody),
+   915→          });
+   916→        } catch {
+   917→          // Non-critical: media is uploaded, alt/title update is best-effort
+   918→        }
+   919→      }
+   920→
+   921→      await logContentChange({
+   922→        projectId: connection.projectId,
+   923→        changeType: 'CREATE',
+   924→        summary: `Mediabestand "${file.fileName}" geüpload naar WordPress (ID: ${result.id}).`,
+   925→        newContent: JSON.stringify({
+   926→          mediaId: result.id,
+   927→          fileName: file.fileName,
+   928→          sourceUrl: result.source_url,
+   929→        }),
+   930→      });
+   931→
+   932→      return result;
+   933→    } catch (error) {
+   934→      if (error instanceof Error && error.message.includes('Media-upload mislukt')) {
+   935→        throw error;
+   936→      }
+   937→      if (error instanceof Error && (error.message.includes('Authenticatie') || error.message.includes('toestemming') || error.message.includes('te groot'))) {
+   938→        throw error;
+   939→      }
+   940→      lastError = error instanceof Error ? error : new Error(String(error));
+   941→      if (attempt < MAX_RETRIES) continue;
+   942→    }
+   943→  }
+   944→
+   945→  throw new Error(
+   946→    `Kon media niet uploaden na ${MAX_RETRIES} pogingen. ${lastError?.message ?? 'Onbekende fout.'}`,
+   947→  );
+   948→}
+   949→
+   950→// ============================================================================
+   951→// Categories & Tags
+   952→// ============================================================================
+   953→
+   954→/**
+   955→ * List all categories from WordPress.
+   956→ */
+   957→export async function wpListCategories(
+   958→  connectionId: string,
+   959→): Promise<WPCategoryResponse[]> {
+   960→  const connection = await getConnectionOrThrow(connectionId);
+   961→
+   962→  const result = await wpFetch<WPListResponse<WPCategoryResponse>>(
+   963→    connection,
+   964→    'categories?per_page=100',
+   965→  );
+   966→
+   967→  return result.data;
+   968→}
+   969→
+   970→/**
+   971→ * List all tags from WordPress.
+   972→ */
+   973→export async function wpListTags(
+   974→  connectionId: string,
+   975→): Promise<WPTagResponse[]> {
+   976→  const connection = await getConnectionOrThrow(connectionId);
+   977→
+   978→  const result = await wpFetch<WPListResponse<WPTagResponse>>(
+   979→    connection,
+   980→    'tags?per_page=100',
+   981→  );
+   982→
+   983→  return result.data;
+   984→}
+   985→
+   986→// ============================================================================
+   987→// SEO Metadata
+   988→// ============================================================================
+   989→
+   990→/**
+   991→ * Update SEO metadata for a post, detecting the active SEO plugin
+   992→ * and using the appropriate meta keys.
+   993→ */
+   994→export async function wpUpdateSEOMeta(
+   995→  connectionId: string,
+   996→  postId: number,
+   997→  meta: WPSEOMeta,
+   998→): Promise<WPPostResponse> {
+   999→  const connection = await getConnectionOrThrow(connectionId);
+  1000→
+  1001→  // Get current capabilities to determine SEO plugin
+  1002→  const capabilities = parseCapabilities(connection.capabilities);
+  1003→  const seoPlugin = capabilities?.seoPlugin ?? 'none';
+  1004→
+  1005→  const metaUpdate: Record<string, string> = {};
+  1006→
+  1007→  switch (seoPlugin) {
+  1008→    case 'yoast':
+  1009→      if (meta.metaTitle) metaUpdate['_yoast_wpseo_title'] = meta.metaTitle;
+  1010→      if (meta.metaDescription) metaUpdate['_yoast_wpseo_metadesc'] = meta.metaDescription;
+  1011→      if (meta.focusKeyword) metaUpdate['_yoast_wpseo_focuskw'] = meta.focusKeyword;
+  1012→      if (meta.canonical) metaUpdate['_yoast_wpseo_canonical'] = meta.canonical;
+  1013→      if (meta.noIndex !== undefined) metaUpdate['_yoast_wpseo_meta-robots-noindex'] = meta.noIndex ? '1' : '0';
+  1014→      break;
+  1015→
+  1016→    case 'rank-math':
+  1017→      if (meta.metaTitle) metaUpdate['rank_math_title'] = meta.metaTitle;
+  1018→      if (meta.metaDescription) metaUpdate['rank_math_description'] = meta.metaDescription;
+  1019→      if (meta.focusKeyword) metaUpdate['rank_math_focus_keyword'] = meta.focusKeyword;
+  1020→      if (meta.canonical) metaUpdate['rank_math_canonical_url'] = meta.canonical;
+  1021→      if (meta.noIndex !== undefined) metaUpdate['rank_math_robots'] = meta.noIndex ? 'noindex' : 'index';
+  1022→      break;
+  1023→
+  1024→    case 'aioseo':
+  1025→      if (meta.metaTitle) metaUpdate['_aioseo_title'] = meta.metaTitle;
+  1026→      if (meta.metaDescription) metaUpdate['_aioseo_description'] = meta.metaDescription;
+  1027→      if (meta.focusKeyword) metaUpdate['_aioseo_keyphrases'] = JSON.stringify({ focus: meta.focusKeyword });
+  1028→      if (meta.canonical) metaUpdate['_aioseo_canonical_url'] = meta.canonical;
+  1029→      if (meta.noIndex !== undefined) metaUpdate['_aioseo_robots_default'] = meta.noIndex ? 'noindex' : 'index';
+  1030→      break;
+  1031→
+  1032→    case 'none':
+  1033→    default:
+  1034→      // No SEO plugin detected; store as generic custom fields
+  1035→      if (meta.metaTitle) metaUpdate['_seo_meta_title'] = meta.metaTitle;
+  1036→      if (meta.metaDescription) metaUpdate['_seo_meta_description'] = meta.metaDescription;
+  1037→      if (meta.focusKeyword) metaUpdate['_seo_focus_keyword'] = meta.focusKeyword;
+  1038→      if (meta.canonical) metaUpdate['_seo_canonical'] = meta.canonical;
+  1039→      if (meta.noIndex !== undefined) metaUpdate['_seo_noindex'] = meta.noIndex ? '1' : '0';
+  1040→      break;
+  1041→  }
+  1042→
+  1043→  // Get current post for audit
+  1044→  const currentPost = await wpFetch<WPPostResponse>(connection, `posts/${postId}`);
+  1045→  const endpoint = currentPost.type === 'page' ? `pages/${postId}` : `posts/${postId}`;
+  1046→
+  1047→  const result = await wpFetch<WPPostResponse>(connection, endpoint, {
+  1048→    method: 'POST',
+  1049→    body: JSON.stringify({ meta: metaUpdate }),
+  1050→  });
+  1051→
+  1052→  const pluginLabel = seoPlugin === 'yoast' ? 'Yoast SEO' : seoPlugin === 'rank-math' ? 'Rank Math' : seoPlugin === 'aioseo' ? 'All in One SEO' : 'aangepaste velden';
+  1053→
+  1054→  await logContentChange({
+  1055→    projectId: connection.projectId,
+  1056→    changeType: 'UPDATE',
+  1057→    summary: `SEO-metadata bijgewerkt voor "${currentPost.title.rendered}" via ${pluginLabel} (ID: ${postId}).`,
+  1058→    previousContent: JSON.stringify({
+  1059→      wpId: postId,
+  1060→      previousMeta: currentPost.meta,
+  1061→    }),
+  1062→    newContent: JSON.stringify({
+  1063→      wpId: postId,
+  1064→      seoPlugin,
+  1065→      metaUpdates: metaUpdate,
+  1066→    }),
+  1067→  });
+  1068→
+  1069→  return result;
+  1070→}
+  1071→
+  1072→// ============================================================================
+  1073→// Capability Detection
+  1074→// ============================================================================
+  1075→
+  1076→/**
+  1077→ * Get empty capabilities (default when connection fails).
+  1078→ */
+  1079→function getEmptyCapabilities(): WPCapabilities {
+  1080→  return {
+  1081→    canCreatePosts: false,
+  1082→    canCreatePages: false,
+  1083→    canUploadMedia: false,
+  1084→    canManageCategories: false,
+  1085→    canSchedulePosts: false,
+  1086→    seoPlugin: 'none',
+  1087→    version: 'onbekend',
+  1088→  };
+  1089→}
+  1090→
+  1091→/**
+  1092→ * Direct capability detection from a connection (used internally by testWordPressConnection).
+  1093→ * Calls various WP REST API endpoints to determine what the user can do.
+  1094→ */
+  1095→async function detectWPCapabilitiesDirect(connection: {
+  1096→  baseUrl: string;
+  1097→  username: string | null;
+  1098→  apiKey: string | null;
+  1099→}): Promise<WPCapabilities> {
+  1100→  if (!connection.username || !connection.apiKey) {
+  1101→    return getEmptyCapabilities();
+  1102→  }
+  1103→
+  1104→  const authHeader = buildAuthHeader(connection.username, connection.apiKey);
+  1105→  const baseApiUrl = `${connection.baseUrl.replace(/\/+$/, '')}/wp-json/`;
+  1106→
+  1107→  const capabilities: WPCapabilities = {
+  1108→    canCreatePosts: false,
+  1109→    canCreatePages: false,
+  1110→    canUploadMedia: false,
+  1111→    canManageCategories: false,
+  1112→    canSchedulePosts: false,
+  1113→    seoPlugin: 'none',
+  1114→    version: 'onbekend',
+  1115→  };
+  1116→
+  1117→  try {
+  1118→    // Step 1: Get site info for version
+  1119→    const siteResponse = await fetch(baseApiUrl, {
+  1120→      method: 'GET',
+  1121→      headers: {
+  1122→        Authorization: authHeader,
+  1123→        Accept: 'application/json',
+  1124→      },
+  1125→    });
+  1126→
+  1127→    if (siteResponse.ok) {
+  1128→      const siteData = (await siteResponse.json()) as Record<string, unknown>;
+  1129→      // WordPress REST API root returns namespaces and site info
+  1130→      const namespaces = (siteData.namespaces as string[]) ?? [];
+  1131→      capabilities.version = (siteData.name as string) ?? 'WordPress';
+  1132→
+  1133→      // Step 2: Detect SEO plugin from namespaces
+  1134→      if (namespaces.includes('yoast/v1')) {
+  1135→        capabilities.seoPlugin = 'yoast';
+  1136→      } else if (namespaces.includes('rankmath/v1')) {
+  1137→        capabilities.seoPlugin = 'rank-math';
+  1138→      } else if (namespaces.includes('aioseo/v1') || namespaces.includes('aioseo')) {
+  1139→        capabilities.seoPlugin = 'aioseo';
+  1140→      }
+  1141→    }
+  1142→  } catch {
+  1143→    // Site info unavailable; continue with defaults
+  1144→  }
+  1145→
+  1146→  // Step 3: Test post creation capability by checking the posts endpoint
+  1147→  try {
+  1148→    const postsResponse = await fetch(
+  1149→      `${connection.baseUrl.replace(/\/+$/, '')}${WP_API_PREFIX}posts?per_page=1`,
+  1150→      {
+  1151→        method: 'GET',
+  1152→        headers: {
+  1153→          Authorization: authHeader,
+  1154→          Accept: 'application/json',
+  1155→        },
+  1156→      },
+  1157→    );
+  1158→    if (postsResponse.ok) {
+  1159→      capabilities.canCreatePosts = true;
+  1160→    }
+  1161→  } catch {
+  1162→    // Posts endpoint unavailable
+  1163→  }
+  1164→
+  1165→  // Step 4: Test page creation capability
+  1166→  try {
+  1167→    const pagesResponse = await fetch(
+  1168→      `${connection.baseUrl.replace(/\/+$/, '')}${WP_API_PREFIX}pages?per_page=1`,
+  1169→      {
+  1170→        method: 'GET',
+  1171→        headers: {
+  1172→          Authorization: authHeader,
+  1173→          Accept: 'application/json',
+  1174→        },
+  1175→      },
+  1176→    );
+  1177→    if (pagesResponse.ok) {
+  1178→      capabilities.canCreatePages = true;
+  1179→    }
+  1180→  } catch {
+  1181→    // Pages endpoint unavailable
+  1182→  }
+  1183→
+  1184→  // Step 5: Test media upload capability
+  1185→  try {
+  1186→    const mediaResponse = await fetch(
+  1187→      `${connection.baseUrl.replace(/\/+$/, '')}${WP_API_PREFIX}media?per_page=1`,
+  1188→      {
+  1189→        method: 'GET',
+  1190→        headers: {
+  1191→          Authorization: authHeader,
+  1192→          Accept: 'application/json',
+  1193→        },
+  1194→      },
+  1195→    );
+  1196→    if (mediaResponse.ok) {
+  1197→      capabilities.canUploadMedia = true;
+  1198→    }
+  1199→  } catch {
+  1200→    // Media endpoint unavailable
+  1201→  }
+  1202→
+  1203→  // Step 6: Test category management capability
+  1204→  try {
+  1205→    const categoriesResponse = await fetch(
+  1206→      `${connection.baseUrl.replace(/\/+$/, '')}${WP_API_PREFIX}categories?per_page=1`,
+  1207→      {
+  1208→        method: 'GET',
+  1209→        headers: {
+  1210→          Authorization: authHeader,
+  1211→          Accept: 'application/json',
+  1212→        },
+  1213→      },
+  1214→    );
+  1215→    if (categoriesResponse.ok) {
+  1216→      capabilities.canManageCategories = true;
+  1217→    }
+  1218→  } catch {
+  1219→    // Categories endpoint unavailable
+  1220→  }
+  1221→
+  1222→  // Step 7: Test scheduling capability — check if the user can edit posts
+  1223→  // (scheduling requires edit_posts capability in WP)
+  1224→  try {
+  1225→    const meResponse = await fetch(`${baseApiUrl}wp/v2/users/me`, {
+  1226→      method: 'GET',
+  1227→      headers: {
+  1228→        Authorization: authHeader,
+  1229→        Accept: 'application/json',
+  1230→      },
+  1231→    });
+  1232→
+  1233→    if (meResponse.ok) {
+  1234→      const meData = (await meResponse.json()) as Record<string, unknown>;
+  1235→      const roles = (meData.roles as string[]) ?? [];
+  1236→      // Administrator, editor, and author can schedule posts
+  1237→      const canSchedule = roles.some(
+  1238→        (role) => ['administrator', 'editor', 'author'].includes(role),
+  1239→      );
+  1240→      capabilities.canSchedulePosts = canSchedule;
+  1241→
+  1242→      // Refine version from user info
+  1243→      if (capabilities.version === 'WordPress' && meData.name) {
+  1244→        // Keep the version label as-is; user info doesn't typically include WP version
+  1245→      }
+  1246→    }
+  1247→  } catch {
+  1248→    // User endpoint unavailable; default to false
+  1249→  }
+  1250→
+  1251→  // Step 8: Try to get WP version from the site info endpoint
+  1252→  try {
+  1253→    const siteInfoResponse = await fetch(`${baseApiUrl}`, {
+  1254→      method: 'GET',
+  1255→      headers: {
+  1256→        Authorization: authHeader,
+  1257→        Accept: 'application/json',
+  1258→      },
+  1259→    });
+  1260→
+  1261→    if (siteInfoResponse.ok) {
+  1262→      const siteInfo = (await siteInfoResponse.json()) as Record<string, unknown>;
+  1263→      // The REST API root may expose a description with version info
+  1264→      if (siteInfo.description && typeof siteInfo.description === 'string') {
+  1265→        capabilities.version = siteInfo.description;
+  1266→      }
+  1267→    }
+  1268→  } catch {
+  1269→    // Version detection failed
+  1270→  }
+  1271→
+  1272→  return capabilities;
+  1273→}
+  1274→
+  1275→/**
+  1276→ * Detect WordPress capabilities for a connection (public API).
+  1277→ * Updates the connection record with detected capabilities.
+  1278→ */
+  1279→export async function detectWPCapabilities(
+  1280→  connectionId: string,
+  1281→): Promise<WPCapabilities> {
+  1282→  const connection = await getConnectionOrThrow(connectionId);
+  1283→
+  1284→  const capabilities = await detectWPCapabilitiesDirect(connection);
+  1285→
+  1286→  // Update the connection with detected capabilities
+  1287→  await db.cMSConnection.update({
+  1288→    where: { id: connectionId },
+  1289→    data: {
+  1290→      capabilities: JSON.stringify(capabilities),
+  1291→      lastTestedAt: new Date(),
+  1292→    },
+  1293→  });
+  1294→
+  1295→  return capabilities;
+  1296→}
+  1297→
+  1298→// ============================================================================
+  1299→// Utility: Get parsed capabilities for a connection
+  1300→// ============================================================================
+  1301→
+  1302→/**
+  1303→ * Retrieve the stored capabilities for a connection.
+  1304→ */
+  1305→export async function getWPCapabilities(
+  1306→  connectionId: string,
+  1307→): Promise<WPCapabilities | null> {
+  1308→  const connection = await db.cMSConnection.findUnique({
+  1309→    where: { id: connectionId },
+  1310→  });
+  1311→
+  1312→  if (!connection || connection.deletedAt) return null;
+  1313→
+  1314→  return parseCapabilities(connection.capabilities);
+  1315→}
+  1316→
+  1317→/**
+  1318→ * Retrieve the stored metadata for a connection.
+  1319→ */
+  1320→export async function getWPMetadata(
+  1321→  connectionId: string,
+  1322→): Promise<Record<string, unknown> | null> {
+  1323→  const connection = await db.cMSConnection.findUnique({
+  1324→    where: { id: connectionId },
+  1325→  });
+  1326→
+  1327→  if (!connection || connection.deletedAt) return null;
+  1328→
+  1329→  return parseMetadata(connection.metadata);
+  1330→}
+  1331→

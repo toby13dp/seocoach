@@ -1,0 +1,784 @@
+     1→     1→// ============================================================================
+     2→     2→// Content Decay Detector — SEOCoach
+     3→     3→// AI-Driven SEO Automation Platform (Dutch Market)
+     4→     4→// ============================================================================
+     5→     5→// Detects content decay by comparing current vs. historical metrics,
+     6→     6→// recommends pruning actions (KEEP, IMPROVE, MERGE, REDIRECT, NOINDEX, REMOVE),
+     7→     7→// and assesses risks before destructive actions. Handles missing historical
+     8→     8→// data gracefully with clear Dutch-language notes.
+     9→     9→// ============================================================================
+    10→    10→
+    11→    11→import { db } from '@/lib/db';
+    12→    12→import type { PruningActionType, RiskAnalysis, RiskFactor } from './types';
+    13→    13→
+    14→    14→// ============================================================================
+    15→    15→// Decay Detection Thresholds
+    16→    16→// ============================================================================
+    17→    17→
+    18→    18→/** Percentage decay that triggers IMPROVE recommendation */
+    19→    19→const DECAY_MODERATE_THRESHOLD = 15;
+    20→    20→
+    21→    21→/** Percentage decay that triggers REDIRECT recommendation */
+    22→    22→const DECAY_SEVERE_THRESHOLD = 40;
+    23→    23→
+    24→    24→/** Percentage decay that triggers REMOVE recommendation */
+    25→    25→const DECAY_CRITICAL_THRESHOLD = 70;
+    26→    26→
+    27→    27→/** Minimum impressions before decay analysis is meaningful */
+    28→    28→const MIN_IMPRESSIONS_FOR_ANALYSIS = 10;
+    29→    29→
+    30→    30→// ============================================================================
+    31→    31→// Public API
+    32→    32→// ============================================================================
+    33→    33→
+    34→    34→/**
+    35→    35→ * Detect content decay across all pages in a project.
+    36→    36→ *
+    37→    37→ * Compares current and previous metrics (clicks, impressions, position)
+    38→    38→ * to identify pages that are losing performance. When historical data
+    39→    39→ * is not available, sets `dataAvailable = false` with a note in Dutch.
+    40→    40→ *
+    41→    41→ * The detection process:
+    42→    42→ * 1. Retrieves all ContentDecay records for the project
+    43→    43→ * 2. For each page with historical data, calculates decay percentage
+    44→    44→ * 3. Recommends a pruning action based on the decay severity
+    45→    45→ * 4. For pages without historical data, marks them as needing more time
+    46→    46→ * 5. Persists updated results to the ContentDecay table
+    47→    47→ *
+    48→    48→ * @param projectId - The project to detect decay for
+    49→    49→ * @returns Array of ContentDecay records with recommendations
+    50→    50→ */
+    51→    51→export async function detectDecay(
+    52→    52→  projectId: string
+    53→    53→): Promise<
+    54→    54→  Array<{
+    55→    55→    id: string;
+    56→    56→    projectId: string;
+    57→    57→    pageId: string | null;
+    58→    58→    url: string;
+    59→    59→    currentPage: number;
+    60→    60→    previousPage: number | null;
+    61→    61→    currentClicks: number | null;
+    62→    62→    previousClicks: number | null;
+    63→    63→    currentImpressions: number | null;
+    64→    64→    previousImpressions: number | null;
+    65→    65→    decayPercentage: number;
+    66→    66→    pruningAction: string;
+    67→    67→    riskAnalysis: RiskAnalysis | null;
+    68→    68→    recommendations: string[];
+    69→    69→    dataAvailable: boolean;
+    70→    70→    dataNote: string | null;
+    71→    71→    detectedAt: Date;
+    72→    72→  }>
+    73→    73→> {
+    74→    74→  // Get all existing decay records for this project
+    75→    75→  const existingDecay = await db.contentDecay.findMany({
+    76→    76→    where: { projectId },
+    77→    77→    orderBy: { decayPercentage: 'desc' },
+    78→    78→  });
+    79→    79→
+    80→    80→  // Get all pages for this project that have content
+    81→    81→  const pages = await db.page.findMany({
+    82→    82→    where: { projectId, status: 'OK' },
+    83→    83→    select: {
+    84→    84→      id: true,
+    85→    85→      url: true,
+    86→    86→      wordCount: true,
+    87→    87→      title: true,
+    88→    88→      crawlSession: {
+    89→    89→        select: { id: true },
+    90→    90→      },
+    91→    91→    },
+    92→    92→  });
+    93→    93→
+    94→    94→  const results: Array<{
+    95→    95→    id: string;
+    96→    96→    projectId: string;
+    97→    97→    pageId: string | null;
+    98→    98→    url: string;
+    99→    99→    currentPage: number;
+   100→   100→    previousPage: number | null;
+   101→   101→    currentClicks: number | null;
+   102→   102→    previousClicks: number | null;
+   103→   103→    currentImpressions: number | null;
+   104→   104→    previousImpressions: number | null;
+   105→   105→    decayPercentage: number;
+   106→   106→    pruningAction: string;
+   107→   107→    riskAnalysis: RiskAnalysis | null;
+   108→   108→    recommendations: string[];
+   109→   109→    dataAvailable: boolean;
+   110→   110→    dataNote: string | null;
+   111→   111→    detectedAt: Date;
+   112→   112→  }> = [];
+   113→   113→
+   114→   114→  for (const page of pages) {
+   115→   115→    // Check if we already have a decay record for this page
+   116→   116→    const existing = existingDecay.find(
+   117→   117→      (d) => d.pageId === page.id || d.url === page.url
+   118→   118→    );
+   119→   119→
+   120→   120→    // Determine if historical data is available
+   121→   121→    const hasHistoricalData =
+   122→   122→      existing !== undefined &&
+   123→   123→      (existing.previousClicks !== null ||
+   124→   124→        existing.previousImpressions !== null ||
+   125→   125→        existing.previousPage !== null);
+   126→   126→
+   127→   127→    if (!hasHistoricalData) {
+   128→   128→      // No historical data available - create/update record with note
+   129→   129→      const dataNote =
+   130→   130→        'Er is nog niet genoeg historische data om een trend te berekenen. Kom later terug voor een analyse.';
+   131→   131→
+   132→   132→      let recordId: string;
+   133→   133→      if (existing) {
+   134→   134→        await db.contentDecay.update({
+   135→   135→          where: { id: existing.id },
+   136→   136→          data: {
+   137→   137→            dataAvailable: false,
+   138→   138→            dataNote,
+   139→   139→            pruningAction: 'KEEP' as never,
+   140→   140→            riskAnalysis: null,
+   141→   141→            recommendations: JSON.stringify([
+   142→   142→              'Wacht tot er voldoende historische data is verzameld voordat je actie onderneemt.',
+   143→   143→            ]),
+   144→   144→          },
+   145→   145→        });
+   146→   146→        recordId = existing.id;
+   147→   147→      } else {
+   148→   148→        const created = await db.contentDecay.create({
+   149→   149→          data: {
+   150→   150→            projectId,
+   151→   151→            pageId: page.id,
+   152→   152→            url: page.url,
+   153→   153→            currentPage: 1,
+   154→   154→            previousPage: null,
+   155→   155→            currentClicks: null,
+   156→   156→            previousClicks: null,
+   157→   157→            currentImpressions: null,
+   158→   158→            previousImpressions: null,
+   159→   159→            decayPercentage: 0,
+   160→   160→            pruningAction: 'KEEP' as never,
+   161→   161→            riskAnalysis: null,
+   162→   162→            recommendations: JSON.stringify([
+   163→   163→              'Wacht tot er voldoende historische data is verzameld voordat je actie onderneemt.',
+   164→   164→            ]),
+   165→   165→            dataAvailable: false,
+   166→   166→            dataNote,
+   167→   167→          },
+   168→   168→        });
+   169→   169→        recordId = created.id;
+   170→   170→      }
+   171→   171→
+   172→   172→      results.push({
+   173→   173→        id: recordId,
+   174→   174→        projectId,
+   175→   175→        pageId: page.id,
+   176→   176→        url: page.url,
+   177→   177→        currentPage: 1,
+   178→   178→        previousPage: null,
+   179→   179→        currentClicks: null,
+   180→   180→        previousClicks: null,
+   181→   181→        currentImpressions: null,
+   182→   182→        previousImpressions: null,
+   183→   183→        decayPercentage: 0,
+   184→   184→        pruningAction: 'KEEP',
+   185→   185→        riskAnalysis: null,
+   186→   186→        recommendations: [
+   187→   187→          'Wacht tot er voldoende historische data is verzameld voordat je actie onderneemt.',
+   188→   188→        ],
+   189→   189→        dataAvailable: false,
+   190→   190→        dataNote,
+   191→   191→        detectedAt: new Date(),
+   192→   192→      });
+   193→   193→
+   194→   194→      continue;
+   195→   195→    }
+   196→   196→
+   197→   197→    // Historical data available - calculate decay
+   198→   198→    const decayPercentage = calculateDecayPercentage(
+   199→   199→      existing!.currentClicks,
+   200→   200→      existing!.previousClicks,
+   201→   201→      existing!.currentImpressions,
+   202→   202→      existing!.previousImpressions,
+   203→   203→      existing!.currentPage,
+   204→   204→      existing!.previousPage
+   205→   205→    );
+   206→   206→
+   207→   207→    // Recommend pruning action
+   208→   208→    const pruningAction = recommendPruningAction({
+   209→   209→      decayPercentage,
+   210→   210→      currentClicks: existing!.currentClicks,
+   211→   211→      currentPage: existing!.currentPage,
+   212→   212→      currentImpressions: existing!.currentImpressions,
+   213→   213→    });
+   214→   214→
+   215→   215→    // Assess risk for the recommended action
+   216→   216→    const riskAnalysis = assessPruningRisk({
+   217→   217→      url: existing!.url,
+   218→   218→      currentClicks: existing!.currentClicks,
+   219→   219→      currentImpressions: existing!.currentImpressions,
+   220→   220→      currentPage: existing!.currentPage,
+   221→   221→      decayPercentage,
+   222→   222→      pruningAction,
+   223→   223→    });
+   224→   224→
+   225→   225→    // Generate recommendations
+   226→   226→    const recommendations = generateDecayRecommendations(
+   227→   227→      decayPercentage,
+   228→   228→      pruningAction,
+   229→   229→      existing!.currentPage
+   230→   230→    );
+   231→   231→
+   232→   232→    // Update the record
+   233→   233→    await db.contentDecay.update({
+   234→   234→      where: { id: existing!.id },
+   235→   235→      data: {
+   236→   236→        decayPercentage,
+   237→   237→        pruningAction: pruningAction as never,
+   238→   238→        riskAnalysis: JSON.stringify(riskAnalysis),
+   239→   239→        recommendations: JSON.stringify(recommendations),
+   240→   240→        dataAvailable: true,
+   241→   241→        dataNote: null,
+   242→   242→      },
+   243→   243→    });
+   244→   244→
+   245→   245→    results.push({
+   246→   246→      id: existing!.id,
+   247→   247→      projectId,
+   248→   248→      pageId: existing!.pageId,
+   249→   249→      url: existing!.url,
+   250→   250→      currentPage: existing!.currentPage,
+   251→   251→      previousPage: existing!.previousPage,
+   252→   252→      currentClicks: existing!.currentClicks,
+   253→   253→      previousClicks: existing!.previousClicks,
+   254→   254→      currentImpressions: existing!.currentImpressions,
+   255→   255→      previousImpressions: existing!.previousImpressions,
+   256→   256→      decayPercentage,
+   257→   257→      pruningAction,
+   258→   258→      riskAnalysis,
+   259→   259→      recommendations,
+   260→   260→      dataAvailable: true,
+   261→   261→      dataNote: null,
+   262→   262→      detectedAt: existing!.detectedAt,
+   263→   263→    });
+   264→   264→  }
+   265→   265→
+   266→   266→  // Also include decay records that don't have matching pages
+   267→   267→  // (e.g., URLs that were removed from the site but still tracked)
+   268→   268→  for (const existing of existingDecay) {
+   269→   269→    const alreadyIncluded = results.some((r) => r.id === existing.id);
+   270→   270→    if (!alreadyIncluded) {
+   271→   271→      let riskAnalysisParsed: RiskAnalysis | null = null;
+   272→   272→      if (existing.riskAnalysis) {
+   273→   273→        try {
+   274→   274→          riskAnalysisParsed = JSON.parse(existing.riskAnalysis);
+   275→   275→        } catch {
+   276→   276→          riskAnalysisParsed = null;
+   277→   277→        }
+   278→   278→      }
+   279→   279→
+   280→   280→      let recommendationsParsed: string[] = [];
+   281→   281→      if (existing.recommendations) {
+   282→   282→        try {
+   283→   283→          recommendationsParsed = JSON.parse(existing.recommendations);
+   284→   284→        } catch {
+   285→   285→          recommendationsParsed = [];
+   286→   286→        }
+   287→   287→      }
+   288→   288→
+   289→   289→      results.push({
+   290→   290→        id: existing.id,
+   291→   291→        projectId: existing.projectId,
+   292→   292→        pageId: existing.pageId,
+   293→   293→        url: existing.url,
+   294→   294→        currentPage: existing.currentPage,
+   295→   295→        previousPage: existing.previousPage,
+   296→   296→        currentClicks: existing.currentClicks,
+   297→   297→        previousClicks: existing.previousClicks,
+   298→   298→        currentImpressions: existing.currentImpressions,
+   299→   299→        previousImpressions: existing.previousImpressions,
+   300→   300→        decayPercentage: existing.decayPercentage,
+   301→   301→        pruningAction: existing.pruningAction,
+   302→   302→        riskAnalysis: riskAnalysisParsed,
+   303→   303→        recommendations: recommendationsParsed,
+   304→   304→        dataAvailable: existing.dataAvailable,
+   305→   305→        dataNote: existing.dataNote,
+   306→   306→        detectedAt: existing.detectedAt,
+   307→   307→      });
+   308→   308→    }
+   309→   309→  }
+   310→   310→
+   311→   311→  // Sort by decay percentage descending (most decayed first)
+   312→   312→  return results.sort((a, b) => b.decayPercentage - a.decayPercentage);
+   313→   313→}
+   314→   314→
+   315→   315→/**
+   316→   316→ * Recommend a pruning action based on content decay severity.
+   317→   317→ *
+   318→   318→ * The recommendation logic:
+   319→   319→ * - KEEP: No significant decay (< 15%)
+   320→   320→ * - IMPROVE: Moderate decay (15-39%), content can be refreshed
+   321→   321→ * - MERGE: Moderate decay with similar content that should be combined
+   322→   322→ * - REDIRECT: Severe decay (40-69%), redirect to better content
+   323→   323→ * - NOINDEX: Low quality, remove from search index
+   324→   324→ * - REMOVE: No value (70%+), should be deleted
+   325→   325→ *
+   326→   326→ * @param decay - The decay data to analyze
+   327→   327→ * @returns The recommended pruning action
+   328→   328→ */
+   329→   329→export function recommendPruningAction(decay: {
+   330→   330→  decayPercentage: number;
+   331→   331→  currentClicks?: number | null;
+   332→   332→  currentPage?: number | null;
+   333→   333→  currentImpressions?: number | null;
+   334→   334→}): PruningActionType {
+   335→   335→  const { decayPercentage, currentClicks, currentPage, currentImpressions } =
+   336→   336→    decay;
+   337→   337→
+   338→   338→  // If still getting good traffic, recommend improvement over deletion
+   339→   339→  const hasTraffic = (currentClicks ?? 0) > 0;
+   340→   340→  const hasVisibility = (currentImpressions ?? 0) > 0;
+   341→   341→  const isOnFirstPage = (currentPage ?? 100) <= 10;
+   342→   342→
+   343→   343→  // Critical decay - content is essentially dead
+   344→   344→  if (decayPercentage >= DECAY_CRITICAL_THRESHOLD) {
+   345→   345→    if (hasTraffic || hasVisibility) {
+   346→   346→      return 'REDIRECT'; // Still some value, redirect it
+   347→   347→    }
+   348→   348→    return 'REMOVE'; // No value at all
+   349→   349→  }
+   350→   350→
+   351→   351→  // Severe decay - strong action needed
+   352→   352→  if (decayPercentage >= DECAY_SEVERE_THRESHOLD) {
+   353→   353→    if (isOnFirstPage && hasTraffic) {
+   354→   354→      return 'IMPROVE'; // Still ranking, worth saving
+   355→   355→    }
+   356→   356→    if (hasVisibility && !hasTraffic) {
+   357→   357→      return 'NOINDEX'; // Visible but not clicking through = quality issue
+   358→   358→    }
+   359→   359→    return 'REDIRECT';
+   360→   360→  }
+   361→   361→
+   362→   362→  // Moderate decay - refresh recommended
+   363→   363→  if (decayPercentage >= DECAY_MODERATE_THRESHOLD) {
+   364→   364→    if (isOnFirstPage) {
+   365→   365→      return 'IMPROVE'; // Still ranking, definitely worth refreshing
+   366→   366→    }
+   367→   367→    return 'MERGE'; // Combine with better-performing content
+   368→   368→  }
+   369→   369→
+   370→   370→  // No significant decay
+   371→   371→  return 'KEEP';
+   372→   372→}
+   373→   373→
+   374→   374→/**
+   375→   375→ * Assess the risk of a pruning action before it is executed.
+   376→   376→ *
+   377→   377→ * Warns about potential negative impacts of destructive actions,
+   378→   378→ * considering backlinks, traffic, authority, and redirect targets.
+   379→   379→ * The risk assessment helps prevent accidentally removing valuable content.
+   380→   380→ *
+   381→   381→ * Risk factors considered:
+   382→   382→ * - **Backlinks**: Content with backlinks loses link equity if removed
+   383→   383→ * - **Traffic**: Content still receiving traffic should not be removed lightly
+   384→   384→ * - **Authority**: Content ranking for valuable keywords has authority value
+   385→   385→ * - **Redirect target**: Redirects need a valid target to pass equity to
+   386→   386→ * - **Content value**: Content with unique value should be preserved
+   387→   387→ *
+   388→   388→ * @param decay - The decay record with pruning action recommendation
+   389→   389→ * @returns A comprehensive risk analysis with factors and precautions
+   390→   390→ */
+   391→   391→export function assessPruningRisk(decay: {
+   392→   392→  url: string;
+   393→   393→  currentClicks?: number | null;
+   394→   394→  currentImpressions?: number | null;
+   395→   395→  currentPage?: number | null;
+   396→   396→  decayPercentage: number;
+   397→   397→  pruningAction: PruningActionType;
+   398→   398→}): RiskAnalysis {
+   399→   399→  const factors: RiskFactor[] = [];
+   400→   400→  const precautions: string[] = [];
+   401→   401→
+   402→   402→  // KEEP actions have no risk
+   403→   403→  if (decay.pruningAction === 'KEEP') {
+   404→   404→    return {
+   405→   405→      riskLevel: 'low',
+   406→   406→      factors: [],
+   407→   407→      summary:
+   408→   408→        'Geen actie vereist. De content vertoont geen significante achteruitgang.',
+   409→   409→      precautions: [],
+   410→   410→    };
+   411→   411→  }
+   412→   412→
+   413→   413→  // Check traffic risk
+   414→   414→  const clicks = decay.currentClicks ?? 0;
+   415→   415→  const impressions = decay.currentImpressions ?? 0;
+   416→   416→
+   417→   417→  if (clicks > 50) {
+   418→   418→    factors.push({
+   419→   419→      type: 'traffic',
+   420→   420→      description: `Deze pagina ontvangt nog steeds ${clicks} klikken per periode. Verwijdering kan leiden tot verlies van waardevol verkeer.`,
+   421→   421→      severity: 'high',
+   422→   422→    });
+   423→   423→    precautions.push(
+   424→   424→      'Zorg dat er een alternatieve pagina is die dit verkeer kan opvangen.'
+   425→   425→    );
+   426→   426→  } else if (clicks > 10) {
+   427→   427→    factors.push({
+   428→   428→      type: 'traffic',
+   429→   429→      description: `Deze pagina ontvangt nog ${clicks} klikken per periode. Houd hier rekening mee bij het nemen van actie.`,
+   430→   430→      severity: 'medium',
+   431→   431→    });
+   432→   432→  }
+   433→   433→
+   434→   434→  // Check authority/ranking risk
+   435→   435→  const page = decay.currentPage ?? 100;
+   436→   436→  if (page <= 10) {
+   437→   437→    factors.push({
+   438→   438→      type: 'authority',
+   439→   439→      description: `Deze pagina staat nog op pagina ${page} in de zoekresultaten. De autoriteit van deze pagina gaat verloren bij verwijdering.`,
+   440→   440→      severity: 'high',
+   441→   441→    });
+   442→   442→    precautions.push(
+   443→   443→      'Overweeg de content te vernieuwen in plaats van te verwijderen, om de bestaande autoriteit te behouden.'
+   444→   444→    );
+   445→   445→  } else if (page <= 20) {
+   446→   446→    factors.push({
+   447→   447→      type: 'authority',
+   448→   448→      description: `Deze pagina staat op pagina ${page}. Er is nog enige zichtbaarheid die verloren gaat.`,
+   449→   449→      severity: 'medium',
+   450→   450→    });
+   451→   451→  }
+   452→   452→
+   453→   453→  // Check impression risk (indicates search visibility)
+   454→   454→  if (impressions > 100) {
+   455→   455→    factors.push({
+   456→   456→      type: 'authority',
+   457→   457→      description: `Met ${impressions} impressies per periode heeft deze pagina nog aanzienlijke zichtbaarheid in de zoekresultaten.`,
+   458→   458→      severity: 'medium',
+   459→   459→    });
+   460→   460→    precautions.push(
+   461→   461→      'Controleer of de impressies leiden naar klikken. Hoge impressies maar weinig klikken wijzen op een titel- of metabeschrijvingsprobleem.'
+   462→   462→    );
+   463→   463→  }
+   464→   464→
+   465→   465→  // Action-specific risks
+   466→   466→  switch (decay.pruningAction) {
+   467→   467→    case 'REMOVE':
+   468→   468→      factors.push({
+   469→   469→        type: 'backlinks',
+   470→   470→        description:
+   471→   471→          'Bij verwijdering gaan alle inkomende backlinks naar deze pagina verloren. Controleer de backlinkprofiel voordat je de pagina verwijdert.',
+   472→   472→        severity: 'high',
+   473→   473→      });
+   474→   474→      precautions.push(
+   475→   475→        'Controleer het backlinkprofiel van deze pagina in je SEO-tool voordat je deze verwijdert.'
+   476→   476→      );
+   477→   477→      precautions.push(
+   478→   478→        'Overweeg een 301-redirect naar een relevante pagina in plaats van de pagina te verwijderen.'
+   479→   479→      );
+   480→   480→      break;
+   481→   481→
+   482→   482→    case 'REDIRECT':
+   483→   483→      factors.push({
+   484→   484→        type: 'redirect_target',
+   485→   485→        description:
+   486→   486→          'De redirect moet wijzen naar een pagina die dezelfde zoekintentie beantwoordt, anders gaat linkwaarde verloren.',
+   487→   487→        severity: 'medium',
+   488→   488→      });
+   489→   489→      precautions.push(
+   490→   490→        'Kies een redirect-doelpagina die topisch verwant is aan de originele pagina.'
+   491→   491→      );
+   492→   492→      precautions.push(
+   493→   493→        'Gebruik een 301-redirect (permanent), geen 302 (tijdelijk), om linkwaarde door te geven.'
+   494→   494→      );
+   495→   495→      break;
+   496→   496→
+   497→   497→    case 'NOINDEX':
+   498→   498→      factors.push({
+   499→   499→        type: 'content_value',
+   500→   500→        description:
+   501→   501→          'Een noindex-instructie verwijdert de pagina uit de zoekresultaten maar behoudt de content. De pagina kan nog steeds verkeer ontvangen via interne links.',
+   502→   502→        severity: 'low',
+   503→   503→      });
+   504→   504→      precautions.push(
+   505→   505→        'Controleer regelmatig of de noindex-pagina nog relevant is of verwijderd kan worden.'
+   506→   506→      );
+   507→   507→      break;
+   508→   508→
+   509→   509→    case 'MERGE':
+   510→   510→      factors.push({
+   511→   511→        type: 'redirect_target',
+   512→   512→        description:
+   513→   513→          'Na het samenvoegen moet de oude URL redirecten naar de nieuwe, gecombineerde pagina.',
+   514→   514→        severity: 'medium',
+   515→   515→      });
+   516→   516→      precautions.push(
+   517→   517→        'Zorg dat de samengevoegde content alle waardevolle informatie van beide pagina\'s bevat.'
+   518→   518→      );
+   519→   519→      precautions.push(
+   520→   520→        'Stel een 301-redirect in van de oude URL naar de nieuwe pagina.'
+   521→   521→      );
+   522→   522→      break;
+   523→   523→
+   524→   524→    case 'IMPROVE':
+   525→   525→      factors.push({
+   526→   526→        type: 'content_value',
+   527→   527→        description:
+   528→   528→          'De content heeft waarde maar moet worden ververst. De bestaande autoriteit kan worden behouden door de content te verbeteren.',
+   529→   529→        severity: 'low',
+   530→   530→      });
+   531→   531→      precautions.push(
+   532→   532→        'Werk de content bij met actuele informatie, nieuwe voorbeelden en verbeterde structuur.'
+   533→   533→      );
+   534→   534→      break;
+   535→   535→  }
+   536→   536→
+   537→   537→  // Determine overall risk level
+   538→   538→  const hasHighSeverity = factors.some((f) => f.severity === 'high');
+   539→   539→  const hasMediumSeverity = factors.some((f) => f.severity === 'medium');
+   540→   540→
+   541→   541→  let riskLevel: RiskAnalysis['riskLevel'];
+   542→   542→  if (hasHighSeverity) {
+   543→   543→    riskLevel = 'high';
+   544→   544→  } else if (hasMediumSeverity) {
+   545→   545→    riskLevel = 'medium';
+   546→   546→  } else {
+   547→   547→    riskLevel = 'low';
+   548→   548→  }
+   549→   549→
+   550→   550→  // Critical risk: REMOVE action with high severity factors
+   551→   551→  if (decay.pruningAction === 'REMOVE' && hasHighSeverity) {
+   552→   552→    riskLevel = 'critical';
+   553→   553→  }
+   554→   554→
+   555→   555→  // Build summary
+   556→   556→  const summary = buildRiskSummary(decay.pruningAction, riskLevel, factors);
+   557→   557→
+   558→   558→  return {
+   559→   559→    riskLevel,
+   560→   560→    factors,
+   561→   561→    summary,
+   562→   562→    precautions,
+   563→   563→  };
+   564→   564→}
+   565→   565→
+   566→   566→// ============================================================================
+   567→   567→// Internal Helpers
+   568→   568→// ============================================================================
+   569→   569→
+   570→   570→/**
+   571→   571→ * Calculate the decay percentage based on current vs. previous metrics.
+   572→   572→ *
+   573→   573→ * Uses a weighted combination of clicks, impressions, and position changes.
+   574→   574→ * Returns 0 if there's insufficient data to calculate a meaningful percentage.
+   575→   575→ *
+   576→   576→ * Weights:
+   577→   577→ * - Clicks: 40% (most important for business value)
+   578→   578→ * - Impressions: 30% (indicates visibility)
+   579→   579→ * - Position: 30% (indicates ranking health)
+   580→   580→ */
+   581→   581→function calculateDecayPercentage(
+   582→   582→  currentClicks: number | null,
+   583→   583→  previousClicks: number | null,
+   584→   584→  currentImpressions: number | null,
+   585→   585→  previousImpressions: number | null,
+   586→   586→  currentPage: number | null,
+   587→   587→  previousPage: number | null
+   588→   588→): number {
+   589→   589→  let clickDecay = 0;
+   590→   590→  let impressionDecay = 0;
+   591→   591→  let positionDecay = 0;
+   592→   592→  let components = 0;
+   593→   593→
+   594→   594→  // Calculate click decay
+   595→   595→  if (
+   596→   596→    currentClicks !== null &&
+   597→   597→    previousClicks !== null &&
+   598→   598→    previousClicks > 0
+   599→   599→  ) {
+   600→   600→    clickDecay = Math.max(
+   601→   601→      0,
+   602→   602→      ((previousClicks - currentClicks) / previousClicks) * 100
+   603→   603→    );
+   604→   604→    components++;
+   605→   605→  }
+   606→   606→
+   607→   607→  // Calculate impression decay
+   608→   608→  if (
+   609→   609→    currentImpressions !== null &&
+   610→   610→    previousImpressions !== null &&
+   611→   611→    previousImpressions > MIN_IMPRESSIONS_FOR_ANALYSIS
+   612→   612→  ) {
+   613→   613→    impressionDecay = Math.max(
+   614→   614→      0,
+   615→   615→      ((previousImpressions - currentImpressions) / previousImpressions) * 100
+   616→   616→    );
+   617→   617→    components++;
+   618→   618→  }
+   619→   619→
+   620→   620→  // Calculate position decay (higher page = worse)
+   621→   621→  if (currentPage !== null && previousPage !== null) {
+   622→   622→    // Position decay: moving from page 1 to page 3 is significant
+   623→   623→    const positionChange = currentPage - previousPage;
+   624→   624→    if (positionChange > 0) {
+   625→   625→      // Got worse - calculate decay based on magnitude
+   626→   626→      positionDecay = Math.min(100, positionChange * 20); // Each page drop = 20% decay
+   627→   627→    }
+   628→   628→    components++;
+   629→   629→  }
+   630→   630→
+   631→   631→  if (components === 0) return 0;
+   632→   632→
+   633→   633→  // Weighted average
+   634→   634→  const weightedDecay =
+   635→   635→    (clickDecay * 0.4 + impressionDecay * 0.3 + positionDecay * 0.3);
+   636→   636→
+   637→   637→  return Math.round(Math.max(0, Math.min(100, weightedDecay)));
+   638→   638→}
+   639→   639→
+   640→   640→/**
+   641→   641→ * Generate Dutch recommendations for content decay.
+   642→   642→ */
+   643→   643→function generateDecayRecommendations(
+   644→   644→  decayPercentage: number,
+   645→   645→  pruningAction: PruningActionType,
+   646→   646→  currentPage?: number | null
+   647→   647→): string[] {
+   648→   648→  const recommendations: string[] = [];
+   649→   649→
+   650→   650→  switch (pruningAction) {
+   651→   651→    case 'KEEP':
+   652→   652→      recommendations.push(
+   653→   653→        'De content vertoont geen significante achteruitgang. Monitor de prestaties regelmatig.'
+   654→   654→      );
+   655→   655→      if (decayPercentage > 0 && decayPercentage < DECAY_MODERATE_THRESHOLD) {
+   656→   656→        recommendations.push(
+   657→   657→          'Er is een lichte daling zichtbaar. Overweeg preventief de content actueel te houden.'
+   658→   658→        );
+   659→   659→      }
+   660→   660→      break;
+   661→   661→
+   662→   662→    case 'IMPROVE':
+   663→   663→      recommendations.push(
+   664→   664→        `De content vertoont ${decayPercentage}% achteruitgang. Vernieuw de content met actuele informatie.`
+   665→   665→      );
+   666→   666→      recommendations.push(
+   667→   667→        'Voeg nieuwe secties toe, werk verouderde data bij en versterk de E-E-A-T signalen.'
+   668→   668→      );
+   669→   669→      if (currentPage && currentPage > 10) {
+   670→   670→        recommendations.push(
+   671→   671→          'De pagina is gezakt in de zoekresultaten. Optimaliseer de titel en metabeschrijving om de klikfrequentie te verbeteren.'
+   672→   672→        );
+   673→   673→      }
+   674→   674→      recommendations.push(
+   675→   675→        'Controleer of concurrenten nieuwe content hebben gepubliceerd die jouw pagina voorbijstreeft.'
+   676→   676→      );
+   677→   677→      break;
+   678→   678→
+   679→   679→    case 'MERGE':
+   680→   680→      recommendations.push(
+   681→   681→        `De content vertoont ${decayPercentage}% achteruitgang en overlapt mogelijk met andere pagina's. Overweeg de content samen te voegen.`
+   682→   682→      );
+   683→   683→      recommendations.push(
+   684→   684→        'Identificeer de best presterende pagina over hetzelfde onderwerp en voeg de waardevolle content daar aan toe.'
+   685→   685→      );
+   686→   686→      recommendations.push(
+   687→   687→        'Stel een 301-redirect in van de oude URL naar de samengevoegde pagina om linkwaarde te behouden.'
+   688→   688→      );
+   689→   689→      break;
+   690→   690→
+   691→   691→    case 'REDIRECT':
+   692→   692→      recommendations.push(
+   693→   693→        `De content vertoont ${decayPercentage}% ernstige achteruitgang. Redirect de pagina naar een relevantere pagina.`
+   694→   694→      );
+   695→   695→      recommendations.push(
+   696→   696→        'Kies een doelpagina die dezelfde zoekintentie beantwoordt om linkwaarde door te geven.'
+   697→   697→      );
+   698→   698→      recommendations.push(
+   699→   699→        'Gebruik een 301-redirect en update interne links die naar de oude URL verwijzen.'
+   700→   700→      );
+   701→   701→      break;
+   702→   702→
+   703→   703→    case 'NOINDEX':
+   704→   704→      recommendations.push(
+   705→   705→        'De content ontvangt wel impressies maar nauwelijks klikken. Dit wijst op een kwaliteits- of relevantieprobleem.'
+   706→   706→      );
+   707→   707→      recommendations.push(
+   708→   708→        'Voeg een noindex-tag toe om de pagina uit de zoekresultaten te halen, of verbeter de content aanzienlijk.'
+   709→   709→      );
+   710→   710→      recommendations.push(
+   711→   711→        'Controleer of de titel en metabeschrijving aansluiten bij de zoekintentie.'
+   712→   712→      );
+   713→   713→      break;
+   714→   714→
+   715→   715→    case 'REMOVE':
+   716→   716→      recommendations.push(
+   717→   717→        `De content vertoont ${decayPercentage}% kritieke achteruitgang en heeft geen meetbare waarde meer. Overweeg de pagina te verwijderen.`
+   718→   718→      );
+   719→   719→      recommendations.push(
+   720→   720→        'Controleer het backlinkprofiel voordat je de pagina verwijdert. Bij backlinks is een redirect veiliger.'
+   721→   721→      );
+   722→   722→      recommendations.push(
+   723→   723→        'Verwijder ook interne links naar deze pagina en update de sitemap.'
+   724→   724→      );
+   725→   725→      break;
+   726→   726→  }
+   727→   727→
+   728→   728→  return recommendations;
+   729→   729→}
+   730→   730→
+   731→   731→/**
+   732→   732→ * Build a Dutch risk summary based on the pruning action and risk factors.
+   733→   733→ */
+   734→   734→function buildRiskSummary(
+   735→   735→  action: PruningActionType,
+   736→   736→  riskLevel: RiskAnalysis['riskLevel'],
+   737→   737→  factors: RiskFactor[]
+   738→   738→): string {
+   739→   739→  const actionLabels: Record<PruningActionType, string> = {
+   740→   740→    KEEP: 'Behouden',
+   741→   741→    IMPROVE: 'Vernieuwen',
+   742→   742→    MERGE: 'Samenvoegen',
+   743→   743→    REDIRECT: 'Redirecten',
+   744→   744→    NOINDEX: 'Uit index verwijderen',
+   745→   745→    REMOVE: 'Verwijderen',
+   746→   746→  };
+   747→   747→
+   748→   748→  const riskLabels: Record<RiskAnalysis['riskLevel'], string> = {
+   749→   749→    low: 'laag',
+   750→   750→    medium: 'gemiddeld',
+   751→   751→    high: 'hoog',
+   752→   752→    critical: 'kritiek',
+   753→   753→  };
+   754→   754→
+   755→   755→  const actionLabel = actionLabels[action];
+   756→   756→  const riskLabel = riskLabels[riskLevel];
+   757→   757→
+   758→   758→  if (factors.length === 0) {
+   759→   759→    return `Actie "${actionLabel}" heeft een ${riskLabel} risico. Geen specifieke risicofactoren geïdentificeerd.`;
+   760→   760→  }
+   761→   761→
+   762→   762→  const highFactors = factors.filter((f) => f.severity === 'high');
+   763→   763→  const mediumFactors = factors.filter((f) => f.severity === 'medium');
+   764→   764→
+   765→   765→  const parts: string[] = [];
+   766→   766→  parts.push(
+   767→   767→    `Actie "${actionLabel}" heeft een ${riskLabel} risico.`
+   768→   768→  );
+   769→   769→
+   770→   770→  if (highFactors.length > 0) {
+   771→   771→    parts.push(
+   772→   772→      `${highFactors.length} hoog-risico factor(en): ${highFactors.map((f) => f.type).join(', ')}.`
+   773→   773→    );
+   774→   774→  }
+   775→   775→
+   776→   776→  if (mediumFactors.length > 0) {
+   777→   777→    parts.push(
+   778→   778→      `${mediumFactors.length} gemiddeld-risico factor(en): ${mediumFactors.map((f) => f.type).join(', ')}.`
+   779→   779→    );
+   780→   780→  }
+   781→   781→
+   782→   782→  return parts.join(' ');
+   783→   783→}
+   784→   784→

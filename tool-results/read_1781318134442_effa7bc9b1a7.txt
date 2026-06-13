@@ -1,0 +1,877 @@
+     1→// ============================================================================
+     2→// Content Brief Manager — SEOCoach
+     3→// AI-Driven SEO Automation Platform (Dutch Market)
+     4→// ============================================================================
+     5→// Manages content briefs: creation, updates, listing, approval workflow,
+     6→// and AI-powered outline generation. Briefs serve as the strategic foundation
+     7→// for content creation, linking keywords, topics, and brand guidelines.
+     8→// ============================================================================
+     9→
+    10→import { db } from '@/lib/db';
+    11→import { providerManager } from '@/lib/ai/provider-manager';
+    12→import type {
+    13→  ContentBriefData,
+    14→  OutlineItem,
+    15→  BriefFilters,
+    16→  PaginatedBriefs,
+    17→  BriefSummary,
+    18→  ContentBriefWithDetails,
+    19→  ContentVersionSummary,
+    20→} from './types';
+    21→
+    22→// ============================================================================
+    23→// Enum Mapping Helpers
+    24→// ============================================================================
+    25→
+    26→/**
+    27→ * Map a string value to the SearchIntent enum.
+    28→ * Falls back to UNKNOWN if the value is not a valid enum member.
+    29→ */
+    30→function toSearchIntent(value?: string): string {
+    31→  const valid = [
+    32→    'INFORMATIONAL',
+    33→    'NAVIGATIONAL',
+    34→    'TRANSACTIONAL',
+    35→    'COMMERCIAL_INVESTIGATION',
+    36→    'LOCAL',
+    37→    'BRANDED',
+    38→    'UNKNOWN',
+    39→  ];
+    40→  if (!value) return 'UNKNOWN';
+    41→  const upper = value.toUpperCase().replace(/\s+/g, '_');
+    42→  return valid.includes(upper) ? upper : 'UNKNOWN';
+    43→}
+    44→
+    45→/**
+    46→ * Map a string value to the FunnelStage enum.
+    47→ * Falls back to UNKNOWN if the value is not a valid enum member.
+    48→ */
+    49→function toFunnelStage(value?: string): string {
+    50→  const valid = ['AWARENESS', 'CONSIDERATION', 'DECISION', 'RETENTION', 'UNKNOWN'];
+    51→  if (!value) return 'UNKNOWN';
+    52→  const upper = value.toUpperCase().replace(/\s+/g, '_');
+    53→  return valid.includes(upper) ? upper : 'UNKNOWN';
+    54→}
+    55→
+    56→/**
+    57→ * Map a string value to the ContentApprovalStatus enum.
+    58→ * Falls back to DRAFT if the value is not a valid enum member.
+    59→ */
+    60→function toApprovalStatus(value?: string): string {
+    61→  const valid = ['DRAFT', 'IN_REVIEW', 'APPROVED', 'PUBLISHED', 'ARCHIVED'];
+    62→  if (!value) return 'DRAFT';
+    63→  const upper = value.toUpperCase();
+    64→  return valid.includes(upper) ? upper : 'DRAFT';
+    65→}
+    66→
+    67→// ============================================================================
+    68→// Brief CRUD Operations
+    69→// ============================================================================
+    70→
+    71→/**
+    72→ * Create a new content brief for a project.
+    73→ *
+    74→ * The brief captures the strategic intent for a piece of content,
+    75→ * including the target keyword, outline, audience, and tone of voice.
+    76→ * It can optionally be linked to a keyword and/or topic record.
+    77→ *
+    78→ * @param projectId - The project to create the brief in
+    79→ * @param data - Brief creation data
+    80→ * @returns The created ContentBrief with full details
+    81→ * @throws Error if the project does not exist
+    82→ */
+    83→export async function createBrief(
+    84→  projectId: string,
+    85→  data: ContentBriefData
+    86→): Promise<ContentBriefWithDetails> {
+    87→  // Verify the project exists
+    88→  const project = await db.project.findUnique({
+    89→    where: { id: projectId },
+    90→    select: { id: true },
+    91→  });
+    92→
+    93→  if (!project) {
+    94→    throw new Error(`Project "${projectId}" niet gevonden`);
+    95→  }
+    96→
+    97→  // If a target keyword is specified, try to find or reference it
+    98→  let keywordId: string | undefined;
+    99→  if (data.targetKeyword) {
+   100→    const existingKeyword = await db.keyword.findFirst({
+   101→      where: { projectId, keyword: data.targetKeyword, deletedAt: null },
+   102→    });
+   103→    if (existingKeyword) {
+   104→      keywordId = existingKeyword.id;
+   105→    }
+   106→  }
+   107→
+   108→  const brief = await db.contentBrief.create({
+   109→    data: {
+   110→      projectId,
+   111→      keywordId: keywordId ?? null,
+   112→      title: data.title,
+   113→      targetKeyword: data.targetKeyword ?? null,
+   114→      secondaryKeywords: data.secondaryKeywords
+   115→        ? JSON.stringify(data.secondaryKeywords)
+   116→        : null,
+   117→      searchIntent: toSearchIntent(data.searchIntent) as never,
+   118→      funnelStage: toFunnelStage(data.funnelStage) as never,
+   119→      outline: data.outline ? JSON.stringify(data.outline) : null,
+   120→      sources: data.sources ? JSON.stringify(data.sources) : null,
+   121→      brandProfileUsed: data.brandProfileUsed ?? true,
+   122→      internalPages: data.internalPages
+   123→        ? JSON.stringify(data.internalPages)
+   124→        : null,
+   125→      targetWordCount: data.targetWordCount ?? null,
+   126→      targetAudience: data.targetAudience ?? null,
+   127→      toneOfVoice: data.toneOfVoice ?? null,
+   128→    },
+   129→    include: {
+   130→      versions: {
+   131→        select: {
+   132→          id: true,
+   133→          version: true,
+   134→          wordCount: true,
+   135→          aiGenerated: true,
+   136→          changeSummary: true,
+   137→          createdAt: true,
+   138→        },
+   139→        orderBy: { version: 'desc' },
+   140→      },
+   141→    },
+   142→  });
+   143→
+   144→  return prismaBriefToDetails(brief);
+   145→}
+   146→
+   147→/**
+   148→ * Update an existing content brief.
+   149→ *
+   150→ * Only the provided fields are updated. Enum values are mapped
+   151→ * automatically from strings. JSON fields (outline, secondaryKeywords,
+   152→ * sources, internalPages) are serialized automatically.
+   153→ *
+   154→ * @param briefId - The brief to update
+   155→ * @param data - Partial brief data with fields to update
+   156→ * @returns The updated ContentBrief with full details
+   157→ * @throws Error if the brief does not exist
+   158→ */
+   159→export async function updateBrief(
+   160→  briefId: string,
+   161→  data: Partial<ContentBriefData>
+   162→): Promise<ContentBriefWithDetails> {
+   163→  const existing = await db.contentBrief.findUnique({
+   164→    where: { id: briefId },
+   165→  });
+   166→
+   167→  if (!existing) {
+   168→    throw new Error(`Content brief "${briefId}" niet gevonden`);
+   169→  }
+   170→
+   171→  const updateData: Record<string, unknown> = {};
+   172→
+   173→  if (data.title !== undefined) updateData.title = data.title;
+   174→  if (data.targetKeyword !== undefined)
+   175→    updateData.targetKeyword = data.targetKeyword;
+   176→  if (data.secondaryKeywords !== undefined)
+   177→    updateData.secondaryKeywords = data.secondaryKeywords
+   178→      ? JSON.stringify(data.secondaryKeywords)
+   179→      : null;
+   180→  if (data.searchIntent !== undefined)
+   181→    updateData.searchIntent = toSearchIntent(data.searchIntent);
+   182→  if (data.funnelStage !== undefined)
+   183→    updateData.funnelStage = toFunnelStage(data.funnelStage);
+   184→  if (data.outline !== undefined)
+   185→    updateData.outline = data.outline ? JSON.stringify(data.outline) : null;
+   186→  if (data.sources !== undefined)
+   187→    updateData.sources = data.sources ? JSON.stringify(data.sources) : null;
+   188→  if (data.brandProfileUsed !== undefined)
+   189→    updateData.brandProfileUsed = data.brandProfileUsed;
+   190→  if (data.internalPages !== undefined)
+   191→    updateData.internalPages = data.internalPages
+   192→      ? JSON.stringify(data.internalPages)
+   193→      : null;
+   194→  if (data.targetWordCount !== undefined)
+   195→    updateData.targetWordCount = data.targetWordCount;
+   196→  if (data.targetAudience !== undefined)
+   197→    updateData.targetAudience = data.targetAudience;
+   198→  if (data.toneOfVoice !== undefined)
+   199→    updateData.toneOfVoice = data.toneOfVoice;
+   200→
+   201→  const brief = await db.contentBrief.update({
+   202→    where: { id: briefId },
+   203→    data: updateData,
+   204→    include: {
+   205→      versions: {
+   206→        select: {
+   207→          id: true,
+   208→          version: true,
+   209→          wordCount: true,
+   210→          aiGenerated: true,
+   211→          changeSummary: true,
+   212→          createdAt: true,
+   213→        },
+   214→        orderBy: { version: 'desc' },
+   215→      },
+   216→    },
+   217→  });
+   218→
+   219→  return prismaBriefToDetails(brief);
+   220→}
+   221→
+   222→/**
+   223→ * Soft-delete is not directly supported on ContentBrief in the schema.
+   224→ * Instead, we set the approval status to ARCHIVED.
+   225→ *
+   226→ * @param briefId - The brief to archive/delete
+   227→ * @throws Error if the brief does not exist
+   228→ */
+   229→export async function deleteBrief(briefId: string): Promise<void> {
+   230→  const existing = await db.contentBrief.findUnique({
+   231→    where: { id: briefId },
+   232→  });
+   233→
+   234→  if (!existing) {
+   235→    throw new Error(`Content brief "${briefId}" niet gevonden`);
+   236→  }
+   237→
+   238→  await db.contentBrief.update({
+   239→    where: { id: briefId },
+   240→    data: { approvalStatus: 'ARCHIVED' as never },
+   241→  });
+   242→}
+   243→
+   244→/**
+   245→ * Get a content brief with full details including all versions.
+   246→ *
+   247→ * Parses JSON fields (outline, secondaryKeywords, sources, internalPages)
+   248→ * into their structured types.
+   249→ *
+   250→ * @param briefId - The brief to retrieve
+   251→ * @returns The brief with all details and version summaries
+   252→ * @throws Error if the brief does not exist
+   253→ */
+   254→export async function getBrief(
+   255→  briefId: string
+   256→): Promise<ContentBriefWithDetails> {
+   257→  const brief = await db.contentBrief.findUnique({
+   258→    where: { id: briefId },
+   259→    include: {
+   260→      versions: {
+   261→        select: {
+   262→          id: true,
+   263→          version: true,
+   264→          wordCount: true,
+   265→          aiGenerated: true,
+   266→          changeSummary: true,
+   267→          createdAt: true,
+   268→        },
+   269→        orderBy: { version: 'desc' },
+   270→      },
+   271→    },
+   272→  });
+   273→
+   274→  if (!brief) {
+   275→    throw new Error(`Content brief "${briefId}" niet gevonden`);
+   276→  }
+   277→
+   278→  return prismaBriefToDetails(brief);
+   279→}
+   280→
+   281→/**
+   282→ * List content briefs for a project with filtering and pagination.
+   283→ *
+   284→ * Supports filtering by approval status, search intent, funnel stage,
+   285→ * and free-text search. Results are paginated and sortable.
+   286→ *
+   287→ * @param projectId - The project to list briefs for
+   288→ * @param filters - Optional filters, sorting, and pagination
+   289→ * @returns Paginated list of brief summaries
+   290→ */
+   291→export async function listBriefs(
+   292→  projectId: string,
+   293→  filters?: BriefFilters
+   294→): Promise<PaginatedBriefs> {
+   295→  const page = Math.max(1, filters?.page ?? 1);
+   296→  const pageSize = Math.min(100, Math.max(1, filters?.pageSize ?? 20));
+   297→  const sortBy = filters?.sortBy ?? 'createdAt';
+   298→  const sortDirection = filters?.sortDirection ?? 'desc';
+   299→
+   300→  // Build where clause
+   301→  const where: Record<string, unknown> = { projectId };
+   302→
+   303→  if (filters?.approvalStatus) {
+   304→    where.approvalStatus = toApprovalStatus(filters.approvalStatus);
+   305→  }
+   306→
+   307→  if (filters?.searchIntent) {
+   308→    where.searchIntent = toSearchIntent(filters.searchIntent);
+   309→  }
+   310→
+   311→  if (filters?.funnelStage) {
+   312→    where.funnelStage = toFunnelStage(filters.funnelStage);
+   313→  }
+   314→
+   315→  if (filters?.search) {
+   316→    where.OR = [
+   317→      { title: { contains: filters.search } },
+   318→      { targetKeyword: { contains: filters.search } },
+   319→    ];
+   320→  }
+   321→
+   322→  // Get total count
+   323→  const total = await db.contentBrief.count({ where });
+   324→
+   325→  // Get paginated results
+   326→  const briefs = await db.contentBrief.findMany({
+   327→    where,
+   328→    select: {
+   329→      id: true,
+   330→      title: true,
+   331→      targetKeyword: true,
+   332→      searchIntent: true,
+   333→      funnelStage: true,
+   334→      approvalStatus: true,
+   335→      targetWordCount: true,
+   336→      createdAt: true,
+   337→      updatedAt: true,
+   338→      versions: { select: { id: true } },
+   339→    },
+   340→    orderBy: { [sortBy]: sortDirection },
+   341→    skip: (page - 1) * pageSize,
+   342→    take: pageSize,
+   343→  });
+   344→
+   345→  const items: BriefSummary[] = briefs.map((b) => ({
+   346→    id: b.id,
+   347→    title: b.title,
+   348→    targetKeyword: b.targetKeyword ?? undefined,
+   349→    searchIntent: b.searchIntent,
+   350→    funnelStage: b.funnelStage,
+   351→    approvalStatus: b.approvalStatus,
+   352→    targetWordCount: b.targetWordCount ?? undefined,
+   353→    versionCount: b.versions.length,
+   354→    createdAt: b.createdAt,
+   355→    updatedAt: b.updatedAt,
+   356→  }));
+   357→
+   358→  return {
+   359→    items,
+   360→    total,
+   361→    page,
+   362→    pageSize,
+   363→    totalPages: Math.ceil(total / pageSize),
+   364→  };
+   365→}
+   366→
+   367→/**
+   368→ * Approve a content brief, moving it to the APPROVED status.
+   369→ *
+   370→ * Records who approved the brief and when. Only briefs in DRAFT or
+   371→ * IN_REVIEW status can be approved.
+   372→ *
+   373→ * @param briefId - The brief to approve
+   374→ * @param userId - The user who is approving the brief
+   375→ * @returns The updated brief with details
+   376→ * @throws Error if the brief does not exist or cannot be approved
+   377→ */
+   378→export async function approveBrief(
+   379→  briefId: string,
+   380→  userId: string
+   381→): Promise<ContentBriefWithDetails> {
+   382→  const existing = await db.contentBrief.findUnique({
+   383→    where: { id: briefId },
+   384→  });
+   385→
+   386→  if (!existing) {
+   387→    throw new Error(`Content brief "${briefId}" niet gevonden`);
+   388→  }
+   389→
+   390→  const allowedStatuses = ['DRAFT', 'IN_REVIEW'];
+   391→  if (!allowedStatuses.includes(existing.approvalStatus)) {
+   392→    throw new Error(
+   393→      `Deze content brief kan niet goedgekeurd worden. Huidige status: "${existing.approvalStatus}". Alleen briefs met status "DRAFT" of "IN_REVIEW" kunnen goedgekeurd worden.`
+   394→    );
+   395→  }
+   396→
+   397→  const brief = await db.contentBrief.update({
+   398→    where: { id: briefId },
+   399→    data: {
+   400→      approvalStatus: 'APPROVED' as never,
+   401→      approvedBy: userId,
+   402→      approvedAt: new Date(),
+   403→    },
+   404→    include: {
+   405→      versions: {
+   406→        select: {
+   407→          id: true,
+   408→          version: true,
+   409→          wordCount: true,
+   410→          aiGenerated: true,
+   411→          changeSummary: true,
+   412→          createdAt: true,
+   413→        },
+   414→        orderBy: { version: 'desc' },
+   415→      },
+   416→    },
+   417→  });
+   418→
+   419→  return prismaBriefToDetails(brief);
+   420→}
+   421→
+   422→// ============================================================================
+   423→// Outline Generation
+   424→// ============================================================================
+   425→
+   426→/**
+   427→ * Generate a content outline for a keyword and search intent.
+   428→ *
+   429→ * Uses AI to generate a structured outline when available, falling back
+   430→ * to a rule-based template when AI is not accessible.
+   431→ *
+   432→ * The outline includes H2 and H3 headings with key points, organized
+   433→ * according to Dutch SEO best practices for the given intent type.
+   434→ *
+   435→ * @param projectId - The project context (for AI provider selection)
+   436→ * @param keyword - The target keyword to generate an outline for
+   437→ * @param intent - The search intent classification
+   438→ * @returns An array of OutlineItem objects forming the content structure
+   439→ */
+   440→export async function generateOutline(
+   441→  projectId: string,
+   442→  keyword: string,
+   443→  intent: string
+   444→): Promise<OutlineItem[]> {
+   445→  // Try AI-based outline generation first
+   446→  try {
+   447→    const aiResponse = await providerManager.fallbackGenerate(projectId, {
+   448→      messages: [
+   449→        {
+   450→          role: 'system',
+   451→          content: `Je bent een SEO-contentstrateeg voor de Nederlandse markt. Genereer een gestructureerde contentoutline in JSON-formaat. Elke heading moet een "id", "heading", "level", "keyPoints" (array van strings), "children" (array van sub-headings), en "sortOrder" bevatten. Gebruik level 2 voor H2 en level 3 voor H3. De outline moet SEO-geoptimaliseerd zijn voor de zoekintentie. Geef ALLEEN geldige JSON terug, geen andere tekst.`,
+   452→        },
+   453→        {
+   454→          role: 'user',
+   455→          content: `Genereer een contentoutline voor:\n\nZoekwoord: ${keyword}\nZoekintentie: ${intent}\n\nGenereer een JSON-array van outline-items. Elke heading moet "id", "heading", "level", "keyPoints", "children", en "sortOrder" bevatten.`,
+   456→        },
+   457→      ],
+   458→      purpose: 'outline-generation',
+   459→      maxTokens: 2000,
+   460→      temperature: 0.5,
+   461→      jsonMode: true,
+   462→    });
+   463→
+   464→    if (aiResponse.success && aiResponse.content.trim()) {
+   465→      try {
+   466→        const parsed = JSON.parse(aiResponse.content.trim());
+   467→        if (Array.isArray(parsed) && parsed.length > 0) {
+   468→          return validateAndFixOutline(parsed);
+   469→        }
+   470→      } catch {
+   471→        // JSON parsing failed, fall through to template
+   472→      }
+   473→    }
+   474→  } catch {
+   475→    // AI not available, fall through to template
+   476→  }
+   477→
+   478→  // Rule-based fallback: generate outline from templates
+   479→  return generateTemplateOutline(keyword, intent);
+   480→}
+   481→
+   482→// ============================================================================
+   483→// Internal Helpers
+   484→// ============================================================================
+   485→
+   486→/**
+   487→ * Convert a Prisma ContentBrief record (with versions) to ContentBriefWithDetails.
+   488→ *
+   489→ * Parses JSON fields into their structured types and maps enum values.
+   490→ */
+   491→function prismaBriefToDetails(
+   492→  brief: {
+   493→    id: string;
+   494→    projectId: string;
+   495→    title: string;
+   496→    targetKeyword: string | null;
+   497→    secondaryKeywords: string | null;
+   498→    searchIntent: string;
+   499→    funnelStage: string;
+   500→    outline: string | null;
+   501→    sources: string | null;
+   502→    brandProfileUsed: boolean;
+   503→    internalPages: string | null;
+   504→    targetWordCount: number | null;
+   505→    targetAudience: string | null;
+   506→    toneOfVoice: string | null;
+   507→    approvalStatus: string;
+   508→    approvedBy: string | null;
+   509→    approvedAt: Date | null;
+   510→    createdAt: Date;
+   511→    updatedAt: Date;
+   512→    versions: {
+   513→      id: string;
+   514→      version: number;
+   515→      wordCount: number;
+   516→      aiGenerated: boolean;
+   517→      changeSummary: string | null;
+   518→      createdAt: Date;
+   519→    }[];
+   520→  }
+   521→): ContentBriefWithDetails {
+   522→  let outline: OutlineItem[] = [];
+   523→  if (brief.outline) {
+   524→    try {
+   525→      outline = JSON.parse(brief.outline);
+   526→    } catch {
+   527→      outline = [];
+   528→    }
+   529→  }
+   530→
+   531→  let secondaryKeywords: string[] = [];
+   532→  if (brief.secondaryKeywords) {
+   533→    try {
+   534→      secondaryKeywords = JSON.parse(brief.secondaryKeywords);
+   535→    } catch {
+   536→      secondaryKeywords = [];
+   537→    }
+   538→  }
+   539→
+   540→  let sources: string[] = [];
+   541→  if (brief.sources) {
+   542→    try {
+   543→      sources = JSON.parse(brief.sources);
+   544→    } catch {
+   545→      sources = [];
+   546→    }
+   547→  }
+   548→
+   549→  let internalPages: string[] = [];
+   550→  if (brief.internalPages) {
+   551→    try {
+   552→      internalPages = JSON.parse(brief.internalPages);
+   553→    } catch {
+   554→      internalPages = [];
+   555→    }
+   556→  }
+   557→
+   558→  const versions: ContentVersionSummary[] = brief.versions.map((v) => ({
+   559→    id: v.id,
+   560→    version: v.version,
+   561→    wordCount: v.wordCount,
+   562→    aiGenerated: v.aiGenerated,
+   563→    changeSummary: v.changeSummary ?? undefined,
+   564→    createdAt: v.createdAt,
+   565→  }));
+   566→
+   567→  return {
+   568→    id: brief.id,
+   569→    projectId: brief.projectId,
+   570→    title: brief.title,
+   571→    targetKeyword: brief.targetKeyword ?? undefined,
+   572→    secondaryKeywords,
+   573→    searchIntent: brief.searchIntent,
+   574→    funnelStage: brief.funnelStage,
+   575→    outline,
+   576→    sources,
+   577→    brandProfileUsed: brief.brandProfileUsed,
+   578→    internalPages,
+   579→    targetWordCount: brief.targetWordCount ?? undefined,
+   580→    targetAudience: brief.targetAudience ?? undefined,
+   581→    toneOfVoice: brief.toneOfVoice ?? undefined,
+   582→    approvalStatus: brief.approvalStatus,
+   583→    approvedBy: brief.approvedBy ?? undefined,
+   584→    approvedAt: brief.approvedAt ?? undefined,
+   585→    versions,
+   586→    createdAt: brief.createdAt,
+   587→    updatedAt: brief.updatedAt,
+   588→  };
+   589→}
+   590→
+   591→/**
+   592→ * Validate and fix outline items from AI generation.
+   593→ *
+   594→ * Ensures each item has the required fields with sensible defaults
+   595→ * for missing or invalid values.
+   596→ */
+   597→function validateAndFixOutline(items: unknown[]): OutlineItem[] {
+   598→  return items
+   599→    .map((item, index) => {
+   600→      if (typeof item !== 'object' || item === null) return null;
+   601→
+   602→      const obj = item as Record<string, unknown>;
+   603→
+   604→      return {
+   605→        id: typeof obj.id === 'string' ? obj.id : `h-${index + 1}`,
+   606→        heading:
+   607→          typeof obj.heading === 'string' ? obj.heading : `Sectie ${index + 1}`,
+   608→        level:
+   609→          typeof obj.level === 'number' && obj.level >= 2 && obj.level <= 4
+   610→            ? obj.level
+   611→            : 2,
+   612→        keyPoints: Array.isArray(obj.keyPoints)
+   613→          ? obj.keyPoints.filter((p: unknown) => typeof p === 'string')
+   614→          : [],
+   615→        children: Array.isArray(obj.children)
+   616→          ? validateAndFixOutline(obj.children)
+   617→          : [],
+   618→        sortOrder:
+   619→          typeof obj.sortOrder === 'number' ? obj.sortOrder : index + 1,
+   620→      } as OutlineItem;
+   621→    })
+   622→    .filter((item): item is OutlineItem => item !== null);
+   623→}
+   624→
+   625→/**
+   626→ * Generate a rule-based content outline template for a keyword and intent.
+   627→ *
+   628→ * Provides sensible default structures based on the search intent type,
+   629→ * following Dutch SEO content best practices.
+   630→ */
+   631→function generateTemplateOutline(keyword: string, intent: string): OutlineItem[] {
+   632→  const baseId = (n: number) => `h-${n}`;
+   633→  const baseSortOrder = (n: number) => n;
+   634→
+   635→  switch (intent.toUpperCase()) {
+   636→    case 'INFORMATIONAL':
+   637→      return [
+   638→        {
+   639→          id: baseId(1),
+   640→          heading: `Wat is ${keyword}?`,
+   641→          level: 2,
+   642→          keyPoints: ['Definitie en uitleg', 'Belang voor de lezer', 'Korte samenvatting'],
+   643→          children: [],
+   644→          sortOrder: baseSortOrder(1),
+   645→        },
+   646→        {
+   647→          id: baseId(2),
+   648→          heading: 'Waarom is dit belangrijk?',
+   649→          level: 2,
+   650→          keyPoints: ['Relevantie voor de doelgroep', 'Voordelen en mogelijkheden'],
+   651→          children: [],
+   652→          sortOrder: baseSortOrder(2),
+   653→        },
+   654→        {
+   655→          id: baseId(3),
+   656→          heading: 'Hoe werkt het?',
+   657→          level: 2,
+   658→          keyPoints: ['Stap-voor-stap uitleg', 'Praktische voorbeelden'],
+   659→          children: [
+   660→            {
+   661→              id: baseId(4),
+   662→              heading: 'Stap-voor-stap handleiding',
+   663→              level: 3,
+   664→              keyPoints: ['Overzicht van de stappen', 'Tips per stap'],
+   665→              children: [],
+   666→              sortOrder: 1,
+   667→            },
+   668→          ],
+   669→          sortOrder: baseSortOrder(3),
+   670→        },
+   671→        {
+   672→          id: baseId(5),
+   673→          heading: 'Tips en beste praktijken',
+   674→          level: 2,
+   675→          keyPoints: ['Do\'s en don\'ts', 'Veelgemaakte fouten'],
+   676→          children: [],
+   677→          sortOrder: baseSortOrder(4),
+   678→        },
+   679→        {
+   680→          id: baseId(6),
+   681→          heading: 'Veelgestelde vragen',
+   682→          level: 2,
+   683→          keyPoints: ['Meest gestelde vragen met antwoorden'],
+   684→          children: [],
+   685→          sortOrder: baseSortOrder(5),
+   686→        },
+   687→        {
+   688→          id: baseId(7),
+   689→          heading: 'Conclusie',
+   690→          level: 2,
+   691→          keyPoints: ['Samenvatting belangrijkste punten', 'Vervolgstappen'],
+   692→          children: [],
+   693→          sortOrder: baseSortOrder(6),
+   694→        },
+   695→      ];
+   696→
+   697→    case 'TRANSACTIONAL':
+   698→      return [
+   699→        {
+   700→          id: baseId(1),
+   701→          heading: `${keyword}: Overzicht en vergelijking`,
+   702→          level: 2,
+   703→          keyPoints: ['Korte introductie', 'Wat ga je kopen of doen?'],
+   704→          children: [],
+   705→          sortOrder: baseSortOrder(1),
+   706→        },
+   707→        {
+   708→          id: baseId(2),
+   709→          heading: 'Opties vergelijken',
+   710→          level: 2,
+   711→          keyPoints: ['Vergelijking van de beste opties', 'Prijs-kwaliteitverhouding'],
+   712→          children: [
+   713→            {
+   714→              id: baseId(3),
+   715→              heading: 'Prijzen en pakketten',
+   716→              level: 3,
+   717→              keyPoints: ['Kostenoverzicht', 'Wat krijg je voor je geld?'],
+   718→              children: [],
+   719→              sortOrder: 1,
+   720→            },
+   721→          ],
+   722→          sortOrder: baseSortOrder(2),
+   723→        },
+   724→        {
+   725→          id: baseId(4),
+   726→          heading: 'Voordelen en nadelen',
+   727→          level: 2,
+   728→          keyPoints: ['Belangrijkste pluspunten', 'Punten van aandacht'],
+   729→          children: [],
+   730→          sortOrder: baseSortOrder(3),
+   731→        },
+   732→        {
+   733→          id: baseId(5),
+   734→          heading: 'Onze aanbeveling',
+   735→          level: 2,
+   736→          keyPoints: ['Welke optie past het beste bij jou?', 'Waarom deze keuze?'],
+   737→          children: [],
+   738→          sortOrder: baseSortOrder(4),
+   739→        },
+   740→        {
+   741→          id: baseId(6),
+   742→          heading: 'Direct aan de slag',
+   743→          level: 2,
+   744→          keyPoints: ['Call-to-action', 'Hoe nu verder?'],
+   745→          children: [],
+   746→          sortOrder: baseSortOrder(5),
+   747→        },
+   748→      ];
+   749→
+   750→    case 'COMMERCIAL_INVESTIGATION':
+   751→      return [
+   752→        {
+   753→          id: baseId(1),
+   754→          heading: `${keyword}: Complete vergelijking`,
+   755→          level: 2,
+   756→          keyPoints: ['Wat je moet weten', 'Waarom deze vergelijking belangrijk is'],
+   757→          children: [],
+   758→          sortOrder: baseSortOrder(1),
+   759→        },
+   760→        {
+   761→          id: baseId(2),
+   762→          heading: 'De belangrijkste opties',
+   763→          level: 2,
+   764→          keyPoints: ['Overzicht van de marktleiders', 'Unieke kenmerken per optie'],
+   765→          children: [],
+   766→          sortOrder: baseSortOrder(2),
+   767→        },
+   768→        {
+   769→          id: baseId(3),
+   770→          heading: 'Gedetailleerde vergelijking',
+   771→          level: 2,
+   772→          keyPoints: ['Features vergelijken', 'Prestaties en resultaten'],
+   773→          children: [
+   774→            {
+   775→              id: baseId(4),
+   776→              heading: 'Functionaliteiten',
+   777→              level: 3,
+   778→              keyPoints: ['Kernfuncties', 'Extra mogelijkheden'],
+   779→              children: [],
+   780→              sortOrder: 1,
+   781→            },
+   782→            {
+   783→              id: baseId(5),
+   784→              heading: 'Prijs en waarde',
+   785→              level: 3,
+   786→              keyPoints: ['Kostenstructuur', 'Return on investment'],
+   787→              children: [],
+   788→              sortOrder: 2,
+   789→            },
+   790→          ],
+   791→          sortOrder: baseSortOrder(3),
+   792→        },
+   793→        {
+   794→          id: baseId(6),
+   795→          heading: 'Welke optie past bij jou?',
+   796→          level: 2,
+   797→          keyPoints: ['Keuzehulp per situatie', 'Onze aanbeveling'],
+   798→          children: [],
+   799→          sortOrder: baseSortOrder(4),
+   800→        },
+   801→        {
+   802→          id: baseId(7),
+   803→          heading: 'Conclusie en volgende stappen',
+   804→          level: 2,
+   805→          keyPoints: ['Samenvatting', 'Call-to-action'],
+   806→          children: [],
+   807→          sortOrder: baseSortOrder(5),
+   808→        },
+   809→      ];
+   810→
+   811→    case 'NAVIGATIONAL':
+   812→      return [
+   813→        {
+   814→          id: baseId(1),
+   815→          heading: `${keyword}: Direct naar de juiste pagina`,
+   816→          level: 2,
+   817→          keyPoints: ['Snelle navigatie', 'Wat je zoekt en waar je het vindt'],
+   818→          children: [],
+   819→          sortOrder: baseSortOrder(1),
+   820→        },
+   821→        {
+   822→          id: baseId(2),
+   823→          heading: 'Overzicht van opties',
+   824→          level: 2,
+   825→          keyPoints: ['Directe links en verwijzingen', 'Alternatieven'],
+   826→          children: [],
+   827→          sortOrder: baseSortOrder(2),
+   828→        },
+   829→        {
+   830→          id: baseId(3),
+   831→          heading: 'Meer informatie',
+   832→          level: 2,
+   833→          keyPoints: ['Aanvullende bronnen', 'Gerelateerde pagina\'s'],
+   834→          children: [],
+   835→          sortOrder: baseSortOrder(3),
+   836→        },
+   837→      ];
+   838→
+   839→    default:
+   840→      // Generic template for UNKNOWN or other intent types
+   841→      return [
+   842→        {
+   843→          id: baseId(1),
+   844→          heading: `Introductie: ${keyword}`,
+   845→          level: 2,
+   846→          keyPoints: ['Wat lezer moet weten', 'Waarom dit onderwerp relevant is'],
+   847→          children: [],
+   848→          sortOrder: baseSortOrder(1),
+   849→        },
+   850→        {
+   851→          id: baseId(2),
+   852→          heading: 'Uitgebreide uitleg',
+   853→          level: 2,
+   854→          keyPoints: ['Kernconcepten', 'Praktijkvoorbeelden'],
+   855→          children: [],
+   856→          sortOrder: baseSortOrder(2),
+   857→        },
+   858→        {
+   859→          id: baseId(3),
+   860→          heading: 'Praktische toepassing',
+   861→          level: 2,
+   862→          keyPoints: ['Hoe toe te passen', 'Tips en tricks'],
+   863→          children: [],
+   864→          sortOrder: baseSortOrder(3),
+   865→        },
+   866→        {
+   867→          id: baseId(4),
+   868→          heading: 'Conclusie',
+   869→          level: 2,
+   870→          keyPoints: ['Samenvatting', 'Vervolgstappen'],
+   871→          children: [],
+   872→          sortOrder: baseSortOrder(4),
+   873→        },
+   874→      ];
+   875→  }
+   876→}
+   877→

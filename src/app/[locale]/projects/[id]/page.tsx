@@ -30,6 +30,12 @@ import {
   PenTool,
   Cpu,
   TrendingDown,
+  Workflow,
+  Link2,
+  Database,
+  FileCode2,
+  GitMerge,
+  History,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -432,6 +438,83 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
                     <div>
                       <p className="text-sm font-medium">Contentverval</p>
                       <p className="text-xs text-muted-foreground">Snoei-aanbevelingen</p>
+                    </div>
+                  </CardContent>
+                </Card>
+              </Link>
+              <Link href={`/projects/${id}/studio`}>
+                <Card className="hover:bg-accent/50 transition-colors cursor-pointer">
+                  <CardContent className="p-4 flex items-center gap-3">
+                    <Workflow className="h-5 w-5 text-emerald-600 shrink-0" />
+                    <div>
+                      <p className="text-sm font-medium">Contentwizard</p>
+                      <p className="text-xs text-muted-foreground">Stap-voor-stap maken</p>
+                    </div>
+                  </CardContent>
+                </Card>
+              </Link>
+              <Link href={`/projects/${id}/links`}>
+                <Card className="hover:bg-accent/50 transition-colors cursor-pointer">
+                  <CardContent className="p-4 flex items-center gap-3">
+                    <Link2 className="h-5 w-5 text-cyan-600 shrink-0" />
+                    <div>
+                      <p className="text-sm font-medium">Interne links</p>
+                      <p className="text-xs text-muted-foreground">Suggesties & goedkeuring</p>
+                    </div>
+                  </CardContent>
+                </Card>
+              </Link>
+              <Link href={`/projects/${id}/structured-data`}>
+                <Card className="hover:bg-accent/50 transition-colors cursor-pointer">
+                  <CardContent className="p-4 flex items-center gap-3">
+                    <Database className="h-5 w-5 text-amber-600 shrink-0" />
+                    <div>
+                      <p className="text-sm font-medium">Gestructureerde data</p>
+                      <p className="text-xs text-muted-foreground">JSON-LD schema</p>
+                    </div>
+                  </CardContent>
+                </Card>
+              </Link>
+              <Link href={`/projects/${id}/programmatic`}>
+                <Card className="hover:bg-accent/50 transition-colors cursor-pointer">
+                  <CardContent className="p-4 flex items-center gap-3">
+                    <FileCode2 className="h-5 w-5 text-violet-600 shrink-0" />
+                    <div>
+                      <p className="text-sm font-medium">Programmatische SEO</p>
+                      <p className="text-xs text-muted-foreground">Sjablonen & bulkpagina's</p>
+                    </div>
+                  </CardContent>
+                </Card>
+              </Link>
+              <Link href={`/projects/${id}/cms`}>
+                <Card className="hover:bg-accent/50 transition-colors cursor-pointer">
+                  <CardContent className="p-4 flex items-center gap-3">
+                    <GitMerge className="h-5 w-5 text-sky-600 shrink-0" />
+                    <div>
+                      <p className="text-sm font-medium">CMS-verbindingen</p>
+                      <p className="text-xs text-muted-foreground">WordPress & WooCommerce</p>
+                    </div>
+                  </CardContent>
+                </Card>
+              </Link>
+              <Link href={`/projects/${id}/decay-workflow`}>
+                <Card className="hover:bg-accent/50 transition-colors cursor-pointer">
+                  <CardContent className="p-4 flex items-center gap-3">
+                    <TrendingDown className="h-5 w-5 text-orange-600 shrink-0" />
+                    <div>
+                      <p className="text-sm font-medium">Verval-workflow</p>
+                      <p className="text-xs text-muted-foreground">Update & snoeien</p>
+                    </div>
+                  </CardContent>
+                </Card>
+              </Link>
+              <Link href={`/projects/${id}/history`}>
+                <Card className="hover:bg-accent/50 transition-colors cursor-pointer">
+                  <CardContent className="p-4 flex items-center gap-3">
+                    <History className="h-5 w-5 text-slate-600 shrink-0" />
+                    <div>
+                      <p className="text-sm font-medium">Wijzigingsgeschiedenis</p>
+                      <p className="text-xs text-muted-foreground">Alle contentwijzigingen</p>
                     </div>
                   </CardContent>
                 </Card>

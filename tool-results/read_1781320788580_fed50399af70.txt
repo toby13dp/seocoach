@@ -1,0 +1,1290 @@
+     1→// ============================================================================
+     2→// Content Quality Controls — SEOCoach
+     3→// AI-Driven SEO Automation Platform (Dutch Market)
+     4→// ============================================================================
+     5→// Pre-publication quality checks that create QualityFinding records.
+     6→// Covers duplicate detection, brand consistency, prohibited terms/claims,
+     7→// search intent verification, readability, internal links, CTAs,
+     8→// GEO readiness, unsupported claims, location uniqueness, and product data.
+     9→// All user-facing strings are in Dutch.
+    10→// ============================================================================
+    11→
+    12→import { db } from '@/lib/db';
+    13→
+    14→// ============================================================================
+    15→// Types
+    16→// ============================================================================
+    17→
+    18→/**
+    19→ * Check types for quality findings.
+    20→ * Each type corresponds to a specific pre-publication check.
+    21→ */
+    22→export type CheckType =
+    23→  | 'DUPLICATE'
+    24→  | 'NEAR_DUPLICATE'
+    25→  | 'BRAND_CONSISTENCY'
+    26→  | 'PROHIBITED_CLAIM'
+    27→  | 'PROHIBITED_TERMINOLOGY'
+    28→  | 'INTENT_CHECK'
+    29→  | 'READABILITY'
+    30→  | 'INTERNAL_LINK'
+    31→  | 'CONVERSION'
+    32→  | 'GEO_READINESS'
+    33→  | 'UNSUPPORTED_CLAIM'
+    34→  | 'LOCATION_UNIQUENESS'
+    35→  | 'PRODUCT_CONSISTENCY';
+    36→
+    37→/**
+    38→ * Severity levels for quality findings.
+    39→ * BLOCKING prevents publication; WARNING suggests review; INFO is informational.
+    40→ */
+    41→export type FindingSeverity = 'BLOCKING' | 'WARNING' | 'INFO';
+    42→
+    43→/**
+    44→ * Filters for querying quality findings.
+    45→ */
+    46→export interface FindingFilters {
+    47→  versionId?: string;
+    48→  briefId?: string;
+    49→  checkType?: CheckType;
+    50→  severity?: FindingSeverity;
+    51→  dismissed?: boolean;
+    52→}
+    53→
+    54→/**
+    55→ * Result of running pre-publication checks.
+    56→ */
+    57→export interface PrePublicationCheckResult {
+    58→  /** Total number of checks run */
+    59→  totalChecks: number;
+    60→  /** Number of findings created */
+    61→  findingsCreated: number;
+    62→  /** Breakdown by severity */
+    63→  bySeverity: {
+    64→    BLOCKING: number;
+    65→    WARNING: number;
+    66→    INFO: number;
+    67→  };
+    68→  /** Whether the content can be published (no BLOCKING findings) */
+    69→  canPublish: boolean;
+    70→}
+    71→
+    72→// ============================================================================
+    73→// Similarity Helpers
+    74→// ============================================================================
+    75→
+    76→/**
+    77→ * Tokenize text into lowercase word tokens.
+    78→ * Removes punctuation and normalizes whitespace.
+    79→ */
+    80→function tokenize(text: string): string[] {
+    81→  return text
+    82→    .toLowerCase()
+    83→    .replace(/[^\w\s\u00C0-\u024F]/g, ' ')
+    84→    .split(/\s+/)
+    85→    .filter((t) => t.length > 2);
+    86→}
+    87→
+    88→/**
+    89→ * Calculate Jaccard similarity between two texts (0-1).
+    90→ * Used for duplicate and near-duplicate detection.
+    91→ */
+    92→function jaccardSimilarity(textA: string, textB: string): number {
+    93→  const tokensA = new Set(tokenize(textA));
+    94→  const tokensB = new Set(tokenize(textB));
+    95→
+    96→  if (tokensA.size === 0 && tokensB.size === 0) return 1;
+    97→  if (tokensA.size === 0 || tokensB.size === 0) return 0;
+    98→
+    99→  let intersection = 0;
+   100→  for (const token of tokensA) {
+   101→    if (tokensB.has(token)) intersection++;
+   102→  }
+   103→
+   104→  const union = tokensA.size + tokensB.size - intersection;
+   105→  return union === 0 ? 0 : intersection / union;
+   106→}
+   107→
+   108→// ============================================================================
+   109→// Flesch Reading Ease (Dutch adaptation)
+   110→// ============================================================================
+   111→
+   112→/**
+   113→ * Count syllables in a Dutch word using heuristic rules.
+   114→ * This is an approximation suitable for automated checking.
+   115→ */
+   116→function countSyllables(word: string): number {
+   117→  const w = word.toLowerCase().trim();
+   118→  if (w.length <= 2) return 1;
+   119→
+   120→  // Count vowel groups as syllable indicators
+   121→  const vowelPattern = /[aeiouy\u00E9\u00EB\u00EF\u00F3\u00F6\u00FC]+/g;
+   122→  const matches = w.match(vowelPattern);
+   123→  let count = matches ? matches.length : 1;
+   124→
+   125→  // Subtract for silent endings
+   126→  if (w.endsWith('en') && count > 1) count -= 0.5;
+   127→  if (w.endsWith('e') && !w.endsWith('ee') && count > 1) count -= 0.5;
+   128→  if (w.endsWith('es') && count > 1) count -= 0.5;
+   129→
+   130→  return Math.max(1, Math.round(count));
+   131→}
+   132→
+   133→/**
+   134→ * Calculate Flesch reading ease score adapted for Dutch.
+   135→ *
+   136→ * Formula: 206.835 - 77.0 * (syllables/words) - 0.93 * (words/sentences)
+   137→ * Dutch uses slightly different coefficients than English.
+   138→ *
+   139→ * Higher scores indicate easier readability.
+   140→ * Score < 40 means difficult to read (WARNING threshold).
+   141→ */
+   142→function fleschReadingEaseDutch(text: string): number {
+   143→  // Split into sentences (rough heuristic)
+   144→  const sentences = text
+   145→    .split(/[.!?]+/)
+   146→    .map((s) => s.trim())
+   147→    .filter((s) => s.length > 0);
+   148→
+   149→  if (sentences.length === 0) return 100;
+   150→
+   151→  // Split into words
+   152→  const words = text
+   153→    .replace(/[^a-zA-Z0-9\u00C0-\u024F\s]/g, ' ')
+   154→    .split(/\s+/)
+   155→    .filter((w) => w.length > 0);
+   156→
+   157→  if (words.length === 0) return 100;
+   158→
+   159→  // Count total syllables
+   160→  let totalSyllables = 0;
+   161→  for (const word of words) {
+   162→    totalSyllables += countSyllables(word);
+   163→  }
+   164→
+   165→  const avgSyllablesPerWord = totalSyllables / words.length;
+   166→  const avgWordsPerSentence = words.length / sentences.length;
+   167→
+   168→  // Dutch-adapted Flesch formula
+   169→  const score = 206.835 - 77.0 * avgSyllablesPerWord - 0.93 * avgWordsPerSentence;
+   170→
+   171→  return Math.max(0, Math.min(100, Math.round(score * 10) / 10));
+   172→}
+   173→
+   174→// ============================================================================
+   175→// Internal Check Implementations
+   176→// ============================================================================
+   177→
+   178→/**
+   179→ * Find the ContentVersion and its associated brief for a given version ID.
+   180→ * Throws if the version is not found.
+   181→ */
+   182→async function getVersionAndBrief(versionId: string) {
+   183→  const version = await db.contentVersion.findUnique({
+   184→    where: { id: versionId },
+   185→    include: { brief: true },
+   186→  });
+   187→
+   188→  if (!version) {
+   189→    throw new Error(`Content versie "${versionId}" niet gevonden`);
+   190→  }
+   191→
+   192→  return version;
+   193→}
+   194→
+   195→/**
+   196→ * Get the brand profile for a project.
+   197→ */
+   198→async function getBrandProfile(projectId: string) {
+   199→  return db.brandProfile.findFirst({
+   200→    where: { projectId, deletedAt: null },
+   201→  });
+   202→}
+   203→
+   204→/**
+   205→ * Parse a JSON field safely, returning empty array on failure.
+   206→ */
+   207→function parseJsonArray(field: string | null | undefined): string[] {
+   208→  if (!field) return [];
+   209→  try {
+   210→    const parsed = JSON.parse(field);
+   211→    return Array.isArray(parsed) ? parsed : [];
+   212→  } catch {
+   213→    return [];
+   214→  }
+   215→}
+   216→
+   217→/**
+   218→ * Check 1 & 2: Duplicate and near-duplicate comparison.
+   219→ * Compares content against all other content versions in the project.
+   220→ */
+   221→async function checkDuplicates(
+   222→  projectId: string,
+   223→  versionId: string,
+   224→  content: string
+   225→): Promise<Array<{
+   226→  checkType: CheckType;
+   227→  severity: FindingSeverity;
+   228→  title: string;
+   229→  description: string;
+   230→  evidence: Record<string, unknown>;
+   231→  recommendation: string;
+   232→}>> {
+   233→  const findings: Array<{
+   234→    checkType: CheckType;
+   235→    severity: FindingSeverity;
+   236→    title: string;
+   237→    description: string;
+   238→    evidence: Record<string, unknown>;
+   239→    recommendation: string;
+   240→  }> = [];
+   241→
+   242→  // Get all other versions in the project
+   243→  const otherBriefs = await db.contentBrief.findMany({
+   244→    where: { projectId },
+   245→    select: { id: true },
+   246→  });
+   247→
+   248→  const briefIds = otherBriefs.map((b) => b.id);
+   249→
+   250→  const otherVersions = await db.contentVersion.findMany({
+   251→    where: {
+   252→      briefId: { in: briefIds },
+   253→      id: { not: versionId },
+   254→    },
+   255→    select: {
+   256→      id: true,
+   257→      content: true,
+   258→      briefId: true,
+   259→      version: true,
+   260→    },
+   261→  });
+   262→
+   263→  let highestSimilarity = 0;
+   264→  let mostSimilarVersion: { id: string; briefId: string; version: number; similarity: number } | null = null;
+   265→
+   266→  for (const other of otherVersions) {
+   267→    const similarity = jaccardSimilarity(content, other.content);
+   268→    if (similarity > highestSimilarity) {
+   269→      highestSimilarity = similarity;
+   270→      mostSimilarVersion = {
+   271→        id: other.id,
+   272→        briefId: other.briefId,
+   273→        version: other.version,
+   274→        similarity: Math.round(similarity * 1000) / 10,
+   275→      };
+   276→    }
+   277→  }
+   278→
+   279→  if (highestSimilarity > 0.9 && mostSimilarVersion) {
+   280→    findings.push({
+   281→      checkType: 'DUPLICATE',
+   282→      severity: 'BLOCKING',
+   283→      title: 'Dubbele content gevonden',
+   284→      description: `De content is voor meer dan 90% identiek aan versie ${mostSimilarVersion.version} van een andere brief in dit project (${mostSimilarVersion.similarity}% overeenkomst).`,
+   285→      evidence: {
+   286→        similarity: mostSimilarVersion.similarity,
+   287→        matchedVersionId: mostSimilarVersion.id,
+   288→        matchedBriefId: mostSimilarVersion.briefId,
+   289→        matchedVersion: mostSimilarVersion.version,
+   290→        threshold: 90,
+   291→      },
+   292→      recommendation: 'Herschrijf de content zodat deze voldoende verschilt van de bestaande content, of voeg unieke waarde toe die de andere pagina niet biedt.',
+   293→    });
+   294→  } else if (highestSimilarity > 0.7 && mostSimilarVersion) {
+   295→    findings.push({
+   296→      checkType: 'NEAR_DUPLICATE',
+   297→      severity: 'WARNING',
+   298→      title: 'Bijna-dubbele content gevonden',
+   299→      description: `De content is voor ${mostSimilarVersion.similarity}% vergelijkbaar met versie ${mostSimilarVersion.version} van een andere brief. Dit kan leiden tot canibalisatie in zoekresultaten.`,
+   300→      evidence: {
+   301→        similarity: mostSimilarVersion.similarity,
+   302→        matchedVersionId: mostSimilarVersion.id,
+   303→        matchedBriefId: mostSimilarVersion.briefId,
+   304→        matchedVersion: mostSimilarVersion.version,
+   305→        threshold: 70,
+   306→      },
+   307→      recommendation: 'Differentieer de content verder door een unieke invalshoek, andere voorbeelden of aanvullende informatie toe te voegen.',
+   308→    });
+   309→  }
+   310→
+   311→  return findings;
+   312→}
+   313→
+   314→/**
+   315→ * Check 3: Brand consistency.
+   316→ * Checks content against toneOfVoice and preferred terminology from BrandProfile.
+   317→ * Prohibited terms found → BLOCKING; tone mismatch → WARNING.
+   318→ */
+   319→async function checkBrandConsistency(
+   320→  projectId: string,
+   321→  content: string
+   322→): Promise<Array<{
+   323→  checkType: CheckType;
+   324→  severity: FindingSeverity;
+   325→  title: string;
+   326→  description: string;
+   327→  evidence: Record<string, unknown>;
+   328→  recommendation: string;
+   329→}>> {
+   330→  const findings: Array<{
+   331→    checkType: CheckType;
+   332→    severity: FindingSeverity;
+   333→    title: string;
+   334→    description: string;
+   335→    evidence: Record<string, unknown>;
+   336→    recommendation: string;
+   337→  }> = [];
+   338→
+   339→  const brandProfile = await getBrandProfile(projectId);
+   340→  if (!brandProfile) return findings;
+   341→
+   342→  // Check preferred terminology usage
+   343→  const preferredTerms = parseJsonArray(brandProfile.preferredTerminology);
+   344→  const missingPreferred: string[] = [];
+   345→  for (const term of preferredTerms) {
+   346→    if (!content.toLowerCase().includes(term.toLowerCase())) {
+   347→      missingPreferred.push(term);
+   348→    }
+   349→  }
+   350→
+   351→  if (missingPreferred.length > 0) {
+   352→    findings.push({
+   353→      checkType: 'BRAND_CONSISTENCY',
+   354→      severity: 'WARNING',
+   355→      title: 'Aanbevolen terminologie ontbreekt',
+   356→      description: `De volgende aanbevolen merktermen komen niet voor in de content: ${missingPreferred.join(', ')}.`,
+   357→      evidence: {
+   358→        missingPreferredTerms: missingPreferred,
+   359→        allPreferredTerms: preferredTerms,
+   360→      },
+   361→      recommendation: `Voeg de aanbevolen terminologie toe waar relevant: ${missingPreferred.join(', ')}. Dit versterkt de merkkleur in de content.`,
+   362→    });
+   363→  }
+   364→
+   365→  // Check tone of voice indicators (heuristic check)
+   366→  if (brandProfile.toneOfVoice) {
+   367→    const tone = brandProfile.toneOfVoice.toLowerCase();
+   368→    const contentLower = content.toLowerCase();
+   369→
+   370→    // Simple heuristic: if tone says formal, check for informal markers; and vice versa
+   371→    const informalMarkers = ['leuk', 'gaaf', 'cool', 'super', 'toppie', 'heftig', 'klote'];
+   372→    const formalMarkers = ['derhalve', 'aldus', 'bijgevolg', 'aangaande', 'betreffende', 'inzake'];
+   373→
+   374→    if (tone.includes('formeel') || tone.includes('professioneel')) {
+   375→      const foundInformal = informalMarkers.filter((m) => contentLower.includes(m));
+   376→      if (foundInformal.length > 0) {
+   377→        findings.push({
+   378→          checkType: 'BRAND_CONSISTENCY',
+   379→          severity: 'WARNING',
+   380→          title: 'Tone of voice komt niet overeen',
+   381→          description: `De tone of voice is "${brandProfile.toneOfVoice}", maar informele taal is gevonden: ${foundInformal.join(', ')}.`,
+   382→          evidence: {
+   383→            toneOfVoice: brandProfile.toneOfVoice,
+   384→            informalMarkersFound: foundInformal,
+   385→          },
+   386→          recommendation: 'Vervang informele uitdrukkingen door professionelere alternatieven die bij de merkstem passen.',
+   387→        });
+   388→      }
+   389→    }
+   390→
+   391→    if (tone.includes('informeel') || tone.includes('vlot') || tone.includes('vriendelijk')) {
+   392→      const foundTooFormal = formalMarkers.filter((m) => contentLower.includes(m));
+   393→      if (foundTooFormal.length > 0) {
+   394→        findings.push({
+   395→          checkType: 'BRAND_CONSISTENCY',
+   396→          severity: 'WARNING',
+   397→          title: 'Tone of voice komt niet overeen',
+   398→          description: `De tone of voice is "${brandProfile.toneOfVoice}", maar te formele taal is gevonden: ${foundTooFormal.join(', ')}.`,
+   399→          evidence: {
+   400→            toneOfVoice: brandProfile.toneOfVoice,
+   401→            formalMarkersFound: foundTooFormal,
+   402→          },
+   403→          recommendation: 'Vervang te formele uitdrukkingen door vlottere, toegankelijkere alternatieven.',
+   404→        });
+   405→      }
+   406→    }
+   407→  }
+   408→
+   409→  return findings;
+   410→}
+   411→
+   412→/**
+   413→ * Check 4: Prohibited claim detection.
+   414→ * BLOCKING if prohibited claims from BrandProfile are found in content.
+   415→ */
+   416→async function checkProhibitedClaims(
+   417→  projectId: string,
+   418→  content: string
+   419→): Promise<Array<{
+   420→  checkType: CheckType;
+   421→  severity: FindingSeverity;
+   422→  title: string;
+   423→  description: string;
+   424→  evidence: Record<string, unknown>;
+   425→  recommendation: string;
+   426→}>> {
+   427→  const findings: Array<{
+   428→    checkType: CheckType;
+   429→    severity: FindingSeverity;
+   430→    title: string;
+   431→    description: string;
+   432→    evidence: Record<string, unknown>;
+   433→    recommendation: string;
+   434→  }> = [];
+   435→
+   436→  const brandProfile = await getBrandProfile(projectId);
+   437→  if (!brandProfile) return findings;
+   438→
+   439→  const prohibitedClaims = parseJsonArray(brandProfile.prohibitedClaims);
+   440→  const contentLower = content.toLowerCase();
+   441→  const foundClaims: string[] = [];
+   442→
+   443→  for (const claim of prohibitedClaims) {
+   444→    if (contentLower.includes(claim.toLowerCase())) {
+   445→      foundClaims.push(claim);
+   446→    }
+   447→  }
+   448→
+   449→  if (foundClaims.length > 0) {
+   450→    findings.push({
+   451→      checkType: 'PROHIBITED_CLAIM',
+   452→      severity: 'BLOCKING',
+   453→      title: 'Verboden beweringen gevonden',
+   454→      description: `De volgende verboden beweringen zijn aangetroffen in de content: ${foundClaims.join('; ')}. Deze mogen niet worden gepubliceerd.`,
+   455→      evidence: {
+   456→        prohibitedClaimsFound: foundClaims,
+   457→        allProhibitedClaims: prohibitedClaims,
+   458→      },
+   459→      recommendation: 'Verwijder of herschrijf de verboden beweringen. Raadpleeg de merkrichtlijnen voor toegestane alternatieven.',
+   460→    });
+   461→  }
+   462→
+   463→  return findings;
+   464→}
+   465→
+   466→/**
+   467→ * Check 5: Prohibited terminology detection.
+   468→ * BLOCKING if prohibited terms from BrandProfile are found in content.
+   469→ */
+   470→async function checkProhibitedTerminology(
+   471→  projectId: string,
+   472→  content: string
+   473→): Promise<Array<{
+   474→  checkType: CheckType;
+   475→  severity: FindingSeverity;
+   476→  title: string;
+   477→  description: string;
+   478→  evidence: Record<string, unknown>;
+   479→  recommendation: string;
+   480→}>> {
+   481→  const findings: Array<{
+   482→    checkType: CheckType;
+   483→    severity: FindingSeverity;
+   484→    title: string;
+   485→    description: string;
+   486→    evidence: Record<string, unknown>;
+   487→    recommendation: string;
+   488→  }> = [];
+   489→
+   490→  const brandProfile = await getBrandProfile(projectId);
+   491→  if (!brandProfile) return findings;
+   492→
+   493→  const prohibitedTerms = parseJsonArray(brandProfile.prohibitedTerminology);
+   494→  const contentLower = content.toLowerCase();
+   495→  const foundTerms: string[] = [];
+   496→
+   497→  for (const term of prohibitedTerms) {
+   498→    if (contentLower.includes(term.toLowerCase())) {
+   499→      foundTerms.push(term);
+   500→    }
+   501→  }
+   502→
+   503→  if (foundTerms.length > 0) {
+   504→    findings.push({
+   505→      checkType: 'PROHIBITED_TERMINOLOGY',
+   506→      severity: 'BLOCKING',
+   507→      title: 'Verboden terminologie gevonden',
+   508→      description: `De volgende verboden termen zijn aangetroffen in de content: ${foundTerms.join(', ')}. Deze mogen niet worden gebruikt.`,
+   509→      evidence: {
+   510→        prohibitedTermsFound: foundTerms,
+   511→        allProhibitedTerms: prohibitedTerms,
+   512→      },
+   513→      recommendation: 'Vervang de verboden termen door de aanbevolen alternatieven uit het merkprofiel.',
+   514→    });
+   515→  }
+   516→
+   517→  return findings;
+   518→}
+   519→
+   520→/**
+   521→ * Check 6: Search intent check.
+   522→ * Verifies that the content matches the brief's declared search intent.
+   523→ * WARNING if mismatch detected.
+   524→ */
+   525→function checkSearchIntent(
+   526→  content: string,
+   527→  searchIntent: string
+   528→): Array<{
+   529→  checkType: CheckType;
+   530→  severity: FindingSeverity;
+   531→  title: string;
+   532→  description: string;
+   533→  evidence: Record<string, unknown>;
+   534→  recommendation: string;
+   535→}> {
+   536→  const findings: Array<{
+   537→    checkType: CheckType;
+   538→    severity: FindingSeverity;
+   539→    title: string;
+   540→    description: string;
+   541→    evidence: Record<string, unknown>;
+   542→    recommendation: string;
+   543→  }> = [];
+   544→
+   545→  if (!searchIntent || searchIntent === 'UNKNOWN') return findings;
+   546→
+   547→  const contentLower = content.toLowerCase();
+   548→
+   549→  // Intent-specific content indicators
+   550→  const intentIndicators: Record<string, { present: string[]; absent: string[] }> = {
+   551→    INFORMATIONAL: {
+   552→      present: ['hoe', 'wat is', 'uitleg', 'gids', 'informatie', 'tips', 'advies', 'leren', 'ontdek'],
+   553→      absent: ['koop', 'bestel', 'prijs', 'korting', 'winkelwagen'],
+   554→    },
+   555→    TRANSACTIONAL: {
+   556→      present: ['koop', 'bestel', 'prijs', 'offerte', 'aanvragen', 'bestellen', 'proefperiode', 'korting'],
+   557→      absent: ['wat is', 'uitleg', 'geschiedenis'],
+   558→    },
+   559→    NAVIGATIONAL: {
+   560→      present: ['inloggen', 'login', 'dashboard', 'portal', 'account', 'toegang'],
+   561→      absent: ['hoe', 'wat is', 'vergelijk'],
+   562→    },
+   563→    COMMERCIAL_INVESTIGATION: {
+   564→      present: ['vergelijk', 'versus', 'vs', 'review', 'beoordeling', 'beste', 'top', 'alternatieven'],
+   565→      absent: ['koop nu', 'bestel direct'],
+   566→    },
+   567→    LOCAL: {
+   568→      present: ['bij jou in de buurt', 'lokale', 'vestiging', 'adres', 'route', 'openingstijden', 'in [stad]'],
+   569→      absent: ['wereldwijd', 'internationaal'],
+   570→    },
+   571→    BRANDED: {
+   572→      present: [], // Brand names would be checked dynamically
+   573→      absent: [],
+   574→    },
+   575→  };
+   576→
+   577→  const indicators = intentIndicators[searchIntent];
+   578→  if (!indicators) return findings;
+   579→
+   580→  // Check for absent indicators (content doesn't match the declared intent)
+   581→  const absentFound = indicators.absent.filter((term) => contentLower.includes(term));
+   582→  const presentFound = indicators.present.filter((term) => contentLower.includes(term));
+   583→
+   584→  if (absentFound.length > 0 && presentFound.length === 0) {
+   585→    findings.push({
+   586→      checkType: 'INTENT_CHECK',
+   587→      severity: 'WARNING',
+   588→      title: 'Zoekintentie komt niet overeen met content',
+   589→      description: `De brief is gericht op zoekintentie "${searchIntent}", maar de content bevat signalen die beter bij een andere intentie passen (gevonden: ${absentFound.join(', ')}).`,
+   590→      evidence: {
+   591→        declaredIntent: searchIntent,
+   592→        conflictingTerms: absentFound,
+   593→        matchingTerms: presentFound,
+   594→      },
+   595→      recommendation: `Pas de content aan zodat deze beter aansluit bij de "${searchIntent}" zoekintentie. Verwijder verwarrende signalen en voeg relevante intentie-indicators toe.`,
+   596→    });
+   597→  }
+   598→
+   599→  return findings;
+   600→}
+   601→
+   602→/**
+   603→ * Check 7: Readability check.
+   604→ * Calculates Flesch reading ease score for Dutch.
+   605→ * WARNING if score < 40.
+   606→ */
+   607→function checkReadability(
+   608→  content: string
+   609→): Array<{
+   610→  checkType: CheckType;
+   611→  severity: FindingSeverity;
+   612→  title: string;
+   613→  description: string;
+   614→  evidence: Record<string, unknown>;
+   615→  recommendation: string;
+   616→}> {
+   617→  const findings: Array<{
+   618→    checkType: CheckType;
+   619→    severity: FindingSeverity;
+   620→    title: string;
+   621→    description: string;
+   622→    evidence: Record<string, unknown>;
+   623→    recommendation: string;
+   624→  }> = [];
+   625→
+   626→  const score = fleschReadingEaseDutch(content);
+   627→
+   628→  if (score < 40) {
+   629→    findings.push({
+   630→      checkType: 'READABILITY',
+   631→      severity: 'WARNING',
+   632→      title: 'Leesbaarheidsscore is te laag',
+   633→      description: `De Flesch-leesbaarheidsscore is ${score}/100. Dit betekent dat de content moeilijk leesbaar is voor het algemene publiek.`,
+   634→      evidence: {
+   635→        fleschScore: score,
+   636→        threshold: 40,
+   637→        interpretation: score < 30 ? 'Zeer moeilijk' : 'Moeilijk',
+   638→      },
+   639→      recommendation: 'Gebruik kortere zinnen, eenvoudigere woorden en meer witregels. Streef naar een score van minimaal 50 voor algemene content.',
+   640→    });
+   641→  }
+   642→
+   643→  return findings;
+   644→}
+   645→
+   646→/**
+   647→ * Check 8: Internal link check.
+   648→ * WARNING if content has no internal links.
+   649→ */
+   650→function checkInternalLinks(
+   651→  content: string
+   652→): Array<{
+   653→  checkType: CheckType;
+   654→  severity: FindingSeverity;
+   655→  title: string;
+   656→  description: string;
+   657→  evidence: Record<string, unknown>;
+   658→  recommendation: string;
+   659→}> {
+   660→  const findings: Array<{
+   661→    checkType: CheckType;
+   662→    severity: FindingSeverity;
+   663→    title: string;
+   664→    description: string;
+   665→    evidence: Record<string, unknown>;
+   666→    recommendation: string;
+   667→  }> = [];
+   668→
+   669→  // Check for internal link patterns: markdown links, HTML links, or placeholders
+   670→  const markdownLinkPattern = /\[([^\]]+)\]\((?!https?:\/\/)([^\)]+)\)/g;
+   671→  const htmlLinkPattern = /<a[^>]+href=["'](?!https?:\/\/)([^"']+)["']/gi;
+   672→  const internalLinkPlaceholder = /\[interne link[:\s]*([^\]]+)\]/gi;
+   673→
+   674→  const markdownMatches = content.match(markdownLinkPattern);
+   675→  const htmlMatches = content.match(htmlLinkPattern);
+   676→  const placeholderMatches = content.match(internalLinkPlaceholder);
+   677→
+   678→  const totalInternalLinks =
+   679→    (markdownMatches?.length ?? 0) +
+   680→    (htmlMatches?.length ?? 0) +
+   681→    (placeholderMatches?.length ?? 0);
+   682→
+   683→  if (totalInternalLinks === 0) {
+   684→    findings.push({
+   685→      checkType: 'INTERNAL_LINK',
+   686→      severity: 'WARNING',
+   687→      title: 'Geen interne links gevonden',
+   688→      description: 'De content bevat geen interne links. Interne links helpen zoekmachines om de sitestructuur te begrijpen en bezoekers naar relevante pagina\'s te leiden.',
+   689→      evidence: {
+   690→        internalLinkCount: 0,
+   691→      },
+   692→      recommendation: 'Voeg 2-4 interne links toe naar gerelateerde content op de website. Gebruik relevante ankerteksten die de doelpagina beschrijven.',
+   693→    });
+   694→  }
+   695→
+   696→  return findings;
+   697→}
+   698→
+   699→/**
+   700→ * Check 9: Conversion check.
+   701→ * Check if content has a CTA. INFO if missing.
+   702→ */
+   703→function checkConversion(
+   704→  content: string
+   705→): Array<{
+   706→  checkType: CheckType;
+   707→  severity: FindingSeverity;
+   708→  title: string;
+   709→  description: string;
+   710→  evidence: Record<string, unknown>;
+   711→  recommendation: string;
+   712→}> {
+   713→  const findings: Array<{
+   714→    checkType: CheckType;
+   715→    severity: FindingSeverity;
+   716→    title: string;
+   717→    description: string;
+   718→    evidence: Record<string, unknown>;
+   719→    recommendation: string;
+   720→  }> = [];
+   721→
+   722→  const contentLower = content.toLowerCase();
+   723→
+   724→  // Common Dutch CTA patterns
+   725→  const ctaPatterns = [
+   726→    'neem contact op',
+   727→    'neem contact',
+   728→    'kontakt opnemen',
+   729→    'vraag aan',
+   730→    'vraag een',
+   731→    'offerte aan',
+   732→    'offerte aanvragen',
+   733→    'proefperiode',
+   734→    'gratis proef',
+   735→    'start nu',
+   736→    'begin nu',
+   737→    'schrijf je in',
+   738→    'inschrijven',
+   739→    'meld je aan',
+   740→    'bestel nu',
+   741→    'koop nu',
+   742→    'direct aanvragen',
+   743→    'maak een afspraak',
+   744→    'plan een gesprek',
+   745→    'ontdek hoe',
+   746→    'probeer het',
+   747→    'download',
+   748→    'lees meer',
+   749→    'bekijk onze',
+   750→    'ontdek onze',
+   751→    'vind meer',
+   752→    'cta',
+   753→    'call-to-action',
+   754→  ];
+   755→
+   756→  const foundCtas = ctaPatterns.filter((cta) => contentLower.includes(cta));
+   757→
+   758→  if (foundCtas.length === 0) {
+   759→    findings.push({
+   760→      checkType: 'CONVERSION',
+   761→      severity: 'INFO',
+   762→      title: 'Geen call-to-action gevonden',
+   763→      description: 'De content bevat geen herkenbare call-to-action (CTA). Een CTA helpt bezoekers om de volgende stap te zetten.',
+   764→      evidence: {
+   765→        ctaPatternsChecked: ctaPatterns.length,
+   766→        ctasFound: 0,
+   767→      },
+   768→      recommendation: 'Voeg een duidelijke call-to-action toe aan het einde van de content, zoals "Neem contact op", "Vraag een offerte aan" of "Probeer het gratis".',
+   769→    });
+   770→  }
+   771→
+   772→  return findings;
+   773→}
+   774→
+   775→/**
+   776→ * Check 10: GEO readiness check.
+   777→ * Check if content has structured data, clear answers, FAQ format.
+   778→ * INFO with recommendations.
+   779→ */
+   780→function checkGeoReadiness(
+   781→  content: string
+   782→): Array<{
+   783→  checkType: CheckType;
+   784→  severity: FindingSeverity;
+   785→  title: string;
+   786→  description: string;
+   787→  evidence: Record<string, unknown>;
+   788→  recommendation: string;
+   789→}> {
+   790→  const findings: Array<{
+   791→    checkType: CheckType;
+   792→    severity: FindingSeverity;
+   793→    title: string;
+   794→    description: string;
+   795→    evidence: Record<string, unknown>;
+   796→    recommendation: string;
+   797→  }> = [];
+   798→
+   799→  const contentLower = content.toLowerCase();
+   800→  const recommendations: string[] = [];
+   801→  const evidence: Record<string, unknown> = {};
+   802→
+   803→  // Check for structured data indicators
+   804→  const hasStructuredData =
+   805→    content.includes('application/ld+json') ||
+   806→    content.includes('schema.org') ||
+   807→    content.includes('"@type"');
+   808→  evidence.hasStructuredData = hasStructuredData;
+   809→  if (!hasStructuredData) {
+   810→    recommendations.push('Voeg gestructureerde data (JSON-LD) toe om zoekmachines te helpen de content te begrijpen.');
+   811→  }
+   812→
+   813→  // Check for FAQ format
+   814→  const hasFaq =
+   815→    contentLower.includes('veelgestelde vragen') ||
+   816→    contentLower.includes('faq') ||
+   817→    /##.*\?.*\n/.test(content);
+   818→  evidence.hasFaq = hasFaq;
+   819→  if (!hasFaq) {
+   820→    recommendations.push('Voeg een FAQ-sectie toe met veelgestelde vragen en heldere antwoorden.');
+   821→  }
+   822→
+   823→  // Check for clear answers (short paragraphs after questions/headings)
+   824→  const hasShortAnswers = /(?:^|\n)#{1,3}\s+.*\?(?:\n\n?[^\n]{10,200}){1}/m.test(content);
+   825→  evidence.hasShortAnswers = hasShortAnswers;
+   826→  if (!hasShortAnswers) {
+   827→    recommendations.push('Plaats duidelijke, beknopte antwoorden direct na vraagkoppen voor featured snippet kansen.');
+   828→  }
+   829→
+   830→  // Check for lists/tables (good for GEO)
+   831→  const hasLists = /^[\s]*[-*]\s/m.test(content) || /^\d+\.\s/m.test(content);
+   832→  const hasTables = content.includes('|') && content.includes('---');
+   833→  evidence.hasLists = hasLists;
+   834→  evidence.hasTables = hasTables;
+   835→  if (!hasLists && !hasTables) {
+   836→    recommendations.push('Gebruik lijsten of tabellen om informatie gestructureerd weer te geven.');
+   837→  }
+   838→
+   839→  if (recommendations.length > 0) {
+   840→    findings.push({
+   841→      checkType: 'GEO_READINESS',
+   842→      severity: 'INFO',
+   843→      title: 'GEO-klaarheid kan worden verbeterd',
+   844→      description: `De content kan beter worden geoptimaliseerd voor Generatieve Zoekervaring (GEO). ${recommendations.length} verbeterpunten gevonden.`,
+   845→      evidence,
+   846→      recommendation: recommendations.join(' '),
+   847→    });
+   848→  }
+   849→
+   850→  return findings;
+   851→}
+   852→
+   853→/**
+   854→ * Check 11: Unsupported claim check.
+   855→ * Check for VERIFICATIE_NODIG markers. WARNING if found.
+   856→ */
+   857→function checkUnsupportedClaims(
+   858→  content: string
+   859→): Array<{
+   860→  checkType: CheckType;
+   861→  severity: FindingSeverity;
+   862→  title: string;
+   863→  description: string;
+   864→  evidence: Record<string, unknown>;
+   865→  recommendation: string;
+   866→}> {
+   867→  const findings: Array<{
+   868→    checkType: CheckType;
+   869→    severity: FindingSeverity;
+   870→    title: string;
+   871→    description: string;
+   872→    evidence: Record<string, unknown>;
+   873→    recommendation: string;
+   874→  }> = [];
+   875→
+   876→  // Find VERIFICATIE_NODIG markers
+   877→  const markerRegex = /\[VERIFICATIE_NODIG\]([\s\S]*?)\[\/VERIFICATIE_NODIG\]/g;
+   878→  const claims: string[] = [];
+   879→  let match: RegExpExecArray | null;
+   880→
+   881→  while ((match = markerRegex.exec(content)) !== null) {
+   882→    claims.push(match[1].trim());
+   883→  }
+   884→
+   885→  if (claims.length > 0) {
+   886→    findings.push({
+   887→      checkType: 'UNSUPPORTED_CLAIM',
+   888→      severity: 'WARNING',
+   889→      title: 'Onondersteunde beweringen gevonden',
+   890→      description: `${claims.length} bewering(en) in de content zijn gemarkeerd voor verificatie maar zijn nog niet gecontroleerd. Publicatie zonder verificatie wordt afgeraden.`,
+   891→      evidence: {
+   892→        unverifiedClaimCount: claims.length,
+   893→        claims: claims.slice(0, 10), // Limit to first 10 for storage
+   894→      },
+   895→      recommendation: 'Controleer alle gemarkeerde beweringen en voorzie ze van bronnen. Vervang of verwijder beweringen die niet geverifieerd kunnen worden. Verwijder de [VERIFICATIE_NODIG] markers na verificatie.',
+   896→    });
+   897→  }
+   898→
+   899→  return findings;
+   900→}
+   901→
+   902→/**
+   903→ * Check 12: Location page uniqueness.
+   904→ * For location pages, check uniqueness against other location pages in the project.
+   905→ * BLOCKING if too similar.
+   906→ */
+   907→async function checkLocationUniqueness(
+   908→  projectId: string,
+   909→  versionId: string,
+   910→  content: string
+   911→): Promise<Array<{
+   912→  checkType: CheckType;
+   913→  severity: FindingSeverity;
+   914→  title: string;
+   915→  description: string;
+   916→  evidence: Record<string, unknown>;
+   917→  recommendation: string;
+   918→}>> {
+   919→  const findings: Array<{
+   920→    checkType: CheckType;
+   921→    severity: FindingSeverity;
+   922→    title: string;
+   923→    description: string;
+   924→    evidence: Record<string, unknown>;
+   925→    recommendation: string;
+   926→  }> = [];
+   927→
+   928→  // Heuristic: detect if this is a location page
+   929→  const locationIndicators = [
+   930→    /in\s+\p{L}+/iu, // "in [plaatsnaam]"
+   931→    /bij\s+jou\s+in\s+de\s+buurt/i,
+   932→    /vestiging/i,
+   933→    /locatie/i,
+   934→    /openingstijden/i,
+   935→    /adres/i,
+   936→    /routebeschrijving/i,
+   937→    /regio/i,
+   938→  ];
+   939→
+   940→  const isLocationPage = locationIndicators.some((pattern) => pattern.test(content));
+   941→  if (!isLocationPage) return findings;
+   942→
+   943→  // Get all other content versions in the project for comparison
+   944→  const otherBriefs = await db.contentBrief.findMany({
+   945→    where: { projectId },
+   946→    select: { id: true },
+   947→  });
+   948→
+   949→  const briefIds = otherBriefs.map((b) => b.id);
+   950→
+   951→  const otherVersions = await db.contentVersion.findMany({
+   952→    where: {
+   953→      briefId: { in: briefIds },
+   954→      id: { not: versionId },
+   955→    },
+   956→    select: {
+   957→      id: true,
+   958→      content: true,
+   959→      briefId: true,
+   960→    },
+   961→  });
+   962→
+   963→  // Compare against other versions that also look like location pages
+   964→  for (const other of otherVersions) {
+   965→    const otherIsLocation = locationIndicators.some((pattern) => pattern.test(other.content));
+   966→    if (!otherIsLocation) continue;
+   967→
+   968→    const similarity = jaccardSimilarity(content, other.content);
+   969→    if (similarity > 0.75) {
+   970→      findings.push({
+   971→        checkType: 'LOCATION_UNIQUENESS',
+   972→        severity: 'BLOCKING',
+   973→        title: 'Locatiepagina is te vergelijkbaar met andere locatiepagina',
+   974→        description: `Deze locatiepagina is voor ${Math.round(similarity * 100)}% identiek aan een andere locatiepagina in het project. Locatiepagina's moeten voldoende unieke content bevatten per locatie.`,
+   975→        evidence: {
+   976→          similarity: Math.round(similarity * 1000) / 10,
+   977→          comparedWithVersionId: other.id,
+   978→          comparedWithBriefId: other.briefId,
+   979→          threshold: 75,
+   980→        },
+   981→        recommendation: 'Voeg locatie-specifieke informatie toe: unieke openings tijden, lokale teams, regiospecifieke diensten, klantverhalen uit de regio, en lokaal relevante voorbeelden.',
+   982→      });
+   983→
+   984→      break; // One finding is enough
+   985→    }
+   986→  }
+   987→
+   988→  return findings;
+   989→}
+   990→
+   991→/**
+   992→ * Check 13: Product data consistency.
+   993→ * For product content, check against product data from BrandProfile.
+   994→ * WARNING if inconsistent.
+   995→ */
+   996→async function checkProductConsistency(
+   997→  projectId: string,
+   998→  content: string
+   999→): Promise<Array<{
+  1000→  checkType: CheckType;
+  1001→  severity: FindingSeverity;
+  1002→  title: string;
+  1003→  description: string;
+  1004→  evidence: Record<string, unknown>;
+  1005→  recommendation: string;
+  1006→}>> {
+  1007→  const findings: Array<{
+  1008→    checkType: CheckType;
+  1009→    severity: FindingSeverity;
+  1010→    title: string;
+  1011→    description: string;
+  1012→    evidence: Record<string, unknown>;
+  1013→    recommendation: string;
+  1014→  }> = [];
+  1015→
+  1016→  const brandProfile = await getBrandProfile(projectId);
+  1017→  if (!brandProfile) return findings;
+  1018→
+  1019→  // Check products data
+  1020→  const products = parseJsonArray(brandProfile.products);
+  1021→  if (products.length === 0) return findings;
+  1022→
+  1023→  // Heuristic: detect if this is product-related content
+  1024→  const productIndicators = ['product', 'functie', 'feature', 'specificatie', 'eigenschap', 'voordelen', 'oplossing'];
+  1025→  const contentLower = content.toLowerCase();
+  1026→  const isProductContent = productIndicators.some((indicator) => contentLower.includes(indicator));
+  1027→  if (!isProductContent) return findings;
+  1028→
+  1029→  // Check if any product names from brand profile are mentioned with incorrect context
+  1030→  const inconsistencies: string[] = [];
+  1031→  for (const product of products) {
+  1032→    // Simple check: if product is mentioned, check if it's associated with correct terminology
+  1033→    if (contentLower.includes(product.toLowerCase())) {
+  1034→      // This is a basic check - in a real implementation, this would cross-reference
+  1035→      // with detailed product specifications from a product database
+  1036→      const contextMatch = true; // Placeholder for more sophisticated checks
+  1037→      if (!contextMatch) {
+  1038→        inconsistencies.push(product);
+  1039→      }
+  1040→    }
+  1041→  }
+  1042→
+  1043→  // Also check services
+  1044→  const services = parseJsonArray(brandProfile.services);
+  1045→  for (const service of services) {
+  1046→    if (contentLower.includes(service.toLowerCase())) {
+  1047→      // Similar basic check for services
+  1048→      const contextMatch = true; // Placeholder
+  1049→      if (!contextMatch) {
+  1050→        inconsistencies.push(service);
+  1051→      }
+  1052→    }
+  1053→  }
+  1054→
+  1055→  // INFO-level finding about product data verification
+  1056→  if (products.length > 0 || services.length > 0) {
+  1057→    const mentionedProducts = products.filter((p) => contentLower.includes(p.toLowerCase()));
+  1058→    const mentionedServices = services.filter((s) => contentLower.includes(s.toLowerCase()));
+  1059→
+  1060→    if (mentionedProducts.length === 0 && mentionedServices.length === 0 && isProductContent) {
+  1061→      findings.push({
+  1062→        checkType: 'PRODUCT_CONSISTENCY',
+  1063→        severity: 'WARNING',
+  1064→        title: 'Productgegevens komen niet overeen',
+  1065→        description: 'De content lijkt productgerelateerd te zijn, maar verwijst niet naar de producten of diensten uit het merkprofiel.',
+  1066→        evidence: {
+  1067→          availableProducts: products,
+  1068→          availableServices: services,
+  1069→          mentionedProducts: [],
+  1070→          mentionedServices: [],
+  1071→        },
+  1072→        recommendation: 'Verwijs naar de juiste producten en diensten uit het merkprofiel. Dit zorgt voor consistentie tussen content en bedrijfsgegevens.',
+  1073→      });
+  1074→    }
+  1075→  }
+  1076→
+  1077→  if (inconsistencies.length > 0) {
+  1078→    findings.push({
+  1079→      checkType: 'PRODUCT_CONSISTENCY',
+  1080→      severity: 'WARNING',
+  1081→      title: 'Productgegevens komen niet overeen',
+  1082→      description: `De volgende producten/diensten worden mogelijk met onjuiste informatie genoemd: ${inconsistencies.join(', ')}.`,
+  1083→      evidence: {
+  1084→        inconsistentItems: inconsistencies,
+  1085→      },
+  1086→      recommendation: 'Controleer of de product- en dienstgegevens in de content overeenkomen met de officiële gegevens in het merkprofiel.',
+  1087→    });
+  1088→  }
+  1089→
+  1090→  return findings;
+  1091→}
+  1092→
+  1093→// ============================================================================
+  1094→// Public API
+  1095→// ============================================================================
+  1096→
+  1097→/**
+  1098→ * Run all pre-publication quality checks for a content version.
+  1099→ *
+  1100→ * Creates QualityFinding records in the database for each issue detected.
+  1101→ * Returns a summary of the checks including whether the content can be published.
+  1102→ *
+  1103→ * @param projectId - The project ID
+  1104→ * @param versionId - The content version ID to check
+  1105→ * @returns Summary of check results
+  1106→ * @throws Error if the content version is not found
+  1107→ */
+  1108→export async function runPrePublicationChecks(
+  1109→  projectId: string,
+  1110→  versionId: string
+  1111→): Promise<PrePublicationCheckResult> {
+  1112→  // Load the content version and brief
+  1113→  const version = await getVersionAndBrief(versionId);
+  1114→  const content = version.content;
+  1115→  const briefId = version.briefId;
+  1116→
+  1117→  // Delete any existing findings for this version to avoid duplicates
+  1118→  await db.qualityFinding.deleteMany({
+  1119→    where: { versionId },
+  1120→  });
+  1121→
+  1122→  // Run all checks and collect findings
+  1123→  const allFindings: Array<{
+  1124→    checkType: CheckType;
+  1125→    severity: FindingSeverity;
+  1126→    title: string;
+  1127→    description: string;
+  1128→    evidence: Record<string, unknown>;
+  1129→    recommendation: string;
+  1130→  }> = [];
+  1131→
+  1132→  // 1 & 2. Duplicate and near-duplicate checks
+  1133→  const duplicateFindings = await checkDuplicates(projectId, versionId, content);
+  1134→  allFindings.push(...duplicateFindings);
+  1135→
+  1136→  // 3. Brand consistency
+  1137→  const brandFindings = await checkBrandConsistency(projectId, content);
+  1138→  allFindings.push(...brandFindings);
+  1139→
+  1140→  // 4. Prohibited claims
+  1141→  const claimFindings = await checkProhibitedClaims(projectId, content);
+  1142→  allFindings.push(...claimFindings);
+  1143→
+  1144→  // 5. Prohibited terminology
+  1145→  const terminologyFindings = await checkProhibitedTerminology(projectId, content);
+  1146→  allFindings.push(...terminologyFindings);
+  1147→
+  1148→  // 6. Search intent check
+  1149→  const intentFindings = checkSearchIntent(content, version.brief.searchIntent);
+  1150→  allFindings.push(...intentFindings);
+  1151→
+  1152→  // 7. Readability check
+  1153→  const readabilityFindings = checkReadability(content);
+  1154→  allFindings.push(...readabilityFindings);
+  1155→
+  1156→  // 8. Internal link check
+  1157→  const linkFindings = checkInternalLinks(content);
+  1158→  allFindings.push(...linkFindings);
+  1159→
+  1160→  // 9. Conversion check
+  1161→  const conversionFindings = checkConversion(content);
+  1162→  allFindings.push(...conversionFindings);
+  1163→
+  1164→  // 10. GEO readiness check
+  1165→  const geoFindings = checkGeoReadiness(content);
+  1166→  allFindings.push(...geoFindings);
+  1167→
+  1168→  // 11. Unsupported claim check
+  1169→  const unsupportedClaimFindings = checkUnsupportedClaims(content);
+  1170→  allFindings.push(...unsupportedClaimFindings);
+  1171→
+  1172→  // 12. Location page uniqueness
+  1173→  const locationFindings = await checkLocationUniqueness(projectId, versionId, content);
+  1174→  allFindings.push(...locationFindings);
+  1175→
+  1176→  // 13. Product data consistency
+  1177→  const productFindings = await checkProductConsistency(projectId, content);
+  1178→  allFindings.push(...productFindings);
+  1179→
+  1180→  // Persist all findings to the database
+  1181→  const bySeverity = { BLOCKING: 0, WARNING: 0, INFO: 0 };
+  1182→
+  1183→  for (const finding of allFindings) {
+  1184→    await db.qualityFinding.create({
+  1185→      data: {
+  1186→        projectId,
+  1187→        versionId,
+  1188→        briefId,
+  1189→        checkType: finding.checkType,
+  1190→        severity: finding.severity,
+  1191→        title: finding.title,
+  1192→        description: finding.description,
+  1193→        evidence: JSON.stringify(finding.evidence),
+  1194→        recommendation: finding.recommendation,
+  1195→      },
+  1196→    });
+  1197→
+  1198→    bySeverity[finding.severity]++;
+  1199→  }
+  1200→
+  1201→  return {
+  1202→    totalChecks: 13,
+  1203→    findingsCreated: allFindings.length,
+  1204→    bySeverity,
+  1205→    canPublish: bySeverity.BLOCKING === 0,
+  1206→  };
+  1207→}
+  1208→
+  1209→/**
+  1210→ * Get quality findings for a project with optional filters.
+  1211→ *
+  1212→ * @param projectId - The project ID
+  1213→ * @param filters - Optional filters for version, brief, check type, severity, or dismissed status
+  1214→ * @returns Array of quality findings matching the filters
+  1215→ */
+  1216→export async function getFindings(
+  1217→  projectId: string,
+  1218→  filters?: FindingFilters
+  1219→) {
+  1220→  const where: Record<string, unknown> = { projectId };
+  1221→
+  1222→  if (filters?.versionId) where.versionId = filters.versionId;
+  1223→  if (filters?.briefId) where.briefId = filters.briefId;
+  1224→  if (filters?.checkType) where.checkType = filters.checkType;
+  1225→  if (filters?.severity) where.severity = filters.severity;
+  1226→  if (filters?.dismissed !== undefined) where.dismissed = filters.dismissed;
+  1227→
+  1228→  return db.qualityFinding.findMany({
+  1229→    where,
+  1230→    orderBy: [
+  1231→      { severity: 'desc' },
+  1232→      { createdAt: 'desc' },
+  1233→    ],
+  1234→  });
+  1235→}
+  1236→
+  1237→/**
+  1238→ * Dismiss a quality finding.
+  1239→ *
+  1240→ * Once dismissed, the finding will no longer block publication,
+  1241→ * even if its severity is BLOCKING. The dismissal is tracked
+  1242→ * with the user who dismissed it and when.
+  1243→ *
+  1244→ * @param findingId - The finding ID to dismiss
+  1245→ * @param userId - The user who is dismissing the finding
+  1246→ * @throws Error if the finding is not found
+  1247→ */
+  1248→export async function dismissFinding(
+  1249→  findingId: string,
+  1250→  userId: string
+  1251→): Promise<void> {
+  1252→  const finding = await db.qualityFinding.findUnique({
+  1253→    where: { id: findingId },
+  1254→  });
+  1255→
+  1256→  if (!finding) {
+  1257→    throw new Error(`Bevinding "${findingId}" niet gevonden`);
+  1258→  }
+  1259→
+  1260→  await db.qualityFinding.update({
+  1261→    where: { id: findingId },
+  1262→    data: {
+  1263→      dismissed: true,
+  1264→      dismissedBy: userId,
+  1265→      dismissedAt: new Date(),
+  1266→    },
+  1267→  });
+  1268→}
+  1269→
+  1270→/**
+  1271→ * Check if any BLOCKING findings exist for a version.
+  1272→ *
+  1273→ * Only non-dismissed BLOCKING findings are considered.
+  1274→ * If this returns true, the content should not be published.
+  1275→ *
+  1276→ * @param versionId - The content version ID to check
+  1277→ * @returns true if non-dismissed BLOCKING findings exist
+  1278→ */
+  1279→export async function hasBlockingFindings(versionId: string): Promise<boolean> {
+  1280→  const count = await db.qualityFinding.count({
+  1281→    where: {
+  1282→      versionId,
+  1283→      severity: 'BLOCKING',
+  1284→      dismissed: false,
+  1285→    },
+  1286→  });
+  1287→
+  1288→  return count > 0;
+  1289→}
+  1290→

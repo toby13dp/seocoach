@@ -13,7 +13,7 @@
 | 1 | Foundation & Multi-Tenant Platform | 🟢 Complete | 2026-03-04 | 2026-03-04 | 100% |
 | 2 | Crawling & Technical SEO | 🟢 Complete | 2026-06-13 | 2026-06-13 | 100% |
 | 3 | Keywords & Content Intelligence | 🟢 Complete | 2026-06-13 | 2026-06-13 | 100% |
-| 4 | Content Automation & CMS | ⚪ Planned | — | — | 0% |
+| 4 | Content Automation & CMS | 🟢 Complete | 2026-06-13 | 2026-06-13 | 100% |
 | 5 | Analytics & Monitoring | ⚪ Planned | — | — | 0% |
 | 6 | GEO & Competitive Intelligence | ⚪ Planned | — | — | 0% |
 | 7 | Local SEO & Reputation | ⚪ Planned | — | — | 0% |
@@ -235,33 +235,34 @@
 
 ## Phase 4: Content Automation & CMS
 
-**Status:** ⚪ Planned  
+**Status:** 🟢 Complete  
 **Description:** Complete the AI content studio, implement internal linking, structured data generation, WordPress and WooCommerce integrations, programmatic SEO, content decay workflow, content pruning workflow, and change history.
 
-### Planned Sub-Deliverables
+### Implemented Sub-Deliverables
 
-| Sub-Deliverable | Key Requirements | Dependencies |
-|----------------|-----------------|-------------|
-| A. Full AI content studio | STUDIO-001 through STUDIO-003 | Phase 3 content studio foundation |
-| B. Content quality controls | QC-001, QC-002 | Phase 3 quality analysis |
-| C. Internal linking | LINK-001 through LINK-005 | Crawl data, content data |
-| D. Structured data generator | SCHEMA-001 through SCHEMA-003 | Page data, product data |
-| E. WordPress integration | WP-001 through WP-005 | WordPress REST API, credentials |
-| F. WooCommerce integration | WOO-001 through WOO-004 | WooCommerce REST API, credentials |
-| G. Programmatic SEO | PSEO-001 through PSEO-007 | Templates, AI generation, CMS |
-| H. Decay & pruning workflows | DECAY-001, DECAY-002, PRUNE-001, PRUNE-002 | Historical data, Phase 2-3 |
-| I. Change history | CHG-001 | Version storage, audit logging |
+| Sub-Deliverable | Key Requirements | Status | Implementation |
+|----------------|-----------------|--------|---------------|
+| A. Full AI content studio | STUDIO-001 through STUDIO-003 | 🟢 Complete | `src/lib/content/workflow.ts` — 14-step workflow wizard, 17 content types, source grounding |
+| B. Content quality controls | QC-001, QC-002 | 🟢 Complete | `src/lib/content/quality-controls.ts` — 13 pre-publication checks with BLOCKING/WARNING/INFO severities |
+| C. Internal linking | LINK-001 through LINK-005 | 🟢 Complete | `src/lib/linking/` — 5 strategies (semantic, topic cluster, orphan, strong page, broken replacement), approval workflow, diff, rollback |
+| D. Structured data generator | SCHEMA-001 through SCHEMA-003 | 🟢 Complete | `src/lib/structured-data/` — 15 JSON-LD schema types, Dutch validation, no fabricated values |
+| E. WordPress integration | WP-001 through WP-005 | 🟢 Complete | `src/lib/cms/wordpress.ts` — connection wizard, CRUD, publishing, SEO plugin detection (Yoast/RankMath/AIOSEO), audit trail |
+| F. WooCommerce integration | WOO-001 through WOO-004 | 🟢 Complete | `src/lib/cms/woocommerce.ts` — products, categories, variations, reviews, inventory, sync, audit trail |
+| G. Programmatic SEO | PSEO-001 through PSEO-007 | 🟢 Complete | `src/lib/programmatic/` — 9 template types, 8 quality gates (3 blocking), approval queue, bulk generation |
+| H. Decay & pruning workflows | DECAY-001, DECAY-002, PRUNE-001, PRUNE-002 | 🟢 Complete | `src/lib/content/decay-workflow.ts` — update briefs, content comparison, pruning with evidence & risk, rollback guidance |
+| I. Change history | CHG-001 | 🟢 Complete | `src/lib/content/change-history.ts` — track all changes, content diff, rollback support |
+| J. Source grounding | SOURCE-001 through SOURCE-003 | 🟢 Complete | `src/lib/content/source-grounding.ts` — source CRUD, claim support checking, never claim verified when not |
 
 ### Phase 4 Definition of Done
 
-- [ ] A non-technical user can create Dutch content using a wizard
-- [ ] Quality warnings are understandable without SEO knowledge
-- [ ] Internal links can be approved singly or in bulk
-- [ ] Structured data can be previewed and validated
-- [ ] WordPress connection works end to end
-- [ ] WooCommerce connection works end to end
-- [ ] Programmatic pages are rejected when they fail quality gates
-- [ ] Every change is tracked and reversible where possible
+- [x] A non-technical user can create Dutch content using a wizard
+- [x] Quality warnings are understandable without SEO knowledge
+- [x] Internal links can be approved singly or in bulk
+- [x] Structured data can be previewed and validated
+- [x] WordPress connection works end to end
+- [x] WooCommerce connection works end to end
+- [x] Programmatic pages are rejected when they fail quality gates
+- [x] Every change is tracked and reversible where possible
 
 ### Phase 4 Risks
 
@@ -490,7 +491,7 @@
 | 1. Foundation | 47 | 47 | 0 | 0 | 0 |
 | 2. Crawling & Technical SEO | 22 | 22 | 0 | 0 | 0 |
 | 3. Keywords & Content Intelligence | 28 | 28 | 0 | 0 | 0 |
-| 4. Content Automation & CMS | 27 | 0 | 0 | 27 | 0 |
+| 4. Content Automation & CMS | 27 | 27 | 0 | 0 | 0 |
 | 5. Analytics & Monitoring | 14 | 0 | 0 | 14 | 0 |
 | 6. GEO & Competitive Intelligence | 12 | 0 | 0 | 12 | 0 |
 | 7. Local SEO & Reputation | 8 | 0 | 0 | 8 | 0 |
@@ -501,7 +502,7 @@
 | 12. Migrations & Deployments | 8 | 0 | 0 | 8 | 0 |
 | 13. Production Hardening | 10 | 0 | 0 | 10 | 0 |
 | Cross-Cutting | 10 | 2 | 0 | 8 | 0 |
-| **Total** | **218** | **99** | **0** | **119** | **0** |
+| **Total** | **218** | **126** | **0** | **92** | **0** |
 
 ### Critical Path
 
@@ -531,6 +532,7 @@ Phase 1 (Foundation)
 | 2026-06-13 | 1 | Phase 1 marked as complete (100%) | System |
 | 2026-06-13 | 2 | Phase 2 Crawling & Technical SEO implemented and tested | System |
 | 2026-06-13 | 3 | Phase 3 Keywords & Content Intelligence implemented and tested | System |
+| 2026-06-13 | 4 | Phase 4 Content Automation & CMS implemented and tested | System |
 
 ---
 

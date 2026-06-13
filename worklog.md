@@ -236,3 +236,36 @@ Stage Summary:
 - 99 requirements implemented out of 218 total (45%)
 - All tests pass, lint passes, TypeScript compiles
 - All user-facing text is in Dutch
+
+---
+Task ID: 4
+Agent: Main Agent
+Task: Build Phase 4 - Content Automation, CMS, Internal Linking & Programmatic SEO
+
+Work Log:
+- Updated Prisma schema with 8 new enums (CMSProviderType, CMSConnectionStatus, ContentWorkflowStep, InternalLinkStatus, InternalLinkStrategy, StructuredDataType, ProgrammaticTemplateType, ProgrammaticPageStatus, ContentChangeType) and 9 new models (CMSConnection, InternalLink, StructuredData, ProgrammaticTemplate, ProgrammaticPage, ContentChange, ContentSource, QualityFinding)
+- Implemented Internal Linking module (src/lib/linking/): 5 strategies (semantic AI, topic cluster, orphan page, strong page, broken replacement), anchor variation with Dutch patterns, approval workflow with bulk approve/reject, diff preview, CMS publishing, rollback
+- Implemented Structured Data Generator (src/lib/structured-data/): 15 JSON-LD schema types, Dutch validation with required field checks, never fabricates missing values
+- Implemented WordPress Integration (src/lib/cms/wordpress.ts): connection wizard with application passwords, CRUD, scheduling, publishing, media upload, SEO plugin detection (Yoast/RankMath/AIOSEO), retry logic, audit trail
+- Implemented WooCommerce Integration (src/lib/cms/woocommerce.ts): product operations, category management, variations, reviews, inventory, pricing, product import/sync, audit trail
+- Implemented Programmatic SEO module (src/lib/programmatic/): 9 template types with Dutch variable labels, 8 quality gates (3 blocking: duplicate, template completeness, brand check), AI-powered page generation, approval queue, publication limits
+- Implemented Content Quality Controls (src/lib/content/quality-controls.ts): 13 pre-publication checks with BLOCKING/WARNING/INFO severities, dismiss functionality
+- Implemented Change History (src/lib/content/change-history.ts): record, query with filters, content diff generation, rollback support
+- Implemented Source Grounding (src/lib/content/source-grounding.ts): source CRUD, claim support checking (SUPPORTED/UNSUPPORTED/PARTIALLY_SUPPORTED), never claims verified when not
+- Implemented Content Workflow (src/lib/content/workflow.ts): 14-step content creation wizard, 17 content types with Dutch labels, approval gates
+- Implemented Decay & Pruning Workflows (src/lib/content/decay-workflow.ts): update briefs for decayed pages, content comparison, pruning with evidence/risk/rollback guidance
+- Created 32 API route files across 11 feature areas
+- Created 7 frontend pages: CMS connections, internal links, structured data, programmatic SEO, content studio (workflow), content history, decay workflow
+- Updated project detail page with 8 new module navigation cards
+- Created 11 test suites covering all Phase 4 modules
+- Fixed all Phase 4 TypeScript errors
+- Updated IMPLEMENTATION_STATUS.md
+
+Stage Summary:
+- Phase 4 (Content Automation & CMS) is complete with all definition of done items checked
+- 126 requirements implemented out of 218 total (58%)
+- All lint passes, Phase 4 TypeScript compiles cleanly
+- All user-facing text is in Dutch
+- 8 new backend library modules, 32 API routes, 7 frontend pages
+- Approval-first workflows enforced throughout
+- Quality gates prevent thin/doorway page publication

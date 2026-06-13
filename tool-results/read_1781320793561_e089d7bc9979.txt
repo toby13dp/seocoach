@@ -1,0 +1,1502 @@
+     1→// ============================================================================
+     2→// Content Workflow — SEOCoach
+     3→// AI-Driven SEO Automation Platform (Dutch Market)
+     4→// ============================================================================
+     5→// Implements the 14-step content creation workflow, from opportunity selection
+     6→// through publishing. Each step advances the workflow state and delegates to
+     7→// specialized modules (brief-manager, draft-generator, quality-controls,
+     8→// source-grounding). All user-facing strings are in Dutch.
+     9→// ============================================================================
+    10→
+    11→import { db } from '@/lib/db';
+    12→import { providerManager } from '@/lib/ai/provider-manager';
+    13→import { generateDraft, regenerateDraft } from './draft-generator';
+    14→import { runPrePublicationChecks, hasBlockingFindings } from './quality-controls';
+    15→import { checkClaimSupport, selectSourcesForBrief, getSourcesForBrief } from './source-grounding';
+    16→import { recordChange } from './change-history';
+    17→import type { OutlineItem } from './types';
+    18→
+    19→// ============================================================================
+    20→// Content Type Definitions
+    21→// ============================================================================
+    22→
+    23→/**
+    24→ * Supported content types with Dutch labels and descriptions.
+    25→ * These map to the contentType field stored on ContentBrief metadata.
+    26→ */
+    27→export const contentTypeOptions = [
+    28→  {
+    29→    value: 'ARTICLE',
+    30→    label: 'Artikel',
+    31→    description: 'Informatief artikel gericht op kennisdeling en SEO-zichtbaarheid',
+    32→  },
+    33→  {
+    34→    value: 'SERVICE_PAGE',
+    35→    label: 'Dienstpagina',
+    36→    description: 'Pagina die een specifieke dienst of aanbod beschrijft',
+    37→  },
+    38→  {
+    39→    value: 'LOCATION_PAGE',
+    40→    label: 'Locatiepagina',
+    41→    description: 'Locatiegerichte pagina voor lokale SEO-optimalisatie',
+    42→  },
+    43→  {
+    44→    value: 'CATEGORY_PAGE',
+    45→    label: 'Categoriepagina',
+    46→    description: 'Overzichtspagina die producten of diensten categoriseert',
+    47→  },
+    48→  {
+    49→    value: 'PRODUCT_DESCRIPTION',
+    50→    label: 'Productbeschrijving',
+    51→    description: 'Beschrijvende content voor een specifiek product',
+    52→  },
+    53→  {
+    54→    value: 'COMPARISON_PAGE',
+    55→    label: 'Vergelijkingspagina',
+    56→    description: 'Vergelijking tussen opties, producten of diensten',
+    57→  },
+    58→  {
+    59→    value: 'FAQ',
+    60→    label: 'Veelgestelde vragen',
+    61→    description: 'Veelgestelde vragen met gestructureerde antwoorden',
+    62→  },
+    63→  {
+    64→    value: 'GLOSSARY',
+    65→    label: 'Woordenlijst',
+    66→    description: 'Definities en uitleg van branchespecifieke termen',
+    67→  },
+    68→  {
+    69→    value: 'HOW_TO',
+    70→    label: 'Instructie',
+    71→    description: 'Stap-voor-stap instructie of handleiding',
+    72→  },
+    73→  {
+    74→    value: 'PILLAR_PAGE',
+    75→    label: 'Pilarpagina',
+    76→    description: 'Uitgebreide hoofdpagina die als hub dient voor een onderwerp',
+    77→  },
+    78→  {
+    79→    value: 'LANDING_PAGE',
+    80→    label: 'Landingspagina',
+    81→    description: 'Conversiegerichte pagina voor marketingcampagnes',
+    82→  },
+    83→  {
+    84→    value: 'AI_ANSWER_POST',
+    85→    label: 'AI-antwoordbericht',
+    86→    description: 'Blogpost geoptimaliseerd voor AI-zoekantwoorden en featured snippets',
+    87→  },
+    88→  {
+    89→    value: 'META_TITLE',
+    90→    label: 'Meta-titel',
+    91→    description: 'Geoptimaliseerde titel voor zoekmachineresultaten',
+    92→  },
+    93→  {
+    94→    value: 'META_DESCRIPTION',
+    95→    label: 'Meta-beschrijving',
+    96→    description: 'Overtuigende beschrijving voor zoekmachineresultaten',
+    97→  },
+    98→  {
+    99→    value: 'CTA',
+   100→    label: 'Call-to-action',
+   101→    description: 'Actiegerichte content om conversies te stimuleren',
+   102→  },
+   103→  {
+   104→    value: 'INTRODUCTION',
+   105→    label: 'Introductie',
+   106→    description: 'Inleidende content die de lezer betrekt en het onderwerp introduceert',
+   107→  },
+   108→  {
+   109→    value: 'CONTENT_UPDATE',
+   110→    label: 'Content-update',
+   111→    description: 'Vernieuwing van bestaande content om relevantie te behouden',
+   112→  },
+   113→] as const;
+   114→
+   115→/**
+   116→ * Workflow step definitions with Dutch labels.
+   117→ */
+   118→const WORKFLOW_STEPS = [
+   119→  { step: 1, key: 'SELECT_OPPORTUNITY', label: 'Zoekwoord selecteren' },
+   120→  { step: 2, key: 'SELECT_CONTENT_TYPE', label: 'Contenttype selecteren' },
+   121→  { step: 3, key: 'GENERATE_BRIEF', label: 'Brief genereren' },
+   122→  { step: 4, key: 'EDIT_OUTLINE', label: 'Outline bewerken' },
+   123→  { step: 5, key: 'SELECT_SOURCES', label: 'Bronnen selecteren' },
+   124→  { step: 6, key: 'GENERATE_DRAFT', label: 'Draft genereren' },
+   125→  { step: 7, key: 'QUALITY_CHECKS', label: 'Kwaliteitscontroles uitvoeren' },
+   126→  { step: 8, key: 'REVIEW_CLAIMS', label: 'Claims controleren' },
+   127→  { step: 9, key: 'INTERNAL_LINKS', label: 'Interne links toevoegen' },
+   128→  { step: 10, key: 'PREVIEW', label: 'Content previewen' },
+   129→  { step: 11, key: 'APPROVE', label: 'Content goedkeuren' },
+   130→  { step: 12, key: 'CMS_DRAFT', label: 'Opslaan als CMS-concept' },
+   131→  { step: 13, key: 'SCHEDULE', label: 'Inplannen of publiceren' },
+   132→  { step: 14, key: 'PUBLISHED', label: 'Gepubliceerd' },
+   133→] as const;
+   134→
+   135→// ============================================================================
+   136→// Types
+   137→// ============================================================================
+   138→
+   139→/**
+   140→ * Status of a workflow step.
+   141→ */
+   142→export interface WorkflowStepStatus {
+   143→  /** The current step number (1-14) */
+   144→  currentStep: number;
+   145→  /** Human-readable step label in Dutch */
+   146→  currentStepLabel: string;
+   147→  /** The brief approval status */
+   148→  approvalStatus: string;
+   149→  /** Whether the current step is complete */
+   150→  isComplete: boolean;
+   151→  /** All steps with their completion status */
+   152→  steps: Array<{
+   153→    step: number;
+   154→    key: string;
+   155→    label: string;
+   156→    completed: boolean;
+   157→  }>;
+   158→  /** Brief details */
+   159→  brief: {
+   160→    id: string;
+   161→    title: string;
+   162→    targetKeyword: string | null;
+   163→    contentType: string | null;
+   164→    hasOutline: boolean;
+   165→    sourceCount: number;
+   166→    versionCount: number;
+   167→    latestVersionId: string | null;
+   168→  } | null;
+   169→}
+   170→
+   171→/**
+   172→ * Workflow summary for listing.
+   173→ */
+   174→export interface WorkflowSummary {
+   175→  /** Workflow ID (= brief ID) */
+   176→  id: string;
+   177→  /** Project ID */
+   178→  projectId: string;
+   179→  /** Brief title */
+   180→  title: string;
+   181→  /** Target keyword */
+   182→  targetKeyword: string | null;
+   183→  /** Content type */
+   184→  contentType: string | null;
+   185→  /** Current step number */
+   186→  currentStep: number;
+   187→  /** Current step label in Dutch */
+   188→  currentStepLabel: string;
+   189→  /** Approval status */
+   190→  approvalStatus: string;
+   191→  /** Creation date */
+   192→  createdAt: Date;
+   193→  /** Last update date */
+   194→  updatedAt: Date;
+   195→}
+   196→
+   197→// ============================================================================
+   198→// Public API: Workflow Management
+   199→// ============================================================================
+   200→
+   201→/**
+   202→ * Initialize a new content creation workflow.
+   203→ *
+   204→ * Creates a ContentBrief in DRAFT status as the workflow container.
+   205→ * The brief ID serves as the workflow ID throughout the process.
+   206→ *
+   207→ * @param projectId - The project to create the workflow for
+   208→ * @param keywordId - Optional keyword to pre-associate
+   209→ * @returns The workflow ID (= brief ID)
+   210→ */
+   211→export async function startWorkflow(
+   212→  projectId: string,
+   213→  keywordId?: string
+   214→): Promise<string> {
+   215→  // Optionally verify the keyword exists
+   216→  let title = 'Nieuwe content workflow';
+   217→  let targetKeyword: string | null = null;
+   218→
+   219→  if (keywordId) {
+   220→    const keyword = await db.keyword.findUnique({
+   221→      where: { id: keywordId },
+   222→    });
+   223→    if (keyword) {
+   224→      title = `Content workflow: ${keyword.keyword}`;
+   225→      targetKeyword = keyword.keyword;
+   226→    }
+   227→  }
+   228→
+   229→  const brief = await db.contentBrief.create({
+   230→    data: {
+   231→      projectId,
+   232→      keywordId: keywordId ?? null,
+   233→      title,
+   234→      targetKeyword,
+   235→      approvalStatus: 'DRAFT',
+   236→    },
+   237→  });
+   238→
+   239→  // Record the creation
+   240→  await recordChange({
+   241→    projectId,
+   242→    briefId: brief.id,
+   243→    changeType: 'CREATE',
+   244→    summary: `Nieuwe content workflow gestart: "${title}"`,
+   245→  });
+   246→
+   247→  return brief.id;
+   248→}
+   249→
+   250→/**
+   251→ * Step 1: Select a keyword opportunity for the workflow.
+   252→ *
+   253→ * Associates the selected keyword with the brief and updates the
+   254→ * brief title and target keyword.
+   255→ *
+   256→ * @param workflowId - The workflow/brief ID
+   257→ * @param keywordId - The keyword ID to select
+   258→ * @throws Error if the workflow or keyword is not found
+   259→ */
+   260→export async function selectOpportunity(
+   261→  workflowId: string,
+   262→  keywordId: string
+   263→): Promise<void> {
+   264→  const brief = await getBriefOrThrow(workflowId);
+   265→  const keyword = await db.keyword.findUnique({
+   266→    where: { id: keywordId },
+   267→  });
+   268→
+   269→  if (!keyword) {
+   270→    throw new Error(`Zoekwoord "${keywordId}" niet gevonden`);
+   271→  }
+   272→
+   273→  await db.contentBrief.update({
+   274→    where: { id: workflowId },
+   275→    data: {
+   276→      keywordId,
+   277→      targetKeyword: keyword.keyword,
+   278→      title: `Content workflow: ${keyword.keyword}`,
+   279→    },
+   280→  });
+   281→}
+   282→
+   283→/**
+   284→ * Step 2: Select a content type for the workflow.
+   285→ *
+   286→ * Stores the selected content type in the brief's metadata.
+   287→ * The content type determines the structure and tone of the generated content.
+   288→ *
+   289→ * @param workflowId - The workflow/brief ID
+   290→ * @param contentType - The content type to select (must be one of contentTypeOptions values)
+   291→ * @throws Error if the workflow is not found or the content type is invalid
+   292→ */
+   293→export async function selectContentType(
+   294→  workflowId: string,
+   295→  contentType: string
+   296→): Promise<void> {
+   297→  await getBriefOrThrow(workflowId);
+   298→
+   299→  // Validate content type
+   300→  const validTypes = contentTypeOptions.map((opt) => opt.value);
+   301→  if (!validTypes.includes(contentType as typeof validTypes[number])) {
+   302→    throw new Error(
+   303→      `Ongeldig contenttype: "${contentType}". Geldige types zijn: ${validTypes.join(', ')}`
+   304→    );
+   305→  }
+   306→
+   307→  // Store contentType in the brief's sources JSON field (repurposed as metadata)
+   308→  // or use a dedicated approach through the metadata
+   309→  const brief = await db.contentBrief.findUnique({
+   310→    where: { id: workflowId },
+   311→  });
+   312→
+   313→  let sourcesData: Record<string, unknown> = {};
+   314→  if (brief?.sources) {
+   315→    try {
+   316→      sourcesData = JSON.parse(brief.sources) as Record<string, unknown>;
+   317→    } catch {
+   318→      sourcesData = {};
+   319→    }
+   320→  }
+   321→
+   322→  sourcesData.contentType = contentType;
+   323→
+   324→  await db.contentBrief.update({
+   325→    where: { id: workflowId },
+   326→    data: {
+   327→      sources: JSON.stringify(sourcesData),
+   328→    },
+   329→  });
+   330→}
+   331→
+   332→/**
+   333→ * Step 3: Auto-generate brief from keyword + content type using AI.
+   334→ *
+   335→ * Uses the AI provider to generate a comprehensive content brief including
+   336→ * title, target audience, tone of voice, search intent, and outline.
+   337→ *
+   338→ * @param workflowId - The workflow/brief ID
+   339→ * @throws Error if the workflow is not found or AI generation fails
+   340→ */
+   341→export async function generateBriefFromWorkflow(
+   342→  workflowId: string
+   343→): Promise<void> {
+   344→  const brief = await getBriefOrThrow(workflowId);
+   345→
+   346→  // Determine content type
+   347→  let contentType = 'ARTICLE';
+   348→  if (brief.sources) {
+   349→    try {
+   350→      const sourcesData = JSON.parse(brief.sources) as Record<string, unknown>;
+   351→      if (sourcesData.contentType) {
+   352→        contentType = sourcesData.contentType as string;
+   353→      }
+   354→    } catch {
+   355→      // Keep default
+   356→    }
+   357→  }
+   358→
+   359→  const contentTypeLabel =
+   360→    contentTypeOptions.find((opt) => opt.value === contentType)?.label ??
+   361→    'Artikel';
+   362→
+   363→  const keyword = brief.targetKeyword ?? 'algemeen onderwerp';
+   364→
+   365→  // Use AI to generate the brief content
+   366→  const prompt = `Genereer een uitgebreide content brief voor het volgende:
+   367→
+   368→**Zoekwoord:** ${keyword}
+   369→**Contenttype:** ${contentTypeLabel}
+   370→
+   371→Geef de volgende informatie in gestructureerd formaat:
+   372→
+   373→1. **Titel:** Een SEO-geoptimaliseerde titel
+   374→2. **Doelgroep:** Beschrijving van de doelgroep
+   375→3. **Tone of voice:** Aanbevolen tone of voice
+   376→4. **Zoekintentie:** INFORMATIONAL, TRANSACTIONAL, COMMERCIAL_INVESTIGATION, of NAVIGATIONAL
+   377→5. **Funnelstage:** AWARENESS, CONSIDERATION, DECISION, of RETENTION
+   378→6. **Secundaire zoekwoorden:** 5-8 gerelateerde zoekwoorden (komma-gescheiden)
+   379→7. **Doelwoordlengte:** Aanbevolen aantal woorden
+   380→8. **Outline:** Gestructureerde outline met H2/H3-koppen en kernpunten
+   381→
+   382→Gebruik het volgende formaat voor de outline:
+   383→## [H2-kop]
+   384→- Kernpunt 1
+   385→- Kernpunt 2
+   386→### [H3-kop]
+   387→- Kernpunt 1
+   388→
+   389→Schrijf alles in het Nederlands.`;
+   390→
+   391→  let aiGenerated = false;
+   392→
+   393→  try {
+   394→    const response = await providerManager.fallbackGenerate(brief.projectId, {
+   395→      messages: [
+   396→        {
+   397→          role: 'system',
+   398→          content:
+   399→            'Je bent een ervaren SEO-strateeg die content briefs schrijft voor de Nederlandse markt. Je output is altijd gestructureerd en actiegericht.',
+   400→        },
+   401→        { role: 'user', content: prompt },
+   402→      ],
+   403→      purpose: 'brief-generation',
+   404→      maxTokens: 3000,
+   405→      temperature: 0.6,
+   406→    });
+   407→
+   408→    if (response.success && response.content.trim()) {
+   409→      const aiContent = response.content.trim();
+   410→      await parseAndUpdateBrief(workflowId, aiContent, contentType);
+   411→      aiGenerated = true;
+   412→    }
+   413→  } catch {
+   414→    // AI generation failed, keep defaults
+   415→  }
+   416→
+   417→  if (!aiGenerated) {
+   418→    // Set minimal defaults
+   419→    await db.contentBrief.update({
+   420→      where: { id: workflowId },
+   421→      data: {
+   422→        title: `${keyword} — ${contentTypeLabel}`,
+   423→        targetAudience: 'Niet opgegeven (AI-generatie mislukt)',
+   424→        toneOfVoice: 'Professioneel en toegankelijk',
+   425→        searchIntent: 'INFORMATIONAL',
+   426→        funnelStage: 'AWARENESS',
+   427→      },
+   428→    });
+   429→  }
+   430→}
+   431→
+   432→/**
+   433→ * Step 4: Edit the outline structure of the workflow brief.
+   434→ *
+   435→ * Replaces the current outline with the provided structure.
+   436→ * The outline guides the draft generation process.
+   437→ *
+   438→ * @param workflowId - The workflow/brief ID
+   439→ * @param outline - The new outline structure
+   440→ */
+   441→export async function editOutline(
+   442→  workflowId: string,
+   443→  outline: OutlineItem[]
+   444→): Promise<void> {
+   445→  await getBriefOrThrow(workflowId);
+   446→
+   447→  await db.contentBrief.update({
+   448→    where: { id: workflowId },
+   449→    data: {
+   450→      outline: JSON.stringify(outline),
+   451→    },
+   452→  });
+   453→}
+   454→
+   455→/**
+   456→ * Step 5: Select sources for grounding the workflow content.
+   457→ *
+   458→ * Associates the specified sources with the workflow's brief for
+   459→ * claim verification during the review step.
+   460→ *
+   461→ * @param workflowId - The workflow/brief ID
+   462→ * @param sourceIds - The source IDs to associate
+   463→ */
+   464→export async function selectSourcesForWorkflow(
+   465→  workflowId: string,
+   466→  sourceIds: string[]
+   467→): Promise<void> {
+   468→  await getBriefOrThrow(workflowId);
+   469→  await selectSourcesForBrief(workflowId, sourceIds);
+   470→}
+   471→
+   472→/**
+   473→ * Step 6: Generate a content draft from the workflow brief.
+   474→ *
+   475→ * Uses the existing draft-generator module to create a draft based on
+   476→ * the brief's outline, keyword, and brand profile settings.
+   477→ *
+   478→ * @param workflowId - The workflow/brief ID
+   479→ * @returns The generated draft details
+   480→ * @throws Error if the workflow is not found
+   481→ */
+   482→export async function generateDraftFromWorkflow(
+   483→  workflowId: string
+   484→): Promise<{
+   485→  id: string;
+   486→  briefId: string;
+   487→  version: number;
+   488→  content: string;
+   489→  wordCount: number;
+   490→  aiGenerated: boolean;
+   491→  aiModel?: string;
+   492→  claimMarkers?: string[];
+   493→}> {
+   494→  const brief = await getBriefOrThrow(workflowId);
+   495→
+   496→  // Check if there's already a draft; if so, regenerate
+   497→  const existingVersion = await db.contentVersion.findFirst({
+   498→    where: { briefId: workflowId },
+   499→    orderBy: { version: 'desc' },
+   500→  });
+   501→
+   502→  if (existingVersion) {
+   503→    const result = await regenerateDraft(workflowId);
+   504→    return {
+   505→      id: result.id,
+   506→      briefId: result.briefId,
+   507→      version: result.version,
+   508→      content: result.content,
+   509→      wordCount: result.wordCount,
+   510→      aiGenerated: result.aiGenerated,
+   511→      aiModel: result.aiModel,
+   512→    };
+   513→  }
+   514→
+   515→  const result = await generateDraft({
+   516→    briefId: workflowId,
+   517→    projectId: brief.projectId,
+   518→    includeInternalLinks: true,
+   519→  });
+   520→
+   521→  return {
+   522→    id: result.id,
+   523→    briefId: result.briefId,
+   524→    version: result.version,
+   525→    content: result.content,
+   526→    wordCount: result.wordCount,
+   527→    aiGenerated: result.aiGenerated,
+   528→    aiModel: result.aiModel,
+   529→    claimMarkers: result.claimMarkers,
+   530→  };
+   531→}
+   532→
+   533→/**
+   534→ * Step 7: Run quality checks on the workflow's latest draft.
+   535→ *
+   536→ * Uses the quality-controls module to perform pre-publication checks
+   537→ * and creates QualityFinding records for any issues found.
+   538→ *
+   539→ * @param workflowId - The workflow/brief ID
+   540→ * @returns The quality check results
+   541→ * @throws Error if no draft exists yet
+   542→ */
+   543→export async function runQualityChecksFromWorkflow(
+   544→  workflowId: string
+   545→): Promise<{
+   546→  totalChecks: number;
+   547→  findings: number;
+   548→  blockingFindings: number;
+   549→  warningFindings: number;
+   550→  infoFindings: number;
+   551→}> {
+   552→  const brief = await getBriefOrThrow(workflowId);
+   553→
+   554→  // Get the latest version
+   555→  const latestVersion = await db.contentVersion.findFirst({
+   556→    where: { briefId: workflowId },
+   557→    orderBy: { version: 'desc' },
+   558→  });
+   559→
+   560→  if (!latestVersion) {
+   561→    throw new Error(
+   562→      'Geen draft beschikbaar. Genereer eerst een draft voordat je kwaliteitscontroles uitvoert.'
+   563→    );
+   564→  }
+   565→
+   566→  // Run pre-publication checks
+   567→  const result = await runPrePublicationChecks(brief.projectId, latestVersion.id);
+   568→
+   569→  return {
+   570→    totalChecks: result.totalChecks,
+   571→    findings: result.findingsCreated,
+   572→    blockingFindings: result.bySeverity.BLOCKING,
+   573→    warningFindings: result.bySeverity.WARNING,
+   574→    infoFindings: result.bySeverity.INFO,
+   575→  };
+   576→}
+   577→
+   578→/**
+   579→ * Step 8: Review claim support against selected sources.
+   580→ *
+   581→ * Uses the source-grounding module to verify that claims in the
+   582→ * AI-generated content are supported by the selected sources.
+   583→ *
+   584→ * @param workflowId - The workflow/brief ID
+   585→ * @returns The claim check results
+   586→ * @throws Error if no draft exists yet
+   587→ */
+   588→export async function reviewClaimsFromWorkflow(
+   589→  workflowId: string
+   590→): Promise<{
+   591→  totalClaims: number;
+   592→  supported: number;
+   593→  unsupported: number;
+   594→  partiallySupported: number;
+   595→  summary: string;
+   596→  warning?: string;
+   597→}> {
+   598→  await getBriefOrThrow(workflowId);
+   599→
+   600→  // Get the latest version
+   601→  const latestVersion = await db.contentVersion.findFirst({
+   602→    where: { briefId: workflowId },
+   603→    orderBy: { version: 'desc' },
+   604→  });
+   605→
+   606→  if (!latestVersion) {
+   607→    throw new Error(
+   608→      'Geen draft beschikbaar. Genereer eerst een draft voordat je claims controleert.'
+   609→    );
+   610→  }
+   611→
+   612→  const result = await checkClaimSupport(workflowId, latestVersion.content);
+   613→
+   614→  return {
+   615→    totalClaims: result.totalClaims,
+   616→    supported: result.supported,
+   617→    unsupported: result.unsupported,
+   618→    partiallySupported: result.partiallySupported,
+   619→    summary: result.summary,
+   620→    warning: result.warning,
+   621→  };
+   622→}
+   623→
+   624→/**
+   625→ * Step 9: Generate internal link suggestions for the workflow content.
+   626→ *
+   627→ * Analyzes the current draft and project pages to suggest relevant
+   628→ * internal links that improve SEO structure and user navigation.
+   629→ *
+   630→ * @param workflowId - The workflow/brief ID
+   631→ * @returns Suggested internal links with context
+   632→ * @throws Error if no draft exists yet
+   633→ */
+   634→export async function addInternalLinksFromWorkflow(
+   635→  workflowId: string
+   636→): Promise<{
+   637→  suggestions: Array<{
+   638→    pageId: string;
+   639→    url: string;
+   640→    title: string | null;
+   641→    anchorText: string;
+   642→    context: string;
+   643→  }>;
+   644→  totalSuggestions: number;
+   645→}> {
+   646→  const brief = await getBriefOrThrow(workflowId);
+   647→
+   648→  // Get the latest version
+   649→  const latestVersion = await db.contentVersion.findFirst({
+   650→    where: { briefId: workflowId },
+   651→    orderBy: { version: 'desc' },
+   652→  });
+   653→
+   654→  if (!latestVersion) {
+   655→    throw new Error(
+   656→      'Geen draft beschikbaar. Genereer eerst een draft voordat je interne links toevoegt.'
+   657→    );
+   658→  }
+   659→
+   660→  // Get project pages for link suggestions
+   661→  const pages = await db.page.findMany({
+   662→    where: {
+   663→      projectId: brief.projectId,
+   664→      status: 'OK',
+   665→      wordCount: { gt: 200 },
+   666→    },
+   667→    select: {
+   668→      id: true,
+   669→      url: true,
+   670→      title: true,
+   671→      h1: true,
+   672→      description: true,
+   673→    },
+   674→    take: 50,
+   675→  });
+   676→
+   677→  // Use AI to suggest internal links
+   678→  const suggestions: Array<{
+   679→    pageId: string;
+   680→    url: string;
+   681→    title: string | null;
+   682→    anchorText: string;
+   683→    context: string;
+   684→  }> = [];
+   685→
+   686→  try {
+   687→    const pageList = pages
+   688→      .map((p) => `- ${p.url} (titel: ${p.title ?? p.h1 ?? 'Onbekend'})`)
+   689→      .join('\n');
+   690→
+   691→    const prompt = `Analyseer de volgende content en suggesties voor interne links.
+   692→
+   693→CONTENT (eerste 3000 tekens):
+   694→${latestVersion.content.substring(0, 3000)}
+   695→
+   696→BESCHIKBARE PAGINA'S:
+   697→${pageList}
+   698→
+   699→Geef maximaal 5 interne linksuggesties in het volgende formaat (één per regel):
+   700→URL|Ankertekst|Contextuele zin
+   701→
+   702→Voorbeeld:
+   703→https://example.com/dienst|onze diensten|Lees meer over onze diensten voor meer informatie.
+   704→
+   705→Geef alleen suggesties die relevant zijn voor de content. Gebruik Nederlandse ankerteksten.`;
+   706→
+   707→    const response = await providerManager.fallbackGenerate(
+   708→      brief.projectId,
+   709→      {
+   710→        messages: [
+   711→          {
+   712→            role: 'system',
+   713→            content:
+   714→              'Je bent een SEO-expert die interne linksuggesties geeft voor Nederlandse content. Je output bevat alleen regels in het gevraagde formaat.',
+   715→          },
+   716→          { role: 'user', content: prompt },
+   717→        ],
+   718→        purpose: 'internal-links',
+   719→        maxTokens: 1000,
+   720→        temperature: 0.4,
+   721→      }
+   722→    );
+   723→
+   724→    if (response.success && response.content.trim()) {
+   725→      const lines = response.content.trim().split('\n');
+   726→      for (const line of lines) {
+   727→        const parts = line.split('|');
+   728→        if (parts.length >= 3) {
+   729→          const url = parts[0].trim();
+   730→          const anchorText = parts[1].trim();
+   731→          const context = parts[2].trim();
+   732→
+   733→          const matchingPage = pages.find((p) => p.url === url);
+   734→          if (matchingPage) {
+   735→            suggestions.push({
+   736→              pageId: matchingPage.id,
+   737→              url: matchingPage.url,
+   738→              title: matchingPage.title,
+   739→              anchorText,
+   740→              context,
+   741→            });
+   742→          }
+   743→        }
+   744→      }
+   745→    }
+   746→  } catch {
+   747→    // AI suggestion failed, return empty suggestions
+   748→  }
+   749→
+   750→  // Update the brief with internal page references
+   751→  if (suggestions.length > 0) {
+   752→    const internalPages = suggestions.map((s) => s.pageId);
+   753→    await db.contentBrief.update({
+   754→      where: { id: workflowId },
+   755→      data: {
+   756→        internalPages: JSON.stringify(internalPages),
+   757→      },
+   758→    });
+   759→  }
+   760→
+   761→  return {
+   762→    suggestions,
+   763→    totalSuggestions: suggestions.length,
+   764→  };
+   765→}
+   766→
+   767→/**
+   768→ * Step 10: Preview the final content with links and structured data.
+   769→ *
+   770→ * Returns the latest draft content along with metadata for preview rendering.
+   771→ * Strips claim markers for the preview version.
+   772→ *
+   773→ * @param workflowId - The workflow/brief ID
+   774→ * @returns Preview data including cleaned content and metadata
+   775→ * @throws Error if no draft exists yet
+   776→ */
+   777→export async function previewContent(
+   778→  workflowId: string
+   779→): Promise<{
+   780→  content: string;
+   781→  cleanContent: string;
+   782→  wordCount: number;
+   783→  title: string;
+   784→  targetKeyword: string | null;
+   785→  contentType: string | null;
+   786→  internalLinks: Array<{
+   787→    pageId: string;
+   788→    url: string;
+   789→    title: string | null;
+   790→  }>;
+   791→  metaTitle: string;
+   792→  metaDescription: string;
+   793→}> {
+   794→  const brief = await getBriefOrThrow(workflowId);
+   795→
+   796→  // Get the latest version
+   797→  const latestVersion = await db.contentVersion.findFirst({
+   798→    where: { briefId: workflowId },
+   799→    orderBy: { version: 'desc' },
+   800→  });
+   801→
+   802→  if (!latestVersion) {
+   803→    throw new Error(
+   804→      'Geen draft beschikbaar. Genereer eerst een draft voordat je een preview bekijkt.'
+   805→    );
+   806→  }
+   807→
+   808→  // Strip claim markers for clean preview
+   809→  const cleanContent = latestVersion.content
+   810→    .replace(/\[VERIFICATIE_NODIG\]/g, '')
+   811→    .replace(/\[\/VERIFICATIE_NODIG\]/g, '');
+   812→
+   813→  // Determine content type from metadata
+   814→  let contentType: string | null = null;
+   815→  if (brief.sources) {
+   816→    try {
+   817→      const sourcesData = JSON.parse(brief.sources) as Record<string, unknown>;
+   818→      contentType = (sourcesData.contentType as string) ?? null;
+   819→    } catch {
+   820→      // Keep null
+   821→    }
+   822→  }
+   823→
+   824→  // Get internal links
+   825→  let internalLinks: Array<{
+   826→    pageId: string;
+   827→    url: string;
+   828→    title: string | null;
+   829→  }> = [];
+   830→
+   831→  if (brief.internalPages) {
+   832→    try {
+   833→      const pageIds = JSON.parse(brief.internalPages) as string[];
+   834→      const pages = await db.page.findMany({
+   835→        where: { id: { in: pageIds } },
+   836→        select: { id: true, url: true, title: true },
+   837→      });
+   838→      internalLinks = pages.map((p) => ({
+   839→        pageId: p.id,
+   840→        url: p.url,
+   841→        title: p.title,
+   842→      }));
+   843→    } catch {
+   844→      // Keep empty
+   845→    }
+   846→  }
+   847→
+   848→  // Generate meta title and description
+   849→  const metaTitle = brief.title;
+   850→  const metaDescription =
+   851→    brief.targetAudience
+   852→      ? `${brief.title} — ${brief.targetAudience}`
+   853→      : brief.title;
+   854→
+   855→  return {
+   856→    content: latestVersion.content,
+   857→    cleanContent,
+   858→    wordCount: latestVersion.wordCount,
+   859→    title: brief.title,
+   860→    targetKeyword: brief.targetKeyword,
+   861→    contentType,
+   862→    internalLinks,
+   863→    metaTitle,
+   864→    metaDescription,
+   865→  };
+   866→}
+   867→
+   868→/**
+   869→ * Step 11: Approve content for publishing.
+   870→ *
+   871→ * Checks that there are no blocking quality findings before approving.
+   872→ * Updates the brief's approval status and records the approval in the
+   873→ * change history.
+   874→ *
+   875→ * @param workflowId - The workflow/brief ID
+   876→ * @param userId - The user approving the content
+   877→ * @throws Error if blocking findings exist or the workflow is not found
+   878→ */
+   879→export async function approveContent(
+   880→  workflowId: string,
+   881→  userId: string
+   882→): Promise<void> {
+   883→  const brief = await getBriefOrThrow(workflowId);
+   884→
+   885→  // Get the latest version
+   886→  const latestVersion = await db.contentVersion.findFirst({
+   887→    where: { briefId: workflowId },
+   888→    orderBy: { version: 'desc' },
+   889→  });
+   890→
+   891→  if (!latestVersion) {
+   892→    throw new Error(
+   893→      'Geen draft beschikbaar. Genereer eerst een draft voordat je goedkeurt.'
+   894→    );
+   895→  }
+   896→
+   897→  // Check for blocking findings
+   898→  const hasBlocking = await hasBlockingFindings(latestVersion.id);
+   899→
+   900→  if (hasBlocking) {
+   901→    throw new Error(
+   902→      'De content kan niet worden goedgekeurd: er zijn blokkerende kwaliteitsbevindingen die eerst moeten worden opgelost. Controleer de kwaliteitscontroles en los de blokkerende problemen op.'
+   903→    );
+   904→  }
+   905→
+   906→  // Also check for unsupported claims
+   907→  const claimResult = await checkClaimSupport(workflowId, latestVersion.content);
+   908→  if (claimResult.unsupported > 0) {
+   909→    throw new Error(
+   910→      `De content kan niet worden goedgekeurd: ${claimResult.unsupported} claim(s) worden niet ondersteund door bronnen. Los deze op of voeg ondersteunende bronnen toe voordat je goedkeurt.`
+   911→    );
+   912→  }
+   913→
+   914→  // Update brief approval status
+   915→  await db.contentBrief.update({
+   916→    where: { id: workflowId },
+   917→    data: {
+   918→      approvalStatus: 'APPROVED',
+   919→      approvedBy: userId,
+   920→      approvedAt: new Date(),
+   921→    },
+   922→  });
+   923→
+   924→  // Record the approval
+   925→  await recordChange({
+   926→    projectId: brief.projectId,
+   927→    briefId: workflowId,
+   928→    versionId: latestVersion.id,
+   929→    changeType: 'APPROVE',
+   930→    userId,
+   931→    summary: `Content goedgekeurd voor publicatie: "${brief.title}"`,
+   932→  });
+   933→}
+   934→
+   935→/**
+   936→ * Step 12: Save as CMS draft.
+   937→ *
+   938→ * Saves the approved content as a draft in the connected CMS.
+   939→ * The CMS connection must be active and configured.
+   940→ *
+   941→ * @param workflowId - The workflow/brief ID
+   942→ * @param cmsConnectionId - The CMS connection to save to
+   943→ * @throws Error if the content is not approved or CMS connection is invalid
+   944→ */
+   945→export async function saveAsCMSDraft(
+   946→  workflowId: string,
+   947→  cmsConnectionId: string
+   948→): Promise<{
+   949→  cmsPostId: string | null;
+   950→  cmsPostUrl: string | null;
+   951→  message: string;
+   952→}> {
+   953→  const brief = await getBriefOrThrow(workflowId);
+   954→
+   955→  // Verify the content is approved
+   956→  if (brief.approvalStatus !== 'APPROVED') {
+   957→    throw new Error(
+   958→      'De content moet zijn goedgekeurd voordat het als CMS-concept kan worden opgeslagen.'
+   959→    );
+   960→  }
+   961→
+   962→  // Verify the CMS connection exists and is active
+   963→  const cmsConnection = await db.cMSConnection.findUnique({
+   964→    where: { id: cmsConnectionId },
+   965→  });
+   966→
+   967→  if (!cmsConnection) {
+   968→    throw new Error(
+   969→      `CMS-verbinding "${cmsConnectionId}" niet gevonden`
+   970→    );
+   971→  }
+   972→
+   973→  if (cmsConnection.deletedAt) {
+   974→    throw new Error(
+   975→      'Deze CMS-verbinding is verwijderd'
+   976→    );
+   977→  }
+   978→
+   979→  if (cmsConnection.status !== 'CONNECTED') {
+   980→    throw new Error(
+   981→      `CMS-verbinding is niet actief (huidige status: ${cmsConnection.status}). Activeer de verbinding eerst.`
+   982→    );
+   983→  }
+   984→
+   985→  // Get the latest version
+   986→  const latestVersion = await db.contentVersion.findFirst({
+   987→    where: { briefId: workflowId },
+   988→    orderBy: { version: 'desc' },
+   989→  });
+   990→
+   991→  if (!latestVersion) {
+   992→    throw new Error('Geen draft beschikbaar om op te slaan');
+   993→  }
+   994→
+   995→  // Clean content for CMS (strip claim markers)
+   996→  const cleanContent = latestVersion.content
+   997→    .replace(/\[VERIFICATIE_NODIG\]/g, '')
+   998→    .replace(/\[\/VERIFICATIE_NODIG\]/g, '');
+   999→
+  1000→  // Record the CMS save
+  1001→  const cmsResult = JSON.stringify({
+  1002→    cmsConnectionId,
+  1003→    providerType: cmsConnection.providerType,
+  1004→    savedAt: new Date().toISOString(),
+  1005→    contentLength: cleanContent.length,
+  1006→    wordCount: latestVersion.wordCount,
+  1007→  });
+  1008→
+  1009→  await recordChange({
+  1010→    projectId: brief.projectId,
+  1011→    briefId: workflowId,
+  1012→    versionId: latestVersion.id,
+  1013→    changeType: 'UPDATE',
+  1014→    summary: `Content opgeslagen als CMS-concept via ${cmsConnection.name}`,
+  1015→    cmsResult,
+  1016→  });
+  1017→
+  1018→  // In a real implementation, this would make an API call to the CMS
+  1019→  // For now, we return a placeholder result
+  1020→  return {
+  1021→    cmsPostId: null,
+  1022→    cmsPostUrl: null,
+  1023→    message: `Content succesvol opgeslagen als concept in ${cmsConnection.name}. Publicatie moet nog worden uitgevoerd via het CMS of de inplanfunctie.`,
+  1024→  };
+  1025→}
+  1026→
+  1027→/**
+  1028→ * Step 13/14: Schedule or publish the content immediately.
+  1029→ *
+  1030→ * If a publishDate is provided, the content is scheduled for that date.
+  1031→ * Otherwise, it is published immediately. Requires prior approval.
+  1032→ *
+  1033→ * @param workflowId - The workflow/brief ID
+  1034→ * @param publishDate - Optional date to schedule publication for
+  1035→ * @param cmsConnectionId - Optional CMS connection to publish through
+  1036→ * @throws Error if the content is not approved
+  1037→ */
+  1038→export async function scheduleOrPublish(
+  1039→  workflowId: string,
+  1040→  publishDate?: Date,
+  1041→  cmsConnectionId?: string
+  1042→): Promise<{
+  1043→  scheduled: boolean;
+  1044→  publishDate: Date | null;
+  1045→  message: string;
+  1046→}> {
+  1047→  const brief = await getBriefOrThrow(workflowId);
+  1048→
+  1049→  // Verify the content is approved
+  1050→  if (brief.approvalStatus !== 'APPROVED') {
+  1051→    throw new Error(
+  1052→      'De content moet zijn goedgekeurd voordat het kan worden gepubliceerd of ingepland.'
+  1053→    );
+  1054→  }
+  1055→
+  1056→  // Get the latest version
+  1057→  const latestVersion = await db.contentVersion.findFirst({
+  1058→    where: { briefId: workflowId },
+  1059→    orderBy: { version: 'desc' },
+  1060→  });
+  1061→
+  1062→  if (!latestVersion) {
+  1063→    throw new Error('Geen draft beschikbaar om te publiceren');
+  1064→  }
+  1065→
+  1066→  const isScheduled = publishDate !== undefined;
+  1067→
+  1068→  if (isScheduled) {
+  1069→    // Schedule the publication
+  1070→    await db.contentBrief.update({
+  1071→      where: { id: workflowId },
+  1072→      data: {
+  1073→        approvalStatus: 'APPROVED', // Keep approved status until published
+  1074→      },
+  1075→    });
+  1076→
+  1077→    // Record the scheduling
+  1078→    await recordChange({
+  1079→      projectId: brief.projectId,
+  1080→      briefId: workflowId,
+  1081→      versionId: latestVersion.id,
+  1082→      changeType: 'SCHEDULE',
+  1083→      summary: `Content ingepland voor publicatie op ${publishDate.toLocaleDateString('nl-NL')}: "${brief.title}"`,
+  1084→      cmsResult: cmsConnectionId
+  1085→        ? JSON.stringify({
+  1086→            cmsConnectionId,
+  1087→            scheduledDate: publishDate.toISOString(),
+  1088→          })
+  1089→        : undefined,
+  1090→    });
+  1091→
+  1092→    return {
+  1093→      scheduled: true,
+  1094→      publishDate,
+  1095→      message: `Content is ingepland voor publicatie op ${publishDate.toLocaleDateString('nl-NL')} om ${publishDate.toLocaleTimeString('nl-NL')}.`,
+  1096→    };
+  1097→  }
+  1098→
+  1099→  // Publish immediately
+  1100→  await db.contentBrief.update({
+  1101→    where: { id: workflowId },
+  1102→    data: {
+  1103→      approvalStatus: 'PUBLISHED',
+  1104→    },
+  1105→  });
+  1106→
+  1107→  // Record the publication
+  1108→  await recordChange({
+  1109→    projectId: brief.projectId,
+  1110→    briefId: workflowId,
+  1111→    versionId: latestVersion.id,
+  1112→    changeType: 'PUBLISH',
+  1113→    summary: `Content gepubliceerd: "${brief.title}"`,
+  1114→    cmsResult: cmsConnectionId
+  1115→      ? JSON.stringify({
+  1116→          cmsConnectionId,
+  1117→          publishedAt: new Date().toISOString(),
+  1118→        })
+  1119→      : undefined,
+  1120→  });
+  1121→
+  1122→  return {
+  1123→    scheduled: false,
+  1124→    publishDate: null,
+  1125→    message: `Content is succesvol gepubliceerd: "${brief.title}".`,
+  1126→  };
+  1127→}
+  1128→
+  1129→// ============================================================================
+  1130→// Public API: Workflow Status & Listing
+  1131→// ============================================================================
+  1132→
+  1133→/**
+  1134→ * Get the current workflow status and step information.
+  1135→ *
+  1136→ * Calculates the current step based on the brief's state (outline, sources,
+  1137→ * draft, quality checks, approval) and returns detailed step-by-step progress.
+  1138→ *
+  1139→ * @param workflowId - The workflow/brief ID
+  1140→ * @returns Detailed workflow status
+  1141→ */
+  1142→export async function getWorkflowStatus(
+  1143→  workflowId: string
+  1144→): Promise<WorkflowStepStatus> {
+  1145→  const brief = await db.contentBrief.findUnique({
+  1146→    where: { id: workflowId },
+  1147→  });
+  1148→
+  1149→  if (!brief) {
+  1150→    throw new Error(`Workflow "${workflowId}" niet gevonden`);
+  1151→  }
+  1152→
+  1153→  // Determine completion of each step
+  1154→  const stepCompletions: Record<string, boolean> = {};
+  1155→
+  1156→  // Step 1: Select opportunity - complete if keywordId is set
+  1157→  stepCompletions['SELECT_OPPORTUNITY'] = !!brief.keywordId;
+  1158→
+  1159→  // Step 2: Select content type - complete if sources JSON has contentType
+  1160→  let contentType: string | null = null;
+  1161→  if (brief.sources) {
+  1162→    try {
+  1163→      const sourcesData = JSON.parse(brief.sources) as Record<string, unknown>;
+  1164→      contentType = (sourcesData.contentType as string) ?? null;
+  1165→    } catch {
+  1166→      // Keep null
+  1167→    }
+  1168→  }
+  1169→  stepCompletions['SELECT_CONTENT_TYPE'] = !!contentType;
+  1170→
+  1171→  // Step 3: Generate brief - complete if title is not default
+  1172→  stepCompletions['GENERATE_BRIEF'] =
+  1173→    brief.title !== 'Nieuwe content workflow' &&
+  1174→    !brief.title.startsWith('Content workflow: ');
+  1175→
+  1176→  // Step 4: Edit outline - complete if outline is set
+  1177→  stepCompletions['EDIT_OUTLINE'] = !!brief.outline;
+  1178→
+  1179→  // Step 5: Select sources - complete if there are sources
+  1180→  const sourceCount = await db.contentSource.count({
+  1181→    where: { briefId: workflowId, deletedAt: null },
+  1182→  });
+  1183→  stepCompletions['SELECT_SOURCES'] = sourceCount > 0;
+  1184→
+  1185→  // Step 6: Generate draft - complete if there's at least one version
+  1186→  const versionCount = await db.contentVersion.count({
+  1187→    where: { briefId: workflowId },
+  1188→  });
+  1189→  stepCompletions['GENERATE_DRAFT'] = versionCount > 0;
+  1190→
+  1191→  // Step 7: Quality checks - complete if there are quality findings
+  1192→  const findingCount = await db.qualityFinding.count({
+  1193→    where: { briefId: workflowId },
+  1194→  });
+  1195→  stepCompletions['QUALITY_CHECKS'] = findingCount > 0 || versionCount > 0;
+  1196→
+  1197→  // Step 8: Review claims - complete if latest version has been checked
+  1198→  stepCompletions['REVIEW_CLAIMS'] = versionCount > 0;
+  1199→
+  1200→  // Step 9: Internal links - complete if internalPages is set
+  1201→  stepCompletions['INTERNAL_LINKS'] = !!brief.internalPages;
+  1202→
+  1203→  // Step 10: Preview - complete if there's a draft
+  1204→  stepCompletions['PREVIEW'] = versionCount > 0;
+  1205→
+  1206→  // Step 11: Approve - complete if approved
+  1207→  stepCompletions['APPROVE'] =
+  1208→    brief.approvalStatus === 'APPROVED' ||
+  1209→    brief.approvalStatus === 'PUBLISHED';
+  1210→
+  1211→  // Step 12: CMS draft - complete if there's a CMS-related change
+  1212→  const cmsChange = await db.contentChange.findFirst({
+  1213→    where: {
+  1214→      briefId: workflowId,
+  1215→      changeType: 'UPDATE',
+  1216→      cmsResult: { not: null },
+  1217→    },
+  1218→  });
+  1219→  stepCompletions['CMS_DRAFT'] = !!cmsChange;
+  1220→
+  1221→  // Step 13: Schedule or publish - complete if published
+  1222→  stepCompletions['SCHEDULE'] =
+  1223→    brief.approvalStatus === 'PUBLISHED' ||
+  1224→    !!cmsChange;
+  1225→
+  1226→  // Step 14: Published - complete if published
+  1227→  stepCompletions['PUBLISHED'] = brief.approvalStatus === 'PUBLISHED';
+  1228→
+  1229→  // Determine current step (first incomplete step)
+  1230→  let currentStep = 1;
+  1231→  for (let i = 0; i < WORKFLOW_STEPS.length; i++) {
+  1232→    const step = WORKFLOW_STEPS[i];
+  1233→    if (!stepCompletions[step.key]) {
+  1234→      currentStep = step.step;
+  1235→      break;
+  1236→    }
+  1237→    if (i === WORKFLOW_STEPS.length - 1) {
+  1238→      currentStep = step.step;
+  1239→    }
+  1240→  }
+  1241→
+  1242→  const currentStepLabel =
+  1243→    WORKFLOW_STEPS.find((s) => s.step === currentStep)?.label ??
+  1244→    'Onbekend';
+  1245→
+  1246→  // Get latest version info
+  1247→  const latestVersion = await db.contentVersion.findFirst({
+  1248→    where: { briefId: workflowId },
+  1249→    orderBy: { version: 'desc' },
+  1250→    select: { id: true },
+  1251→  });
+  1252→
+  1253→  // Build steps array
+  1254→  const steps = WORKFLOW_STEPS.map((step) => ({
+  1255→    step: step.step,
+  1256→    key: step.key,
+  1257→    label: step.label,
+  1258→    completed: stepCompletions[step.key] ?? false,
+  1259→  }));
+  1260→
+  1261→  return {
+  1262→    currentStep,
+  1263→    currentStepLabel,
+  1264→    approvalStatus: brief.approvalStatus,
+  1265→    isComplete: brief.approvalStatus === 'PUBLISHED',
+  1266→    steps,
+  1267→    brief: {
+  1268→      id: brief.id,
+  1269→      title: brief.title,
+  1270→      targetKeyword: brief.targetKeyword,
+  1271→      contentType,
+  1272→      hasOutline: !!brief.outline,
+  1273→      sourceCount,
+  1274→      versionCount,
+  1275→      latestVersionId: latestVersion?.id ?? null,
+  1276→    },
+  1277→  };
+  1278→}
+  1279→
+  1280→/**
+  1281→ * List all workflows for a project.
+  1282→ *
+  1283→ * Returns a summary of each workflow, including the current step,
+  1284→ * content type, and approval status.
+  1285→ *
+  1286→ * @param projectId - The project to list workflows for
+  1287→ * @returns Array of workflow summaries
+  1288→ */
+  1289→export async function listWorkflows(
+  1290→  projectId: string
+  1291→): Promise<WorkflowSummary[]> {
+  1292→  const briefs = await db.contentBrief.findMany({
+  1293→    where: { projectId },
+  1294→    orderBy: { updatedAt: 'desc' },
+  1295→  });
+  1296→
+  1297→  const summaries: WorkflowSummary[] = [];
+  1298→
+  1299→  for (const brief of briefs) {
+  1300→    // Determine content type
+  1301→    let contentType: string | null = null;
+  1302→    if (brief.sources) {
+  1303→      try {
+  1304→        const sourcesData = JSON.parse(brief.sources) as Record<string, unknown>;
+  1305→        contentType = (sourcesData.contentType as string) ?? null;
+  1306→      } catch {
+  1307→        // Keep null
+  1308→      }
+  1309→    }
+  1310→
+  1311→    // Get a simplified step status
+  1312→    const status = await getWorkflowStatus(brief.id);
+  1313→
+  1314→    summaries.push({
+  1315→      id: brief.id,
+  1316→      projectId: brief.projectId,
+  1317→      title: brief.title,
+  1318→      targetKeyword: brief.targetKeyword,
+  1319→      contentType,
+  1320→      currentStep: status.currentStep,
+  1321→      currentStepLabel: status.currentStepLabel,
+  1322→      approvalStatus: brief.approvalStatus,
+  1323→      createdAt: brief.createdAt,
+  1324→      updatedAt: brief.updatedAt,
+  1325→    });
+  1326→  }
+  1327→
+  1328→  return summaries;
+  1329→}
+  1330→
+  1331→// ============================================================================
+  1332→// Internal Helpers
+  1333→// ============================================================================
+  1334→
+  1335→/**
+  1336→ * Get a content brief or throw an error if not found.
+  1337→ */
+  1338→async function getBriefOrThrow(briefId: string) {
+  1339→  const brief = await db.contentBrief.findUnique({
+  1340→    where: { id: briefId },
+  1341→  });
+  1342→
+  1343→  if (!brief) {
+  1344→    throw new Error(`Workflow "${briefId}" niet gevonden`);
+  1345→  }
+  1346→
+  1347→  return brief;
+  1348→}
+  1349→
+  1350→/**
+  1351→ * Parse AI-generated brief content and update the brief record.
+  1352→ *
+  1353→ * Extracts structured data from the AI response and maps it to
+  1354→ * ContentBrief fields. Falls back gracefully when parsing fails.
+  1355→ */
+  1356→async function parseAndUpdateBrief(
+  1357→  briefId: string,
+  1358→  aiContent: string,
+  1359→  contentType: string
+  1360→): Promise<void> {
+  1361→  const lines = aiContent.split('\n');
+  1362→  let title = '';
+  1363→  let targetAudience = '';
+  1364→  let toneOfVoice = '';
+  1365→  let searchIntent = 'INFORMATIONAL';
+  1366→  let funnelStage = 'AWARENESS';
+  1367→  let secondaryKeywords: string[] = [];
+  1368→  let targetWordCount = 1500;
+  1369→  const outlineItems: OutlineItem[] = [];
+  1370→
+  1371→  let inOutline = false;
+  1372→  let currentH2: OutlineItem | null = null;
+  1373→  let sortOrder = 0;
+  1374→
+  1375→  for (const line of lines) {
+  1376→    const trimmed = line.trim();
+  1377→
+  1378→    // Parse title
+  1379→    if (trimmed.match(/\*\*Titel:\*\*/i) || trimmed.match(/^Titel:/i)) {
+  1380→      title = trimmed.replace(/\*\*Titel:\*\*/i, '').replace(/^Titel:/i, '').trim();
+  1381→    }
+  1382→
+  1383→    // Parse target audience
+  1384→    if (trimmed.match(/\*\*Doelgroep:\*\*/i) || trimmed.match(/^Doelgroep:/i)) {
+  1385→      targetAudience = trimmed.replace(/\*\*Doelgroep:\*\*/i, '').replace(/^Doelgroep:/i, '').trim();
+  1386→    }
+  1387→
+  1388→    // Parse tone of voice
+  1389→    if (trimmed.match(/\*\*Tone of voice:\*\*/i) || trimmed.match(/^Tone of voice:/i)) {
+  1390→      toneOfVoice = trimmed.replace(/\*\*Tone of voice:\*\*/i, '').replace(/^Tone of voice:/i, '').trim();
+  1391→    }
+  1392→
+  1393→    // Parse search intent
+  1394→    if (trimmed.match(/\*\*Zoekintentie:\*\*/i) || trimmed.match(/^Zoekintentie:/i)) {
+  1395→      const intentStr = trimmed.replace(/\*\*Zoekintentie:\*\*/i, '').replace(/^Zoekintentie:/i, '').trim().toUpperCase();
+  1396→      if (['INFORMATIONAL', 'NAVIGATIONAL', 'TRANSACTIONAL', 'COMMERCIAL_INVESTIGATION'].includes(intentStr)) {
+  1397→        searchIntent = intentStr;
+  1398→      }
+  1399→    }
+  1400→
+  1401→    // Parse funnel stage
+  1402→    if (trimmed.match(/\*\*Funnelstage:\*\*/i) || trimmed.match(/^Funnelstage:/i)) {
+  1403→      const funnelStr = trimmed.replace(/\*\*Funnelstage:\*\*/i, '').replace(/^Funnelstage:/i, '').trim().toUpperCase();
+  1404→      if (['AWARENESS', 'CONSIDERATION', 'DECISION', 'RETENTION'].includes(funnelStr)) {
+  1405→        funnelStage = funnelStr;
+  1406→      }
+  1407→    }
+  1408→
+  1409→    // Parse secondary keywords
+  1410→    if (trimmed.match(/\*\*Secundaire zoekwoorden:\*\*/i) || trimmed.match(/^Secundaire zoekwoorden:/i)) {
+  1411→      const kwStr = trimmed
+  1412→        .replace(/\*\*Secundaire zoekwoorden:\*\*/i, '')
+  1413→        .replace(/^Secundaire zoekwoorden:/i, '')
+  1414→        .trim();
+  1415→      secondaryKeywords = kwStr
+  1416→        .split(/[,;]/)
+  1417→        .map((kw) => kw.trim())
+  1418→        .filter((kw) => kw.length > 0);
+  1419→    }
+  1420→
+  1421→    // Parse target word count
+  1422→    if (trimmed.match(/\*\*Doelwoordlengte:\*\*/i) || trimmed.match(/^Doelwoordlengte:/i)) {
+  1423→      const numMatch = trimmed.match(/(\d+)/);
+  1424→      if (numMatch) {
+  1425→        targetWordCount = parseInt(numMatch[1], 10);
+  1426→      }
+  1427→    }
+  1428→
+  1429→    // Parse outline
+  1430→    if (trimmed.match(/\*\*Outline:\*\*/i) || trimmed.match(/^Outline:/i)) {
+  1431→      inOutline = true;
+  1432→      continue;
+  1433→    }
+  1434→
+  1435→    if (inOutline) {
+  1436→      // H2 heading
+  1437→      if (trimmed.startsWith('## ')) {
+  1438→        const heading = trimmed.replace(/^##\s+/, '').trim();
+  1439→        currentH2 = {
+  1440→          id: `h2-${sortOrder}`,
+  1441→          heading,
+  1442→          level: 2,
+  1443→          keyPoints: [],
+  1444→          children: [],
+  1445→          sortOrder,
+  1446→        };
+  1447→        outlineItems.push(currentH2);
+  1448→        sortOrder++;
+  1449→      }
+  1450→      // H3 heading
+  1451→      else if (trimmed.startsWith('### ') && currentH2) {
+  1452→        const heading = trimmed.replace(/^###\s+/, '').trim();
+  1453→        const h3Item: OutlineItem = {
+  1454→          id: `h3-${sortOrder}`,
+  1455→          heading,
+  1456→          level: 3,
+  1457→          keyPoints: [],
+  1458→          sortOrder,
+  1459→        };
+  1460→        if (!currentH2.children) {
+  1461→          currentH2.children = [];
+  1462→        }
+  1463→        currentH2.children.push(h3Item);
+  1464→        sortOrder++;
+  1465→      }
+  1466→      // Key point
+  1467→      else if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
+  1468→        const point = trimmed.replace(/^[-*]\s+/, '').trim();
+  1469→        if (currentH2 && currentH2.children && currentH2.children.length > 0) {
+  1470→          const lastH3 = currentH2.children[currentH2.children.length - 1];
+  1471→          if (!lastH3.keyPoints) lastH3.keyPoints = [];
+  1472→          lastH3.keyPoints.push(point);
+  1473→        } else if (currentH2) {
+  1474→          if (!currentH2.keyPoints) currentH2.keyPoints = [];
+  1475→          currentH2.keyPoints.push(point);
+  1476→        }
+  1477→      }
+  1478→    }
+  1479→  }
+  1480→
+  1481→  // Update the brief
+  1482→  await db.contentBrief.update({
+  1483→    where: { id: briefId },
+  1484→    data: {
+  1485→      title: title || undefined,
+  1486→      targetAudience: targetAudience || undefined,
+  1487→      toneOfVoice: toneOfVoice || undefined,
+  1488→      searchIntent: searchIntent as any,
+  1489→      funnelStage: funnelStage as any,
+  1490→      secondaryKeywords:
+  1491→        secondaryKeywords.length > 0
+  1492→          ? JSON.stringify(secondaryKeywords)
+  1493→          : undefined,
+  1494→      targetWordCount,
+  1495→      outline:
+  1496→        outlineItems.length > 0
+  1497→          ? JSON.stringify(outlineItems)
+  1498→          : undefined,
+  1499→    },
+  1500→  });
+  1501→}
+  1502→

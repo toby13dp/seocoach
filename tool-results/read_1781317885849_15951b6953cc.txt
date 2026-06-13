@@ -1,0 +1,2002 @@
+     1→You are a senior product architect, UX designer, full-stack engineer, AI engineer, SEO specialist, data engineer, security engineer and DevOps engineer.
+     2→
+     3→We are building a production-ready, AI-driven SEO automation platform for entrepreneurs, marketers, e-commerce businesses and SEO agencies.
+     4→
+     5→The platform combines:
+     6→
+     7→- SEO research
+     8→- Long-tail keyword discovery
+     9→- Search intent analysis
+    10→- Technical SEO
+    11→- Content strategy
+    12→- AI content generation
+    13→- Content optimisation
+    14→- Topic clusters
+    15→- Internal linking
+    16→- WordPress publishing
+    17→- WooCommerce publishing
+    18→- Programmatic SEO
+    19→- Local SEO
+    20→- E-commerce SEO
+    21→- GEO and AI search visibility
+    22→- Competitor intelligence
+    23→- Digital PR and authority analysis
+    24→- Review and reputation management
+    25→- Conversion optimisation
+    26→- Analytics
+    27→- Monitoring and alerts
+    28→- SEO forecasting
+    29→- Budget planning
+    30→- White-label reporting
+    31→- Client portals
+    32→- Agency operations
+    33→- AI copilots
+    34→- Specialised AI agents
+    35→- Website migrations
+    36→- Deployment regression monitoring
+    37→
+    38→The platform must be technically advanced but simple and non-technical for end users.
+    39→
+    40→Create and maintain the following documents:
+    41→
+    42→- PROJECT_CHARTER.md
+    43→- PRODUCT_REQUIREMENTS.md
+    44→- UX_PRINCIPLES.md
+    45→- REQUIREMENTS_TRACEABILITY.md
+    46→- IMPLEMENTATION_STATUS.md
+    47→- ARCHITECTURE.md
+    48→- SECURITY.md
+    49→- docs/decisions/
+    50→- docs/integrations/
+    51→- docs/user-guide/
+    52→- docs/admin-guide/
+    53→
+    54→Do not silently remove, simplify or ignore requirements.
+    55→
+    56→When a requirement cannot yet be implemented, record it in IMPLEMENTATION_STATUS.md with:
+    57→
+    58→- Current status
+    59→- Reason
+    60→- Dependencies
+    61→- Planned implementation phase
+    62→- Temporary fallback
+    63→- User-visible limitation
+    64→
+    65→## 1. Language requirements
+    66→
+    67→The technical specification, source code, function names, class names, API routes, database models, code comments and developer documentation must be written in English.
+    68→
+    69→All user-facing functionality must be available in Dutch by default.
+    70→
+    71→Support:
+    72→
+    73→- nl-NL
+    74→- nl-BE
+    75→
+    76→User-facing Dutch content includes:
+    77→
+    78→- Navigation
+    79→- Onboarding
+    80→- Dashboards
+    81→- Buttons
+    82→- Forms
+    83→- Notifications
+    84→- Alerts
+    85→- Error messages
+    86→- Reports
+    87→- Help text
+    88→- SEO recommendations
+    89→- Generated SEO content
+    90→- Client portal content
+    91→- AI copilot responses
+    92→
+    93→Build internationalisation into the application from the beginning.
+    94→
+    95→Do not hardcode Dutch interface strings directly inside components.
+    96→
+    97→## 2. Usability is a hard product requirement
+    98→
+    99→The application must remain understandable to people without technical SEO knowledge.
+   100→
+   101→Every analysis should answer:
+   102→
+   103→1. What happened?
+   104→2. Why does it matter?
+   105→3. What should the user do?
+   106→4. Can the platform handle it automatically?
+   107→5. Is approval required?
+   108→
+   109→Do not show unexplained scores.
+   110→
+   111→Every score must include:
+   112→
+   113→- Meaning
+   114→- Contributing factors
+   115→- Evidence
+   116→- Confidence
+   117→- Recommended action
+   118→
+   119→Use progressive disclosure with three levels:
+   120→
+   121→1. Simple
+   122→   - Short explanation
+   123→   - Business impact
+   124→   - Recommended action
+   125→
+   126→2. Detailed
+   127→   - Metrics
+   128→   - Affected pages
+   129→   - Trends
+   130→   - Supporting evidence
+   131→
+   132→3. Technical
+   133→   - Raw headers
+   134→   - HTML
+   135→   - API responses
+   136→   - Logs
+   137→   - Diagnostic details
+   138→
+   139→The simple view must be the default.
+   140→
+   141→Provide guided workflows for:
+   142→
+   143→- Adding a website
+   144→- Connecting a CMS
+   145→- Connecting analytics
+   146→- Running the first audit
+   147→- Creating content
+   148→- Publishing content
+   149→- Adding competitors
+   150→- Running GEO visibility tests
+   151→- Creating reports
+   152→- Configuring automation
+   153→- Migrating a website
+   154→
+   155→Use safe default settings.
+   156→
+   157→Advanced configuration must remain optional.
+   158→
+   159→## 3. Automation levels
+   160→
+   161→Support five automation levels:
+   162→
+   163→1. Analyse only
+   164→2. Generate recommendations
+   165→3. Prepare drafts
+   166→4. Execute after approval
+   167→5. Automatically execute within explicit rules
+   168→
+   169→New projects must default to level 2 or 3.
+   170→
+   171→The following actions must never run automatically unless explicitly enabled:
+   172→
+   173→- Publishing content
+   174→- Deleting content
+   175→- Creating redirects
+   176→- Changing canonicals
+   177→- Changing robots directives
+   178→- Changing structured data
+   179→- Modifying product information
+   180→- Responding publicly to reviews
+   181→- Sending outreach messages
+   182→- Applying migration mappings
+   183→- Blocking deployments
+   184→
+   185→All automated changes require:
+   186→
+   187→- Preview
+   188→- Explanation
+   189→- Audit trail
+   190→- Previous value
+   191→- New value
+   192→- Rollback where technically possible
+   193→
+   194→## 4. Free and self-hosted operation
+   195→
+   196→The core platform must work without mandatory paid services.
+   197→
+   198→Use open-source and self-hosted components where practical.
+   199→
+   200→Preferred stack:
+   201→
+   202→Frontend:
+   203→- Next.js
+   204→- React
+   205→- TypeScript
+   206→- Accessible component architecture
+   207→- Responsive design
+   208→- Light and dark appearance
+   209→- WCAG 2.1 AA as a minimum target
+   210→
+   211→Backend:
+   212→- Python
+   213→- FastAPI
+   214→- Pydantic
+   215→- SQLAlchemy
+   216→- Alembic
+   217→- PostgreSQL
+   218→- Redis
+   219→- A reliable background job system
+   220→
+   221→AI:
+   222→- Ollama
+   223→- OpenAI-compatible local inference endpoints
+   224→- Provider abstraction for optional commercial providers
+   225→
+   226→Infrastructure:
+   227→- Docker Compose
+   228→- MinIO or local object storage
+   229→- Reverse proxy configuration
+   230→- Health checks
+   231→- Development and production profiles
+   232→
+   233→Optional providers may include:
+   234→
+   235→- OpenAI
+   236→- Google Gemini
+   237→- Anthropic
+   238→- Mistral
+   239→- Google Search Console
+   240→- Google Analytics
+   241→- Google Business Profile
+   242→- PageSpeed Insights
+   243→- Rank tracking services
+   244→- Backlink providers
+   245→- Heatmap services
+   246→- Project management platforms
+   247→
+   248→When an external provider is unavailable:
+   249→
+   250→- Do not crash
+   251→- Explain the missing capability
+   252→- Offer CSV import or manual entry where possible
+   253→- Never fabricate missing data
+   254→
+   255→## 5. Safety and ethical data collection
+   256→
+   257→Do not implement unauthorised scraping of search engines, AI platforms or protected services.
+   258→
+   259→For search rankings and SERP data, use:
+   260→
+   261→- Official APIs
+   262→- Licensed provider APIs
+   263→- User-provided exports
+   264→- CSV imports
+   265→- Manual records
+   266→
+   267→For AI visibility, clearly distinguish between:
+   268→
+   269→- GEO readiness
+   270→- Externally measured AI visibility
+   271→- User-provided AI responses
+   272→- API-based AI visibility tests
+   273→- Local simulations
+   274→
+   275→A local simulation must never be presented as evidence that a brand is actually visible in ChatGPT, Gemini or another external AI platform.
+   276→
+   277→Always label simulations clearly.
+   278→
+   279→Public website crawling must respect:
+   280→
+   281→- robots.txt
+   282→- Rate limits
+   283→- Crawl delays
+   284→- Domain restrictions
+   285→- Legal and contractual restrictions
+   286→- User-configured allowlists
+   287→
+   288→## 6. Multi-tenant platform
+   289→
+   290→Support:
+   291→
+   292→- Users
+   293→- Organisations
+   294→- Agencies
+   295→- Clients
+   296→- Multiple projects
+   297→- Multiple websites
+   298→- Multiple locations
+   299→- Multiple countries
+   300→- Multiple languages
+   301→- Teams
+   302→- Roles
+   303→- Permissions
+   304→- White-label profiles
+   305→
+   306→Required roles:
+   307→
+   308→- Platform administrator
+   309→- Organisation owner
+   310→- Agency owner
+   311→- SEO manager
+   312→- Content manager
+   313→- Editor
+   314→- Developer
+   315→- Client
+   316→- Read-only user
+   317→
+   318→Implement strict tenant isolation.
+   319→
+   320→Users must never gain access to another tenant’s:
+   321→
+   322→- Projects
+   323→- Integrations
+   324→- Credentials
+   325→- Reports
+   326→- Content
+   327→- Analytics
+   328→- AI data
+   329→- Client information
+   330→
+   331→## 7. Onboarding
+   332→
+   333→Create a simple onboarding wizard.
+   334→
+   335→Step 1: Company profile
+   336→- Company name
+   337→- Website
+   338→- Business type
+   339→- Country
+   340→- Language
+   341→- Products
+   342→- Services
+   343→- Target audiences
+   344→- Important regions
+   345→
+   346→Step 2: Goals
+   347→- More website visitors
+   348→- More enquiries
+   349→- More sales
+   350→- Better local visibility
+   351→- Promote a new service
+   352→- Improve AI search visibility
+   353→- Beat competitors
+   354→- Resolve technical SEO issues
+   355→
+   356→Step 3: Integrations
+   357→- WordPress
+   358→- WooCommerce
+   359→- Search Console
+   360→- Analytics
+   361→- Google Business Profile
+   362→- First-party analytics
+   363→- CSV imports
+   364→
+   365→Step 4: Initial scan
+   366→- Website crawl
+   367→- Technical audit
+   368→- Content inventory
+   369→- Internal link analysis
+   370→- Initial keyword classification
+   371→- GEO readiness assessment
+   372→- Competitor scan
+   373→
+   374→Step 5: Initial recommendations
+   375→- Overall health
+   376→- Three largest opportunities
+   377→- Three most important issues
+   378→- Recommended 30-day plan
+   379→- Suggested safe automations
+   380→
+   381→## 8. Brand profile
+   382→
+   383→Each project must have a BrandProfile containing:
+   384→
+   385→- Brand name
+   386→- Brand description
+   387→- Products
+   388→- Services
+   389→- Target audiences
+   390→- Regions
+   391→- Tone of voice
+   392→- Formal or informal address
+   393→- Preferred terminology
+   394→- Prohibited terminology
+   395→- Allowed claims
+   396→- Prohibited claims
+   397→- Proof points
+   398→- Certifications
+   399→- Contact details
+   400→- Conversion goals
+   401→- Editorial rules
+   402→- Content guidelines
+   403→- Legal disclaimers
+   404→- nl-NL or nl-BE preference
+   405→
+   406→## 9. Automatic SEO strategy
+   407→
+   408→Generate:
+   409→
+   410→- 30-day strategy
+   411→- 90-day strategy
+   412→- Annual roadmap
+   413→- Quick wins
+   414→- Strategic initiatives
+   415→- Content priorities
+   416→- Technical priorities
+   417→- GEO priorities
+   418→- Local SEO priorities
+   419→- E-commerce priorities
+   420→- Expected effort
+   421→- Business impact
+   422→- Dependencies
+   423→
+   424→Base the strategy on:
+   425→
+   426→- Business goals
+   427→- Products
+   428→- Services
+   429→- Audiences
+   430→- Regions
+   431→- Search performance
+   432→- Website quality
+   433→- Competitors
+   434→- Available capacity
+   435→- Revenue potential
+   436→- Margins when provided
+   437→- Seasonality
+   438→- Historical results
+   439→
+   440→## 10. Long-tail SEO and search intent
+   441→
+   442→Accept data from:
+   443→
+   444→- Search Console
+   445→- Existing website content
+   446→- Manual keywords
+   447→- CSV files
+   448→- Internal site search
+   449→- Customer questions
+   450→- Support questions
+   451→- Reviews
+   452→- WooCommerce products
+   453→- WooCommerce categories
+   454→- AI-generated suggestions
+   455→- Licensed SERP providers
+   456→
+   457→Classify queries by:
+   458→
+   459→- Informational intent
+   460→- Commercial intent
+   461→- Transactional intent
+   462→- Navigational intent
+   463→- Local intent
+   464→- Comparison intent
+   465→- Problem-oriented intent
+   466→- Solution-oriented intent
+   467→- Funnel stage
+   468→- Persona
+   469→- Product
+   470→- Service
+   471→- Location
+   472→- Season
+   473→- Question type
+   474→
+   475→Create an explainable Opportunity Score using:
+   476→
+   477→- Business relevance
+   478→- Impressions
+   479→- Current position
+   480→- CTR potential
+   481→- Conversion potential
+   482→- Commercial value
+   483→- Existing content quality
+   484→- Competitive difficulty
+   485→- Effort
+   486→- Topical authority gap
+   487→- Strategic priority
+   488→
+   489→## 11. Customer journeys and personas
+   490→
+   491→Support customer journey stages:
+   492→
+   493→- Problem recognition
+   494→- Research
+   495→- Comparison
+   496→- Supplier selection
+   497→- Purchase or enquiry
+   498→- Product usage
+   499→- Support
+   500→- Repeat purchase
+   501→
+   502→Map:
+   503→
+   504→- Questions
+   505→- Keywords
+   506→- Pages
+   507→- Objections
+   508→- Conversion goals
+   509→- Trust signals
+   510→- Missing content
+   511→- Existing content
+   512→
+   513→Avoid collecting unnecessary sensitive personal attributes.
+   514→
+   515→## 12. Crawling and content inventory
+   516→
+   517→Collect per page:
+   518→
+   519→- URL
+   520→- HTTP status
+   521→- Redirects
+   522→- Title
+   523→- Meta description
+   524→- H1
+   525→- Headings
+   526→- Main content
+   527→- Word count
+   528→- Canonical
+   529→- Robots directives
+   530→- Indexability
+   531→- Structured data
+   532→- Internal links
+   533→- External links
+   534→- Images
+   535→- Alt text
+   536→- Content type
+   537→- Search intent
+   538→- Language
+   539→- Publication date
+   540→- Modification date
+   541→- Conversion elements
+   542→- Duplicate score
+   543→- Similarity cluster
+   544→- Search Console metrics
+   545→- Analytics metrics
+   546→- Conversion metrics
+   547→- Revenue metrics
+   548→
+   549→Detect:
+   550→
+   551→- Thin content
+   552→- Duplicate content
+   553→- Near-duplicate content
+   554→- Shadow content
+   555→- Orphan pages
+   556→- Outdated content
+   557→- Keyword cannibalisation
+   558→- Missing topics
+   559→- Missing conversion actions
+   560→- Weak internal linking
+   561→- High-impression low-CTR pages
+   562→- Declining pages
+   563→- Merge opportunities
+   564→- Redirect opportunities
+   565→- Removal opportunities
+   566→
+   567→## 13. Technical SEO
+   568→
+   569→Analyse:
+   570→
+   571→- HTTP status codes
+   572→- Redirect chains
+   573→- Redirect loops
+   574→- Canonicals
+   575→- robots.txt
+   576→- Meta robots
+   577→- XML sitemaps
+   578→- Indexability
+   579→- Titles
+   580→- Meta descriptions
+   581→- Heading structure
+   582→- Duplicate content
+   583→- Thin content
+   584→- Broken links
+   585→- Orphan pages
+   586→- Crawl depth
+   587→- Pagination
+   588→- Hreflang
+   589→- Structured data
+   590→- Open Graph
+   591→- Image alt text
+   592→- Large images
+   593→- Mobile usability
+   594→- Core Web Vitals
+   595→- JavaScript dependency
+   596→- URL structure
+   597→- Query parameters
+   598→- Faceted navigation
+   599→- Staging pages
+   600→- Accidental noindex
+   601→- Sitemap conflicts
+   602→- Canonical conflicts
+   603→- HTTPS
+   604→- Mixed content
+   605→- Page speed
+   606→- Rendering issues
+   607→
+   608→Each issue must include:
+   609→
+   610→- Plain-language title
+   611→- Explanation
+   612→- Business impact
+   613→- SEO impact
+   614→- Severity
+   615→- Priority
+   616→- Evidence
+   617→- Affected pages
+   618→- Recommended solution
+   619→- Estimated effort
+   620→- Automatic fix availability
+   621→- Technical details
+   622→
+   623→## 14. JavaScript SEO
+   624→
+   625→Compare source HTML with rendered HTML.
+   626→
+   627→Detect:
+   628→
+   629→- Missing rendered content
+   630→- Missing source links
+   631→- Client-side-only navigation
+   632→- JavaScript redirects
+   633→- Hydration issues
+   634→- Lazy-loaded content
+   635→- Canonicals created after rendering
+   636→- Structured data created after rendering
+   637→- Non-crawlable navigation
+   638→- Content requiring user interaction
+   639→
+   640→## 15. Server log analysis
+   641→
+   642→Support uploaded or connected server logs.
+   643→
+   644→Analyse:
+   645→
+   646→- Search bot activity
+   647→- Crawl frequency
+   648→- Crawl waste
+   649→- Frequently crawled error URLs
+   650→- Important pages rarely crawled
+   651→- Parameter crawling
+   652→- Faceted URLs
+   653→- Status codes seen by bots
+   654→- Differences between sitemap URLs and crawler behaviour
+   655→
+   656→## 16. Topic clusters and site structure
+   657→
+   658→Support:
+   659→
+   660→- Pillar pages
+   661→- Category hubs
+   662→- Service hubs
+   663→- Product hubs
+   664→- Location hubs
+   665→- Question-driven articles
+   666→- Comparison pages
+   667→- Glossary pages
+   668→- How-to pages
+   669→- FAQ content
+   670→- AI answer pages
+   671→- Knowledge bases
+   672→- Integration pages
+   673→- Industry pages
+   674→
+   675→For each proposed page include:
+   676→
+   677→- Title
+   678→- URL
+   679→- Audience
+   680→- Search intent
+   681→- Primary topic
+   682→- Secondary topics
+   683→- Funnel stage
+   684→- Conversion goal
+   685→- Required internal links
+   686→- Priority
+   687→- Impact
+   688→- Effort
+   689→- Status
+   690→
+   691→Provide:
+   692→
+   693→- Visual cluster map
+   694→- Drag-and-drop editing
+   695→- Simple list view
+   696→
+   697→Detect:
+   698→
+   699→- Missing hubs
+   700→- Excessive click depth
+   701→- Weakly linked pages
+   702→- Conflicting pages
+   703→- Similar location pages
+   704→- Clusters without a commercial path
+   705→
+   706→## 17. Programmatic SEO
+   707→
+   708→Support templates such as:
+   709→
+   710→- Service plus location
+   711→- Product plus use case
+   712→- Product plus audience
+   713→- Product plus feature
+   714→- Category plus feature
+   715→- Industry plus service
+   716→- Integration plus platform
+   717→- Comparison pages
+   718→- Glossary templates
+   719→
+   720→Require unique user value.
+   721→
+   722→Implement:
+   723→
+   724→- Uniqueness validation
+   725→- Minimum information threshold
+   726→- Duplicate detection
+   727→- Cannibalisation detection
+   728→- Variable validation
+   729→- Sample preview
+   730→- Bulk preview
+   731→- Publication limits
+   732→- Approval workflow
+   733→- Rollback
+   734→- Automatic rejection of low-value pages
+   735→
+   736→Do not create doorway pages.
+   737→
+   738→## 18. AI content studio
+   739→
+   740→Support:
+   741→
+   742→- Articles
+   743→- AI answer posts
+   744→- Service pages
+   745→- Location pages
+   746→- Category pages
+   747→- Product descriptions
+   748→- Comparison pages
+   749→- FAQ sections
+   750→- Glossary pages
+   751→- How-to content
+   752→- Pillar pages
+   753→- Landing pages
+   754→- Meta titles
+   755→- Meta descriptions
+   756→- CTAs
+   757→- Introductions
+   758→- Structured-data content
+   759→- Content briefs
+   760→- Review responses
+   761→- Google Business Profile posts
+   762→- Digital PR briefs
+   763→- Outreach drafts
+   764→
+   765→Workflow:
+   766→
+   767→1. Choose an opportunity
+   768→2. Choose a content type
+   769→3. Generate a brief
+   770→4. Review the outline
+   771→5. Generate a draft
+   772→6. Review facts and quality
+   773→7. Apply improvements
+   774→8. View publication preview
+   775→9. Save as draft, schedule or publish after approval
+   776→
+   777→Always use:
+   778→
+   779→- BrandProfile
+   780→- Target audience
+   781→- Tone of voice
+   782→- nl-NL or nl-BE
+   783→- Existing content
+   784→- Internal sources
+   785→- Conversion goal
+   786→- Prohibited claims
+   787→- Search intent
+   788→- Unique business information
+   789→
+   790→Mark unverified claims.
+   791→
+   792→## 19. Content quality
+   793→
+   794→Score separately:
+   795→
+   796→- Search intent match
+   797→- Information coverage
+   798→- Readability
+   799→- Originality
+   800→- Brand consistency
+   801→- Experience
+   802→- Expertise
+   803→- Authority
+   804→- Trust
+   805→- Internal linking
+   806→- Entity coverage
+   807→- Conversion strength
+   808→- GEO readiness
+   809→- Publication readiness
+   810→
+   811→Do not reward length by itself.
+   812→
+   813→Provide actionable feedback.
+   814→
+   815→## 20. Content decay and pruning
+   816→
+   817→Detect content decline through:
+   818→
+   819→- Ranking drops
+   820→- Click drops
+   821→- Impression drops
+   822→- CTR drops
+   823→- Conversion drops
+   824→- Old dates
+   825→- Outdated facts
+   826→- New competitors
+   827→- Intent shifts
+   828→- Broken sources
+   829→- Missing subtopics
+   830→
+   831→Create:
+   832→
+   833→- Update brief
+   834→- Outdated passage list
+   835→- New section suggestions
+   836→- Revised draft
+   837→- Before-and-after comparison
+   838→
+   839→For pruning, recommend:
+   840→
+   841→- Keep
+   842→- Improve
+   843→- Merge
+   844→- Redirect
+   845→- Noindex
+   846→- Remove
+   847→
+   848→Use:
+   849→
+   850→- Traffic
+   851→- Rankings
+   852→- Links
+   853→- Conversions
+   854→- Search intent
+   855→- Quality
+   856→- Overlap
+   857→- Historical value
+   858→- Internal links
+   859→- Removal risk
+   860→
+   861→## 21. E-E-A-T and trust
+   862→
+   863→Analyse:
+   864→
+   865→- Author profiles
+   866→- Author expertise
+   867→- Company information
+   868→- Contact information
+   869→- About page
+   870→- Sources
+   871→- Certifications
+   872→- Experience evidence
+   873→- Case studies
+   874→- Reviews
+   875→- Publication dates
+   876→- Update dates
+   877→- Editorial policy
+   878→- Privacy policy
+   879→- Returns policy
+   880→- Terms
+   881→- Complaint procedure
+   882→- Disclaimers
+   883→
+   884→Never invent expertise, reviews or certifications.
+   885→
+   886→## 22. Internal linking
+   887→
+   888→Generate suggestions using:
+   889→
+   890→- Semantic similarity
+   891→- Topic clusters
+   892→- Page authority signals
+   893→- Orphan pages
+   894→- Weakly linked pages
+   895→- Broken links
+   896→- Existing anchors
+   897→- Cannibalisation risks
+   898→
+   899→Each suggestion includes:
+   900→
+   901→- Source page
+   902→- Target page
+   903→- Anchor text
+   904→- Suggested location
+   905→- Reason
+   906→- Expected impact
+   907→- Confidence
+   908→- Conflicts
+   909→
+   910→Support:
+   911→
+   912→- Preview
+   913→- Diff
+   914→- Bulk approval
+   915→- WordPress publishing
+   916→- Rollback
+   917→
+   918→## 23. Structured data
+   919→
+   920→Support:
+   921→
+   922→- Organization
+   923→- LocalBusiness
+   924→- Product
+   925→- Offer
+   926→- Review
+   927→- BreadcrumbList
+   928→- Article
+   929→- FAQPage
+   930→- HowTo
+   931→- Person
+   932→- Event
+   933→- JobPosting
+   934→- Service
+   935→- WebSite
+   936→- WebPage
+   937→
+   938→Provide:
+   939→
+   940→- Visual form
+   941→- Validation
+   942→- Required-field checks
+   943→- Content consistency checks
+   944→- JSON-LD generation
+   945→- CMS publishing
+   946→
+   947→Never fabricate ratings, reviews, prices or availability.
+   948→
+   949→## 24. SERP analysis
+   950→
+   951→Use only licensed APIs, official sources or imports.
+   952→
+   953→Analyse:
+   954→
+   955→- Content types
+   956→- Search intent
+   957→- SERP features
+   958→- Local results
+   959→- Shopping results
+   960→- Videos
+   961→- Forums
+   962→- Comparison sites
+   963→- Related questions
+   964→- Competitor domains
+   965→- Heading patterns
+   966→- Topic coverage
+   967→- Intent changes
+   968→
+   969→Never copy competitor content.
+   970→
+   971→## 25. WordPress and WooCommerce
+   972→
+   973→WordPress:
+   974→
+   975→- Retrieve pages and posts
+   976→- Retrieve categories and tags
+   977→- Create drafts
+   978→- Update drafts
+   979→- Preview
+   980→- Schedule
+   981→- Publish
+   982→- Set slug
+   983→- Set excerpt
+   984→- Set author
+   985→- Set featured image
+   986→- Set SEO metadata
+   987→- Support SEO plugin adapters
+   988→- Record publication versions
+   989→- Support rollback metadata
+   990→
+   991→WooCommerce:
+   992→
+   993→- Products
+   994→- Categories
+   995→- Variations
+   996→- Product descriptions
+   997→- Short descriptions
+   998→- Category content
+   999→- Inventory status
+  1000→- Out-of-stock products
+  1001→- Seasonal products
+  1002→- Product metadata
+  1003→- Reviews
+  1004→- Revenue signals
+  1005→- Margin data when supplied
+  1006→- Cross-sell content
+  1007→- Internal links
+  1008→
+  1009→Use official REST APIs.
+  1010→
+  1011→## 26. E-commerce SEO and product feeds
+  1012→
+  1013→Analyse:
+  1014→
+  1015→- Product titles
+  1016→- Product descriptions
+  1017→- Category pages
+  1018→- Product variations
+  1019→- Filters
+  1020→- Faceted navigation
+  1021→- Canonicals
+  1022→- Out-of-stock handling
+  1023→- Seasonal handling
+  1024→- Product schema
+  1025→- Internal links
+  1026→- Reviews
+  1027→- Images
+  1028→- Revenue by landing page
+  1029→- Conversion by category
+  1030→- SEO opportunity by margin
+  1031→
+  1032→Support feed analysis for:
+  1033→
+  1034→- Google Merchant Center
+  1035→- Meta catalogues
+  1036→- Comparison sites
+  1037→- Marketplaces
+  1038→- Affiliate feeds
+  1039→
+  1040→Validate:
+  1041→
+  1042→- Titles
+  1043→- Descriptions
+  1044→- Product types
+  1045→- Categories
+  1046→- GTIN
+  1047→- Inventory
+  1048→- Prices
+  1049→- Images
+  1050→- Rejections
+  1051→- Missing attributes
+  1052→- Website inconsistencies
+  1053→
+  1054→## 27. International SEO
+  1055→
+  1056→Support:
+  1057→
+  1058→- nl-NL
+  1059→- nl-BE
+  1060→- Extensible languages
+  1061→- Hreflang
+  1062→- Country structures
+  1063→- Language structures
+  1064→- Local search intent
+  1065→- Local keyword mapping
+  1066→- Translation workflows
+  1067→- Terminology lists
+  1068→- Translation memory
+  1069→- Local tone of voice
+  1070→- Cross-language duplication checks
+  1071→- Local CMS publishing
+  1072→- International reporting
+  1073→
+  1074→Do not assume literal translation matches local search intent.
+  1075→
+  1076→## 28. Local SEO
+  1077→
+  1078→Support:
+  1079→
+  1080→- Multiple locations
+  1081→- Location pages
+  1082→- Local keywords
+  1083→- Region clusters
+  1084→- NAP consistency
+  1085→- Opening hours
+  1086→- Local structured data
+  1087→- Local competitors
+  1088→- Review analysis
+  1089→- Local performance
+  1090→- Location comparisons
+  1091→- Local content planning
+  1092→- Local rank imports
+  1093→- Google Business Profile integration
+  1094→
+  1095→## 29. Google Business Profile
+  1096→
+  1097→Use official integrations.
+  1098→
+  1099→Where available support:
+  1100→
+  1101→- Business information checks
+  1102→- Category analysis
+  1103→- Opening hours
+  1104→- Post drafting
+  1105→- Photo planning
+  1106→- Review import
+  1107→- Review response drafting
+  1108→- Performance data
+  1109→- Location comparison
+  1110→- Local search questions
+  1111→
+  1112→Public responses require approval by default.
+  1113→
+  1114→## 30. Reputation management
+  1115→
+  1116→Accept reviews from:
+  1117→
+  1118→- Google
+  1119→- Trustpilot through permitted integrations or import
+  1120→- WooCommerce
+  1121→- The user’s website
+  1122→- CSV
+  1123→- Surveys
+  1124→- Support data
+  1125→
+  1126→Analyse:
+  1127→
+  1128→- Sentiment
+  1129→- Compliments
+  1130→- Complaints
+  1131→- Product problems
+  1132→- Service problems
+  1133→- Repeated themes
+  1134→- Competitor comparisons
+  1135→- FAQ opportunities
+  1136→- Content opportunities
+  1137→- Trust signals
+  1138→
+  1139→## 31. GEO and AI visibility
+  1140→
+  1141→Separate two products:
+  1142→
+  1143→A. GEO readiness
+  1144→
+  1145→Analyse:
+  1146→
+  1147→- Direct answers
+  1148→- Concise answer blocks
+  1149→- Definitions
+  1150→- Entities
+  1151→- Semantic coverage
+  1152→- Organisation information
+  1153→- Author information
+  1154→- Sources
+  1155→- Dates
+  1156→- Structured data
+  1157→- FAQs
+  1158→- Expertise
+  1159→- Citable facts
+  1160→- Unique information
+  1161→- Crawlability
+  1162→- Indexability
+  1163→- Brand consistency
+  1164→
+  1165→B. Measured AI visibility
+  1166→
+  1167→Support:
+  1168→
+  1169→- Manual input
+  1170→- CSV
+  1171→- Permitted APIs
+  1172→- Uploaded responses
+  1173→- Screenshots
+  1174→- Local simulations
+  1175→
+  1176→Store:
+  1177→
+  1178→- Platform
+  1179→- Model
+  1180→- Date
+  1181→- Prompt
+  1182→- Country
+  1183→- Language
+  1184→- Response
+  1185→- Mentioned brands
+  1186→- Mentioned URLs
+  1187→- Citations
+  1188→- Order
+  1189→- Sentiment
+  1190→- Correctness
+  1191→- Competitors
+  1192→- Method
+  1193→- Evidence
+  1194→- Confidence
+  1195→
+  1196→Measure:
+  1197→
+  1198→- Share of AI Voice
+  1199→- Brand mentions
+  1200→- Source mentions
+  1201→- Position in answer
+  1202→- Competitor mentions
+  1203→- Sentiment
+  1204→- Accuracy
+  1205→- Question coverage
+  1206→- Funnel-stage coverage
+  1207→- Country and language coverage
+  1208→
+  1209→Create AI prompt discovery and reusable prompt clusters.
+  1210→
+  1211→## 32. Competitor intelligence
+  1212→
+  1213→Track public changes:
+  1214→
+  1215→- New pages
+  1216→- Removed pages
+  1217→- Titles
+  1218→- Headings
+  1219→- Topics
+  1220→- Services
+  1221→- Categories
+  1222→- Locations
+  1223→- Structured data
+  1224→- Internal links
+  1225→- Publishing frequency
+  1226→- Public prices
+  1227→- Positioning
+  1228→
+  1229→Create a movement feed containing:
+  1230→
+  1231→- Date
+  1232→- Competitor
+  1233→- Change
+  1234→- URL
+  1235→- Summary
+  1236→- Potential impact
+  1237→- Recommended response
+  1238→- Evidence
+  1239→
+  1240→Never invent traffic or revenue.
+  1241→
+  1242→## 33. Digital PR and authority
+  1243→
+  1244→Support through providers and imports:
+  1245→
+  1246→- Backlinks
+  1247→- New links
+  1248→- Lost links
+  1249→- Link quality
+  1250→- Link gaps
+  1251→- Unlinked brand mentions
+  1252→- Competitor links
+  1253→- Outreach lists
+  1254→- Publications
+  1255→- Journalists
+  1256→- Campaigns
+  1257→- PR ideas
+  1258→- Press briefings
+  1259→- Outreach drafts
+  1260→- Campaign tracking
+  1261→
+  1262→Do not automate spam outreach.
+  1263→
+  1264→## 34. Trend detection
+  1265→
+  1266→Detect trends from:
+  1267→
+  1268→- Search Console queries
+  1269→- Internal search
+  1270→- Industry sources
+  1271→- Regulation changes
+  1272→- Seasonality
+  1273→- Competitor activity
+  1274→- New product terminology
+  1275→- Reviews
+  1276→- AI prompt changes
+  1277→
+  1278→For each trend provide:
+  1279→
+  1280→- Summary
+  1281→- Relevance
+  1282→- Urgency
+  1283→- Content opportunity
+  1284→- Recommended date
+  1285→- Expected lifespan
+  1286→
+  1287→## 35. Analytics and monitoring
+  1288→
+  1289→Monitor:
+  1290→
+  1291→- Clicks
+  1292→- Impressions
+  1293→- CTR
+  1294→- Rankings
+  1295→- Organic sessions
+  1296→- Landing pages
+  1297→- Leads
+  1298→- Conversions
+  1299→- Revenue
+  1300→- WooCommerce results
+  1301→- Technical issues
+  1302→- Publications
+  1303→- Content updates
+  1304→- Competitor changes
+  1305→- GEO readiness
+  1306→- AI visibility
+  1307→- Reviews
+  1308→- Local performance
+  1309→
+  1310→Alerts include:
+  1311→
+  1312→- Ranking drop
+  1313→- Click drop
+  1314→- Impression drop
+  1315→- CTR drop
+  1316→- Conversion drop
+  1317→- Revenue drop
+  1318→- Indexing issue
+  1319→- New 404
+  1320→- Unexpected noindex
+  1321→- Integration failure
+  1322→- Publishing failure
+  1323→- Lost AI mention
+  1324→- Negative review trend
+  1325→- Content decay
+  1326→- Competitor change
+  1327→- Deployment regression
+  1328→
+  1329→Reduce alert fatigue through:
+  1330→
+  1331→- Thresholds
+  1332→- Grouping
+  1333→- Snooze
+  1334→- Acknowledgement
+  1335→- Minimum data volumes
+  1336→- Severity levels
+  1337→- Digest summaries
+  1338→
+  1339→## 36. First-party analytics and behaviour
+  1340→
+  1341→Provide optional privacy-friendly analytics for:
+  1342→
+  1343→- Page views
+  1344→- Sessions
+  1345→- Sources
+  1346→- Campaigns
+  1347→- Events
+  1348→- Conversions
+  1349→- Funnels
+  1350→- Revenue
+  1351→- Server-side events
+  1352→- Cookieless basic measurement
+  1353→- Consent state
+  1354→
+  1355→Support behaviour imports or integrations for:
+  1356→
+  1357→- Scroll depth
+  1358→- Clicks
+  1359→- Rage clicks
+  1360→- Dead clicks
+  1361→- Form abandonment
+  1362→- Mobile behaviour
+  1363→- Desktop behaviour
+  1364→- Engagement
+  1365→
+  1366→Avoid storing unnecessary personal information.
+  1367→
+  1368→## 37. CRO and experiments
+  1369→
+  1370→Analyse:
+  1371→
+  1372→- CTAs
+  1373→- Forms
+  1374→- Friction
+  1375→- Trust elements
+  1376→- Value proposition
+  1377→- Price communication
+  1378→- Mobile UX
+  1379→- Funnel drop-off
+  1380→- Landing pages
+  1381→- Product pages
+  1382→- Checkout indicators
+  1383→- Leads
+  1384→- Revenue
+  1385→
+  1386→Generate hypotheses for:
+  1387→
+  1388→- Headlines
+  1389→- CTAs
+  1390→- Forms
+  1391→- Introductions
+  1392→- Product benefits
+  1393→- Social proof
+  1394→- Trust elements
+  1395→- Page structure
+  1396→
+  1397→Support experiments for:
+  1398→
+  1399→- Titles
+  1400→- Meta descriptions
+  1401→- H1
+  1402→- Content
+  1403→- Internal links
+  1404→- Structured data
+  1405→- CTAs
+  1406→- Forms
+  1407→- Templates
+  1408→- Product copy
+  1409→
+  1410→Track:
+  1411→
+  1412→- Hypothesis
+  1413→- Test group
+  1414→- Control group
+  1415→- KPI
+  1416→- Dates
+  1417→- Expected result
+  1418→- Measured result
+  1419→- Confidence
+  1420→- Conclusion
+  1421→- Recommended action
+  1422→
+  1423→Do not present correlation as proven causation.
+  1424→
+  1425→## 38. CTR optimisation
+  1426→
+  1427→Find high-impression, low-CTR pages.
+  1428→
+  1429→Generate title and description variants using:
+  1430→
+  1431→- Search intent
+  1432→- Brand
+  1433→- Page content
+  1434→- Audience
+  1435→- Main benefit
+  1436→- Existing performance
+  1437→
+  1438→Monitor changes and provide rollback.
+  1439→
+  1440→## 39. Forecasting and budget planning
+  1441→
+  1442→Forecast:
+  1443→
+  1444→- Traffic
+  1445→- Clicks
+  1446→- Leads
+  1447→- Conversions
+  1448→- Revenue
+  1449→- CTR improvements
+  1450→- Ranking improvements
+  1451→- Content growth
+  1452→- Production capacity
+  1453→- Investment needs
+  1454→
+  1455→Provide:
+  1456→
+  1457→- Conservative scenario
+  1458→- Realistic scenario
+  1459→- Ambitious scenario
+  1460→- Assumptions
+  1461→- Data sources
+  1462→- Uncertainty
+  1463→- Confidence
+  1464→- Value range
+  1465→
+  1466→Never present forecasts as guarantees.
+  1467→
+  1468→Create a budget planner for:
+  1469→
+  1470→- Technical SEO
+  1471→- Content
+  1472→- Content updates
+  1473→- Link building
+  1474→- Digital PR
+  1475→- CRO
+  1476→- Local SEO
+  1477→- GEO
+  1478→- Monitoring
+  1479→- Reporting
+  1480→- New pages
+  1481→
+  1482→## 40. Roadmap and collaboration
+  1483→
+  1484→Provide:
+  1485→
+  1486→- Today
+  1487→- This week
+  1488→- This month
+  1489→- Next 90 days
+  1490→- Later
+  1491→- Quick wins
+  1492→- Strategic projects
+  1493→- Technical blockers
+  1494→- Content opportunities
+  1495→- Conversion opportunities
+  1496→
+  1497→Views:
+  1498→
+  1499→- Kanban
+  1500→- Calendar
+  1501→- Table
+  1502→- Timeline
+  1503→
+  1504→Content workflow statuses:
+  1505→
+  1506→- Idea
+  1507→- Research
+  1508→- Brief
+  1509→- Draft
+  1510→- SEO review
+  1511→- Editorial review
+  1512→- Legal review
+  1513→- Client review
+  1514→- Approved
+  1515→- Scheduled
+  1516→- Published
+  1517→- Update required
+  1518→
+  1519→Support:
+  1520→
+  1521→- Comments
+  1522→- Mentions
+  1523→- Assignments
+  1524→- Deadlines
+  1525→- Approvals
+  1526→- Versions
+  1527→- Capacity planning
+  1528→- Attachments
+  1529→- Notifications
+  1530→
+  1531→## 41. White-label reporting
+  1532→
+  1533→This is a core product, not a minor export feature.
+  1534→
+  1535→Support branding:
+  1536→
+  1537→- Logo
+  1538→- Company name
+  1539→- Colours
+  1540→- Fonts
+  1541→- Contact details
+  1542→- Footer
+  1543→- Introduction
+  1544→- Closing text
+  1545→- Sender identity
+  1546→- Custom domain architecture
+  1547→- Custom templates
+  1548→- Removal of platform branding
+  1549→
+  1550→Report types:
+  1551→
+  1552→- Monthly
+  1553→- Quarterly
+  1554→- Technical audit
+  1555→- Content
+  1556→- Keywords
+  1557→- Competitors
+  1558→- Local SEO
+  1559→- GEO and AI visibility
+  1560→- WooCommerce
+  1561→- CRO
+  1562→- Revenue
+  1563→- Migration
+  1564→- Executive summary
+  1565→- Holistic SEO
+  1566→- Custom report
+  1567→
+  1568→Report builder:
+  1569→
+  1570→- Drag-and-drop sections
+  1571→- Reusable templates
+  1572→- Charts
+  1573→- KPI cards
+  1574→- Tables
+  1575→- Text
+  1576→- Recommendations
+  1577→- Roadmaps
+  1578→- Comments
+  1579→- Preview
+  1580→- Versions
+  1581→
+  1582→Export and sharing:
+  1583→
+  1584→- HTML
+  1585→- PDF
+  1586→- CSV
+  1587→- Secure link
+  1588→- Password
+  1589→- Expiry date
+  1590→- Client comments
+  1591→- Archive
+  1592→- Scheduling
+  1593→- Approval
+  1594→- Audit log
+  1595→
+  1596→AI-generated summaries may:
+  1597→
+  1598→- Summarise trends
+  1599→- Identify changes
+  1600→- Suggest possible explanations
+  1601→- Recommend actions
+  1602→
+  1603→AI-generated summaries may not:
+  1604→
+  1605→- Invent figures
+  1606→- Present uncertain causes as facts
+  1607→- Fill missing data
+  1608→- Guarantee growth
+  1609→
+  1610→## 42. Client portal and agency operations
+  1611→
+  1612→Client portal:
+  1613→
+  1614→- Reports
+  1615→- Results
+  1616→- Roadmap
+  1617→- Content approval
+  1618→- Comments
+  1619→- Task approval
+  1620→- Documents
+  1621→- AI draft review
+  1622→- Technical action approval
+  1623→- Meeting notes
+  1624→
+  1625→Agency operations:
+  1626→
+  1627→- Multiple clients
+  1628→- Contract limits
+  1629→- Deliverables
+  1630→- Time tracking
+  1631→- Monthly work
+  1632→- Client health
+  1633→- Team capacity
+  1634→- Assignments
+  1635→- Profitability
+  1636→- Recurring tasks
+  1637→- Approval workflows
+  1638→- Subscription architecture
+  1639→- Billing adapters
+  1640→- Internal notes
+  1641→- SLAs
+  1642→
+  1643→Do not expose internal margins or private notes to clients.
+  1644→
+  1645→## 43. Benchmarking
+  1646→
+  1647→Allow benchmarking within an organisation for:
+  1648→
+  1649→- CTR
+  1650→- Technical health
+  1651→- Publishing frequency
+  1652→- Content growth
+  1653→- Conversion rate
+  1654→- Issue resolution time
+  1655→- GEO readiness
+  1656→- AI visibility
+  1657→- Organic growth
+  1658→- Publication speed
+  1659→
+  1660→Cross-client benchmarking requires:
+  1661→
+  1662→- Anonymisation
+  1663→- Permission
+  1664→- Removal of sensitive details
+  1665→
+  1666→## 44. Dutch AI copilot
+  1667→
+  1668→Create a project-aware Dutch copilot.
+  1669→
+  1670→It should answer questions such as:
+  1671→
+  1672→- Welke pagina’s moet ik eerst verbeteren?
+  1673→- Waarom zijn mijn bezoekers gedaald?
+  1674→- Welke content ontbreekt?
+  1675→- Welke pagina’s concurreren met elkaar?
+  1676→- Wat heeft mijn concurrent veranderd?
+  1677→- Welke technische problemen zijn het belangrijkst?
+  1678→- Maak een briefing voor deze zoekterm.
+  1679→- Welke acties leveren waarschijnlijk de meeste omzet op?
+  1680→- Vat deze maand samen voor mijn klant.
+  1681→- Welke vestiging heeft aandacht nodig?
+  1682→- Waar ontbreekt mijn merk in AI-antwoorden?
+  1683→
+  1684→The copilot must:
+  1685→
+  1686→- Ground answers in project data
+  1687→- Cite internal evidence
+  1688→- Link to pages and reports
+  1689→- State uncertainty
+  1690→- Never invent metrics
+  1691→- Prepare actions
+  1692→- Require approval for risky actions
+  1693→
+  1694→## 45. Specialised AI agents
+  1695→
+  1696→Create:
+  1697→
+  1698→- Strategy Agent
+  1699→- Technical SEO Agent
+  1700→- Content Research Agent
+  1701→- Content Writer Agent
+  1702→- Content Quality Agent
+  1703→- Internal Linking Agent
+  1704→- Local SEO Agent
+  1705→- E-commerce Agent
+  1706→- GEO Agent
+  1707→- Competitor Agent
+  1708→- CRO Agent
+  1709→- Reporting Agent
+  1710→- Publishing Agent
+  1711→- Migration Agent
+  1712→- Quality Assurance Agent
+  1713→
+  1714→Every agent run records:
+  1715→
+  1716→- Objective
+  1717→- Inputs
+  1718→- Data sources
+  1719→- Proposed action
+  1720→- Expected impact
+  1721→- Risk
+  1722→- Approval status
+  1723→- Result
+  1724→- Audit log
+  1725→
+  1726→## 46. Change detection and rollback
+  1727→
+  1728→Track changes to:
+  1729→
+  1730→- Titles
+  1731→- Meta descriptions
+  1732→- Headings
+  1733→- Content
+  1734→- Canonicals
+  1735→- Robots directives
+  1736→- Structured data
+  1737→- Internal links
+  1738→- Templates
+  1739→- Products
+  1740→- Redirects
+  1741→
+  1742→Show:
+  1743→
+  1744→- Previous value
+  1745→- New value
+  1746→- Date
+  1747→- User or system
+  1748→- Origin
+  1749→- Potential impact
+  1750→
+  1751→## 47. Website migrations
+  1752→
+  1753→Support:
+  1754→
+  1755→- Old URL inventory
+  1756→- New URL inventory
+  1757→- Redirect mapping
+  1758→- Metadata transfer
+  1759→- Content mapping
+  1760→- Internal link checks
+  1761→- Staging crawl
+  1762→- Template comparison
+  1763→- Pre-launch checklist
+  1764→- Go-live checks
+  1765→- 404 monitoring
+  1766→- Redirect validation
+  1767→- Ranking monitoring
+  1768→- Traffic monitoring
+  1769→- Post-migration report
+  1770→
+  1771→## 48. Deployment monitoring
+  1772→
+  1773→Support optional integration with:
+  1774→
+  1775→- GitHub
+  1776→- GitLab
+  1777→- CI/CD tools
+  1778→- Webhooks
+  1779→
+  1780→After deployment check:
+  1781→
+  1782→- robots.txt
+  1783→- Canonicals
+  1784→- Titles
+  1785→- Meta robots
+  1786→- Sitemaps
+  1787→- Status codes
+  1788→- Structured data
+  1789→- Internal links
+  1790→- Rendering
+  1791→- Performance
+  1792→- Critical pages
+  1793→
+  1794→## 49. Project management integrations
+  1795→
+  1796→Create adapter interfaces for:
+  1797→
+  1798→- Jira
+  1799→- Trello
+  1800→- Asana
+  1801→- ClickUp
+  1802→- Monday
+  1803→- Linear
+  1804→- GitHub Issues
+  1805→- Webhooks
+  1806→
+  1807→Convert SEO issues into tasks containing:
+  1808→
+  1809→- Title
+  1810→- Plain-language explanation
+  1811→- Technical instructions
+  1812→- Priority
+  1813→- URLs
+  1814→- Evidence
+  1815→- Deadline
+  1816→- Owner
+  1817→- Status
+  1818→
+  1819→## 50. Security and privacy
+  1820→
+  1821→Implement:
+  1822→
+  1823→- Secure authentication
+  1824→- Strong password hashing
+  1825→- Tenant isolation
+  1826→- Role-based access control
+  1827→- CSRF protection where applicable
+  1828→- Rate limiting
+  1829→- Validation
+  1830→- Output escaping
+  1831→- Secret encryption
+  1832→- Audit logging
+  1833→- Secure uploads
+  1834→- MIME validation
+  1835→- SSRF protection
+  1836→- Private network protection
+  1837→- Crawl allowlists
+  1838→- Secret masking
+  1839→- Backups
+  1840→- Retention settings
+  1841→- Data export
+  1842→- Account deletion
+  1843→- Project deletion
+  1844→- Privacy-friendly defaults
+  1845→- External AI consent
+  1846→- Behaviour tracking consent
+  1847→
+  1848→## 51. Required core entities
+  1849→
+  1850→At minimum design:
+  1851→
+  1852→- User
+  1853→- Organization
+  1854→- OrganizationMember
+  1855→- Client
+  1856→- WebsiteProject
+  1857→- Domain
+  1858→- Location
+  1859→- BrandProfile
+  1860→- Persona
+  1861→- CustomerJourney
+  1862→- Integration
+  1863→- Crawl
+  1864→- CrawlPage
+  1865→- PageSnapshot
+  1866→- SeoIssue
+  1867→- SeoRule
+  1868→- Keyword
+  1869→- KeywordMetric
+  1870→- SearchQuery
+  1871→- SearchIntent
+  1872→- Topic
+  1873→- TopicCluster
+  1874→- TopicRelation
+  1875→- ContentItem
+  1876→- ContentBrief
+  1877→- ContentVersion
+  1878→- ContentQualityCheck
+  1879→- ProgrammaticTemplate
+  1880→- ProgrammaticPage
+  1881→- InternalLink
+  1882→- InternalLinkSuggestion
+  1883→- CmsPublication
+  1884→- Product
+  1885→- ProductCategory
+  1886→- ProductFeed
+  1887→- Competitor
+  1888→- CompetitorPage
+  1889→- CompetitorChange
+  1890→- Backlink
+  1891→- BrandMention
+  1892→- Review
+  1893→- ReputationInsight
+  1894→- GeoPrompt
+  1895→- GeoTestRun
+  1896→- GeoMention
+  1897→- AnalyticsMetric
+  1898→- ConversionMetric
+  1899→- RevenueMetric
+  1900→- BehaviorMetric
+  1901→- Experiment
+  1902→- Forecast
+  1903→- BudgetPlan
+  1904→- Alert
+  1905→- RoadmapItem
+  1906→- Task
+  1907→- Report
+  1908→- ReportTemplate
+  1909→- ReportSection
+  1910→- ReportSnapshot
+  1911→- WhiteLabelProfile
+  1912→- MigrationProject
+  1913→- MigrationUrlMapping
+  1914→- DeploymentCheck
+  1915→- AiProviderConfiguration
+  1916→- AiRun
+  1917→- AgentRun
+  1918→- AuditLog
+  1919→- ScheduledJob
+  1920→
+  1921→Use:
+  1922→
+  1923→- UUIDs
+  1924→- Tenant IDs
+  1925→- Project IDs
+  1926→- Created timestamps
+  1927→- Updated timestamps
+  1928→- Created-by fields
+  1929→- Status fields
+  1930→- Versions
+  1931→- Soft deletion where appropriate
+  1932→
+  1933→## 52. Required API groups
+  1934→
+  1935→Create a versioned REST API under /api/v1.
+  1936→
+  1937→Include route groups for:
+  1938→
+  1939→- auth
+  1940→- organizations
+  1941→- clients
+  1942→- projects
+  1943→- websites
+  1944→- locations
+  1945→- crawls
+  1946→- pages
+  1947→- issues
+  1948→- keywords
+  1949→- intents
+  1950→- clusters
+  1951→- content
+  1952→- programmatic-seo
+  1953→- internal-links
+  1954→- structured-data
+  1955→- integrations
+  1956→- wordpress
+  1957→- woocommerce
+  1958→- monitoring
+  1959→- analytics
+  1960→- conversions
+  1961→- revenue
+  1962→- competitors
+  1963→- authority
+  1964→- reputation
+  1965→- local-seo
+  1966→- geo
+  1967→- alerts
+  1968→- forecasts
+  1969→- budgets
+  1970→- experiments
+  1971→- roadmap
+  1972→- tasks
+  1973→- reports
+  1974→- white-label
+  1975→- client-portal
+  1976→- ai-providers
+  1977→- copilot
+  1978→- agents
+  1979→- migrations
+  1980→- deployments
+  1981→- audit-logs
+  1982→- system
+  1983→
+  1984→Use:
+  1985→
+  1986→- Pagination
+  1987→- Filtering
+  1988→- Sorting
+  1989→- Bulk actions
+  1990→- Idempotency where needed
+  1991→- Structured error responses
+  1992→- OpenAPI documentation
+  1993→- Background job IDs
+  1994→- Tenant authorisation
+  1995→
+  1996→## 53. Completion rules
+  1997→
+  1998→A feature is not complete when:
+  1999→
+  2000→- It only has a non-functional button
+
+[showing lines 1-2000 of 2026; use offset=2001 with limit to continue reading]

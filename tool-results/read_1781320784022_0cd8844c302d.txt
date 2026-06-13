@@ -1,0 +1,1432 @@
+     1→// ============================================================================
+     2→// Structured Data Generator — SEOCoach
+     3→// Generates schema.org JSON-LD structured data
+     4→// ============================================================================
+     5→
+     6→import type { StructuredDataType } from '@prisma/client'
+     7→import { db } from '@/lib/db'
+     8→import type {
+     9→  StructuredDataGenerationRequest,
+    10→  StructuredDataGenerationResult,
+    11→  AnySchemaObject,
+    12→  OrganizationSchema,
+    13→  LocalBusinessSchema,
+    14→  ProductSchema,
+    15→  OfferSchema,
+    16→  ReviewSchema,
+    17→  BreadcrumbListSchema,
+    18→  ArticleSchema,
+    19→  FAQPageSchema,
+    20→  HowToSchema,
+    21→  PersonSchema,
+    22→  EventSchema,
+    23→  JobPostingSchema,
+    24→  ServiceSchema,
+    25→  WebSiteSchema,
+    26→  WebPageSchema,
+    27→  FAQInput,
+    28→  BreadcrumbInput,
+    29→  HowToStepInput,
+    30→  ContactPointSchema,
+    31→  PostalAddressSchema,
+    32→  GeoCoordinatesSchema,
+    33→  RatingSchema,
+    34→  BreadcrumbItem,
+    35→  FAQQuestion,
+    36→  HowToStep,
+    37→  SearchActionSchema,
+    38→} from './types'
+    39→import { validateStructuredData } from './validator'
+    40→
+    41→// ============================================================================
+    42→// Helper: clean object of undefined/null values
+    43→// ============================================================================
+    44→
+    45→function cleanObject<T extends Record<string, unknown>>(obj: T): Record<string, unknown> {
+    46→  const cleaned: Record<string, unknown> = {}
+    47→  for (const [key, value] of Object.entries(obj)) {
+    48→    if (value !== undefined && value !== null && value !== '') {
+    49→      if (Array.isArray(value)) {
+    50→        if (value.length > 0) {
+    51→          cleaned[key] = value
+    52→        }
+    53→      } else if (typeof value === 'object' && !('@type' in (value as Record<string, unknown>))) {
+    54→        const nested = cleanObject(value as Record<string, unknown>)
+    55→        if (Object.keys(nested).length > 0) {
+    56→          cleaned[key] = nested
+    57→        }
+    58→      } else {
+    59→        cleaned[key] = value
+    60→      }
+    61→    }
+    62→  }
+    63→  return cleaned
+    64→}
+    65→
+    66→// ============================================================================
+    67→// Parse JSON field from database (safely)
+    68→// ============================================================================
+    69→
+    70→function safeParseJson<T>(jsonString: string | null | undefined): T | null {
+    71→  if (!jsonString) return null
+    72→  try {
+    73→    return JSON.parse(jsonString) as T
+    74→  } catch {
+    75→    return null
+    76→  }
+    77→}
+    78→
+    79→// ============================================================================
+    80→// Load brand profile from database
+    81→// ============================================================================
+    82→
+    83→interface BrandProfileData {
+    84→  brandName: string | null
+    85→  description: string | null
+    86→  contactInformation: {
+    87→    phone?: string
+    88→    email?: string
+    89→    website?: string
+    90→    address?: string
+    91→    city?: string
+    92→    postalCode?: string
+    93→    country?: string
+    94→    socialLinks?: string[]
+    95→  } | null
+    96→  services: string[] | null
+    97→  products: string[] | null
+    98→}
+    99→
+   100→async function loadBrandProfile(projectId: string): Promise<BrandProfileData | null> {
+   101→  const profile = await db.brandProfile.findUnique({
+   102→    where: { projectId },
+   103→  })
+   104→
+   105→  if (!profile) return null
+   106→
+   107→  const contactInfo = safeParseJson<BrandProfileData['contactInformation']>(
+   108→    profile.contactInformation
+   109→  )
+   110→
+   111→  const services = safeParseJson<string[]>(profile.services)
+   112→  const products = safeParseJson<string[]>(profile.products)
+   113→
+   114→  return {
+   115→    brandName: profile.brandName,
+   116→    description: profile.description,
+   117→    contactInformation: contactInfo,
+   118→    services,
+   119→    products,
+   120→  }
+   121→}
+   122→
+   123→// ============================================================================
+   124→// Load project data
+   125→// ============================================================================
+   126→
+   127→async function loadProject(projectId: string) {
+   128→  return db.project.findUnique({
+   129→    where: { id: projectId },
+   130→    include: {
+   131→      brandProfile: true,
+   132→      domains: { where: { isPrimary: true } },
+   133→    },
+   134→  })
+   135→}
+   136→
+   137→// ============================================================================
+   138→// Load page data
+   139→// ============================================================================
+   140→
+   141→async function loadPage(pageId: string) {
+   142→  return db.page.findUnique({
+   143→    where: { id: pageId },
+   144→  })
+   145→}
+   146→
+   147→// ============================================================================
+   148→// Load content brief with latest version
+   149→// ============================================================================
+   150→
+   151→async function loadContentBrief(briefId: string) {
+   152→  return db.contentBrief.findUnique({
+   153→    where: { id: briefId },
+   154→    include: {
+   155→      versions: {
+   156→        orderBy: { version: 'desc' },
+   157→        take: 1,
+   158→      },
+   159→    },
+   160→  })
+   161→}
+   162→
+   163→// ============================================================================
+   164→// Load location data
+   165→// ============================================================================
+   166→
+   167→async function loadLocation(locationId: string) {
+   168→  return db.location.findUnique({
+   169→    where: { id: locationId },
+   170→  })
+   171→}
+   172→
+   173→// ============================================================================
+   174→// Main generation function
+   175→// ============================================================================
+   176→
+   177→export async function generateStructuredData(
+   178→  request: StructuredDataGenerationRequest
+   179→): Promise<StructuredDataGenerationResult> {
+   180→  const { type, projectId, pageId, url, existingData } = request
+   181→
+   182→  // Load contextual data
+   183→  const project = await loadProject(projectId)
+   184→  const brandProfile = project?.brandProfile
+   185→    ? await loadBrandProfile(projectId)
+   186→    : null
+   187→
+   188→  let pageData: Awaited<ReturnType<typeof loadPage>> = null
+   189→  if (pageId) {
+   190→    pageData = await loadPage(pageId)
+   191→  }
+   192→
+   193→  let schemaObject: AnySchemaObject
+   194→
+   195→  switch (type) {
+   196→    case 'ORGANIZATION':
+   197→      schemaObject = await buildOrganizationSchema(projectId, brandProfile, project)
+   198→      break
+   199→    case 'LOCAL_BUSINESS':
+   200→      schemaObject = await buildLocalBusinessSchema(projectId, brandProfile, project)
+   201→      break
+   202→    case 'PRODUCT':
+   203→      schemaObject = buildProductSchema(projectId, pageData, existingData)
+   204→      break
+   205→    case 'OFFER':
+   206→      schemaObject = buildOfferSchema(existingData)
+   207→      break
+   208→    case 'REVIEW':
+   209→      schemaObject = buildReviewSchema(existingData)
+   210→      break
+   211→    case 'BREADCRUMB_LIST':
+   212→      schemaObject = buildBreadcrumbSchemaFromPage(pageData, url, existingData)
+   213→      break
+   214→    case 'ARTICLE':
+   215→      schemaObject = await buildArticleSchema(projectId, pageData, brandProfile, existingData)
+   216→      break
+   217→    case 'FAQ_PAGE':
+   218→      schemaObject = buildFAQPageSchemaFromExisting(existingData)
+   219→      break
+   220→    case 'HOW_TO':
+   221→      schemaObject = buildHowToSchemaFromExisting(existingData)
+   222→      break
+   223→    case 'PERSON':
+   224→      schemaObject = buildPersonSchema(existingData)
+   225→      break
+   226→    case 'EVENT':
+   227→      schemaObject = buildEventSchema(existingData)
+   228→      break
+   229→    case 'JOB_POSTING':
+   230→      schemaObject = buildJobPostingSchema(brandProfile, existingData)
+   231→      break
+   232→    case 'SERVICE':
+   233→      schemaObject = buildServiceSchema(brandProfile, existingData)
+   234→      break
+   235→    case 'WEB_SITE':
+   236→      schemaObject = buildWebSiteSchema(project, brandProfile)
+   237→      break
+   238→    case 'WEB_PAGE':
+   239→      schemaObject = buildWebPageSchema(pageData, url)
+   240→      break
+   241→    default:
+   242→      schemaObject = { '@context': 'https://schema.org', '@type': type } as AnySchemaObject
+   243→  }
+   244→
+   245→  // Ensure @context is set for top-level schema
+   246→  if (!schemaObject['@context']) {
+   247→    schemaObject = { ...schemaObject, '@context': 'https://schema.org' } as AnySchemaObject
+   248→  }
+   249→
+   250→  // Validate the generated schema
+   251→  const validation = validateStructuredData(type, schemaObject as unknown as Record<string, unknown>)
+   252→
+   253→  // Generate JSON-LD string
+   254→  const jsonLd = JSON.stringify(schemaObject, null, 2)
+   255→
+   256→  // Save to database
+   257→  const structuredDataRecord = await db.structuredData.create({
+   258→    data: {
+   259→      projectId,
+   260→      pageId: pageId ?? null,
+   261→      url: url ?? pageData?.url ?? null,
+   262→      type,
+   263→      data: jsonLd,
+   264→      isValid: validation.isValid,
+   265→      validationErrors: validation.errors.length > 0
+   266→        ? JSON.stringify(validation.errors)
+   267→        : null,
+   268→      missingFields: validation.missingRequiredFields.length > 0
+   269→        ? JSON.stringify(validation.missingRequiredFields)
+   270→        : null,
+   271→      isAutoGenerated: true,
+   272→    },
+   273→  })
+   274→
+   275→  return {
+   276→    jsonLd,
+   277→    validation,
+   278→    structuredDataId: structuredDataRecord.id,
+   279→  }
+   280→}
+   281→
+   282→// ============================================================================
+   283→// Organization Schema Builder
+   284→// ============================================================================
+   285→
+   286→async function buildOrganizationSchema(
+   287→  projectId: string,
+   288→  brandProfile: BrandProfileData | null,
+   289→  project: Awaited<ReturnType<typeof loadProject>>
+   290→): Promise<OrganizationSchema> {
+   291→  const schema: OrganizationSchema = {
+   292→    '@context': 'https://schema.org',
+   293→    '@type': 'Organization',
+   294→    name: brandProfile?.brandName ?? project?.name ?? '',
+   295→  }
+   296→
+   297→  // URL from project or brand
+   298→  const websiteUrl = brandProfile?.contactInformation?.website ?? project?.websiteUrl
+   299→  if (websiteUrl) {
+   300→    schema.url = websiteUrl
+   301→  }
+   302→
+   303→  // Logo - use project website URL as base (logo URL would come from brand profile data)
+   304→  // We don't fabricate a logo URL if none exists
+   305→
+   306→  // Address
+   307→  const contact = brandProfile?.contactInformation
+   308→  if (contact?.address || contact?.city || contact?.postalCode || contact?.country) {
+   309→    const address: PostalAddressSchema = {
+   310→      '@type': 'PostalAddress',
+   311→    }
+   312→    if (contact.address) address.streetAddress = contact.address
+   313→    if (contact.city) address.addressLocality = contact.city
+   314→    if (contact.postalCode) address.postalCode = contact.postalCode
+   315→    if (contact.country) address.addressCountry = contact.country
+   316→
+   317→    schema.address = address
+   318→  }
+   319→
+   320→  // Contact point
+   321→  if (contact?.phone || contact?.email) {
+   322→    const contactPoint: ContactPointSchema = {
+   323→      '@type': 'ContactPoint',
+   324→    }
+   325→    if (contact.phone) contactPoint.telephone = contact.phone
+   326→    if (contact.email) contactPoint.email = contact.email
+   327→    contactPoint.contactType = 'klantenservice'
+   328→
+   329→    schema.contactPoint = [contactPoint]
+   330→  }
+   331→
+   332→  // Social links as sameAs
+   333→  if (contact?.socialLinks && contact.socialLinks.length > 0) {
+   334→    schema.sameAs = contact.socialLinks
+   335→  }
+   336→
+   337→  return schema as OrganizationSchema
+   338→}
+   339→
+   340→// ============================================================================
+   341→// LocalBusiness Schema Builder
+   342→// ============================================================================
+   343→
+   344→async function buildLocalBusinessSchema(
+   345→  projectId: string,
+   346→  brandProfile: BrandProfileData | null,
+   347→  project: Awaited<ReturnType<typeof loadProject>>
+   348→): Promise<LocalBusinessSchema> {
+   349→  // Start with Organization base
+   350→  const orgSchema = await buildOrganizationSchema(projectId, brandProfile, project)
+   351→
+   352→  const schema: LocalBusinessSchema = {
+   353→    '@context': 'https://schema.org',
+   354→    '@type': 'LocalBusiness',
+   355→    name: orgSchema.name,
+   356→  }
+   357→
+   358→  // Copy optional fields from Organization
+   359→  if (orgSchema.url) schema.url = orgSchema.url
+   360→  if (orgSchema.logo) schema.logo = orgSchema.logo
+   361→  if (orgSchema.contactPoint) schema.contactPoint = orgSchema.contactPoint
+   362→  if (orgSchema.sameAs) schema.sameAs = orgSchema.sameAs
+   363→  if (orgSchema.address) schema.address = orgSchema.address
+   364→
+   365→  // Try to load first location for LocalBusiness-specific fields
+   366→  const location = await db.location.findFirst({
+   367→    where: { projectId, deletedAt: null },
+   368→  })
+   369→
+   370→  if (location) {
+   371→    // Override address with location-specific address if available
+   372→    if (location.address || location.city || location.postalCode || location.country) {
+   373→      const address: PostalAddressSchema = {
+   374→        '@type': 'PostalAddress',
+   375→      }
+   376→      if (location.address) address.streetAddress = location.address
+   377→      if (location.city) address.addressLocality = location.city
+   378→      if (location.postalCode) address.postalCode = location.postalCode
+   379→      if (location.country) address.addressCountry = location.country
+   380→      schema.address = address
+   381→    }
+   382→
+   383→    if (location.phone) {
+   384→      schema.telephone = location.phone
+   385→    }
+   386→
+   387→    if (location.latitude !== null && location.latitude !== undefined &&
+   388→        location.longitude !== null && location.longitude !== undefined) {
+   389→      const geo: GeoCoordinatesSchema = {
+   390→        '@type': 'GeoCoordinates',
+   391→        latitude: location.latitude,
+   392→        longitude: location.longitude,
+   393→      }
+   394→      schema.geo = geo
+   395→    }
+   396→  }
+   397→
+   398→  return schema
+   399→}
+   400→
+   401→// ============================================================================
+   402→// Product Schema Builder
+   403→// ============================================================================
+   404→
+   405→function buildProductSchema(
+   406→  projectId: string,
+   407→  pageData: Awaited<ReturnType<typeof loadPage>>,
+   408→  existingData?: Record<string, unknown>
+   409→): ProductSchema {
+   410→  const schema: ProductSchema = {
+   411→    '@context': 'https://schema.org',
+   412→    '@type': 'Product',
+   413→    name: (existingData?.productName as string) ?? pageData?.h1 ?? pageData?.title ?? '',
+   414→  }
+   415→
+   416→  if (pageData?.description || existingData?.description) {
+   417→    schema.description = (existingData?.description as string) ?? pageData?.description ?? undefined
+   418→  }
+   419→
+   420→  if (existingData?.image) {
+   421→    schema.image = existingData.image as string
+   422→  }
+   423→
+   424→  if (existingData?.brand) {
+   425→    if (typeof existingData.brand === 'string') {
+   426→      schema.brand = { '@type': 'Brand', name: existingData.brand }
+   427→    } else {
+   428→      schema.brand = existingData.brand as { '@type': 'Brand'; name: string }
+   429→    }
+   430→  }
+   431→
+   432→  if (existingData?.sku) {
+   433→    schema.sku = existingData.sku as string
+   434→  }
+   435→
+   436→  if (existingData?.mpn) {
+   437→    schema.mpn = existingData.mpn as string
+   438→  }
+   439→
+   440→  // Build offers if price data is available
+   441→  if (existingData?.price !== undefined || existingData?.priceCurrency) {
+   442→    const offer: OfferSchema = {
+   443→      '@type': 'Offer',
+   444→      price: (existingData?.price as number) ?? 0,
+   445→      priceCurrency: (existingData?.priceCurrency as string) ?? 'EUR',
+   446→    }
+   447→    if (existingData?.availability) {
+   448→      offer.availability = existingData.availability as string
+   449→    }
+   450→    if (existingData?.offerUrl) {
+   451→      offer.url = existingData.offerUrl as string
+   452→    }
+   453→    if (existingData?.priceValidUntil) {
+   454→      offer.priceValidUntil = existingData.priceValidUntil as string
+   455→    }
+   456→    schema.offers = offer
+   457→  }
+   458→
+   459→  // Build reviews if provided
+   460→  if (Array.isArray(existingData?.reviews)) {
+   461→    schema.review = (existingData.reviews as Array<Record<string, unknown>>).map((r) => {
+   462→      const review: ReviewSchema = {
+   463→        '@type': 'Review',
+   464→        author: typeof r.author === 'string'
+   465→          ? r.author
+   466→          : { '@type': 'Person', name: String((r.author as Record<string, unknown>)?.name ?? '') },
+   467→        reviewRating: {
+   468→          '@type': 'Rating',
+   469→          ratingValue: r.ratingValue as number ?? 0,
+   470→        },
+   471→      }
+   472→      if (r.reviewBody) review.reviewBody = r.reviewBody as string
+   473→      if (r.datePublished) review.datePublished = r.datePublished as string
+   474→      return review
+   475→    })
+   476→  }
+   477→
+   478→  return schema
+   479→}
+   480→
+   481→// ============================================================================
+   482→// Offer Schema Builder
+   483→// ============================================================================
+   484→
+   485→function buildOfferSchema(existingData?: Record<string, unknown>): OfferSchema {
+   486→  const schema: OfferSchema = {
+   487→    '@context': 'https://schema.org',
+   488→    '@type': 'Offer',
+   489→    price: (existingData?.price as number) ?? 0,
+   490→    priceCurrency: (existingData?.priceCurrency as string) ?? 'EUR',
+   491→  }
+   492→
+   493→  if (existingData?.availability) {
+   494→    schema.availability = existingData.availability as string
+   495→  }
+   496→  if (existingData?.url) {
+   497→    schema.url = existingData.url as string
+   498→  }
+   499→  if (existingData?.priceValidUntil) {
+   500→    schema.priceValidUntil = existingData.priceValidUntil as string
+   501→  }
+   502→
+   503→  return schema
+   504→}
+   505→
+   506→// ============================================================================
+   507→// Review Schema Builder
+   508→// ============================================================================
+   509→
+   510→function buildReviewSchema(existingData?: Record<string, unknown>): ReviewSchema {
+   511→  const rating: RatingSchema = {
+   512→    '@type': 'Rating',
+   513→    ratingValue: (existingData?.ratingValue as number) ?? 0,
+   514→  }
+   515→  if (existingData?.bestRating !== undefined) {
+   516→    rating.bestRating = existingData.bestRating as number
+   517→  }
+   518→  if (existingData?.worstRating !== undefined) {
+   519→    rating.worstRating = existingData.worstRating as number
+   520→  }
+   521→
+   522→  const schema: ReviewSchema = {
+   523→    '@context': 'https://schema.org',
+   524→    '@type': 'Review',
+   525→    author: (existingData?.author as string) ?? '',
+   526→    reviewRating: rating,
+   527→  }
+   528→
+   529→  if (existingData?.reviewBody) {
+   530→    schema.reviewBody = existingData.reviewBody as string
+   531→  }
+   532→  if (existingData?.datePublished) {
+   533→    schema.datePublished = existingData.datePublished as string
+   534→  }
+   535→
+   536→  return schema
+   537→}
+   538→
+   539→// ============================================================================
+   540→// Breadcrumb Schema Builder (from page data)
+   541→// ============================================================================
+   542→
+   543→function buildBreadcrumbSchemaFromPage(
+   544→  pageData: Awaited<ReturnType<typeof loadPage>>,
+   545→  url?: string,
+   546→  existingData?: Record<string, unknown>
+   547→): BreadcrumbListSchema {
+   548→  // If items are provided via existingData, use them
+   549→  if (Array.isArray(existingData?.items)) {
+   550→    const items = existingData.items as Array<{ name: string; url: string }>
+   551→    return generateBreadcrumbSchema(items)
+   552→  }
+   553→
+   554→  // Otherwise, try to build from URL path
+   555→  const pageUrl = url ?? pageData?.url ?? ''
+   556→  const items: BreadcrumbInput[] = []
+   557→
+   558→  if (pageUrl) {
+   559→    try {
+   560→      const parsedUrl = new URL(pageUrl)
+   561→      const pathSegments = parsedUrl.pathname
+   562→        .split('/')
+   563→        .filter((segment) => segment.length > 0)
+   564→
+   565→      // Home breadcrumb
+   566→      items.push({
+   567→        name: 'Home',
+   568→        url: `${parsedUrl.protocol}//${parsedUrl.host}`,
+   569→      })
+   570→
+   571→      // Build path progressively
+   572→      let currentPath = ''
+   573→      for (const segment of pathSegments) {
+   574→        currentPath += `/${segment}`
+   575→        // Convert segment to readable name
+   576→        const name = segment
+   577→          .replace(/[-_]/g, ' ')
+   578→          .replace(/\b\w/g, (char) => char.toUpperCase())
+   579→        items.push({
+   580→          name,
+   581→          url: `${parsedUrl.protocol}//${parsedUrl.host}${currentPath}`,
+   582→        })
+   583→      }
+   584→    } catch {
+   585→      // Invalid URL, return empty breadcrumb
+   586→    }
+   587→  }
+   588→
+   589→  return generateBreadcrumbSchema(items)
+   590→}
+   591→
+   592→// ============================================================================
+   593→// Article Schema Builder
+   594→// ============================================================================
+   595→
+   596→async function buildArticleSchema(
+   597→  projectId: string,
+   598→  pageData: Awaited<ReturnType<typeof loadPage>>,
+   599→  brandProfile: BrandProfileData | null,
+   600→  existingData?: Record<string, unknown>
+   601→): Promise<ArticleSchema> {
+   602→  const schema: ArticleSchema = {
+   603→    '@context': 'https://schema.org',
+   604→    '@type': 'Article',
+   605→    headline: (existingData?.headline as string) ?? pageData?.title ?? pageData?.h1 ?? '',
+   606→    author: (existingData?.author as string) ?? '',
+   607→    datePublished: (existingData?.datePublished as string)
+   608→      ?? (pageData?.publicationDate ? new Date(pageData.publicationDate).toISOString() : ''),
+   609→  }
+   610→
+   611→  if (existingData?.dateModified || pageData?.modificationDate) {
+   612→    schema.dateModified = (existingData?.dateModified as string)
+   613→      ?? (pageData?.modificationDate ? new Date(pageData.modificationDate).toISOString() : undefined)
+   614→  }
+   615→
+   616→  if (existingData?.image || pageData?.url) {
+   617→    schema.image = (existingData?.image as string) ?? undefined
+   618→  }
+   619→
+   620→  if (existingData?.description || pageData?.description) {
+   621→    schema.description = (existingData?.description as string) ?? pageData?.description ?? undefined
+   622→  }
+   623→
+   624→  // Publisher from brand profile
+   625→  if (brandProfile?.brandName) {
+   626→    schema.publisher = {
+   627→      '@type': 'Organization',
+   628→      name: brandProfile.brandName,
+   629→    }
+   630→  }
+   631→
+   632→  return schema
+   633→}
+   634→
+   635→// ============================================================================
+   636→// FAQPage Schema Builder (from existing data)
+   637→// ============================================================================
+   638→
+   639→function buildFAQPageSchemaFromExisting(existingData?: Record<string, unknown>): FAQPageSchema {
+   640→  if (Array.isArray(existingData?.questions)) {
+   641→    const questions = existingData.questions as Array<{ question: string; answer: string }>
+   642→    return generateFAQPageSchema(questions)
+   643→  }
+   644→
+   645→  return {
+   646→    '@context': 'https://schema.org',
+   647→    '@type': 'FAQPage',
+   648→    mainEntity: [],
+   649→  }
+   650→}
+   651→
+   652→// ============================================================================
+   653→// HowTo Schema Builder (from existing data)
+   654→// ============================================================================
+   655→
+   656→function buildHowToSchemaFromExisting(existingData?: Record<string, unknown>): HowToSchema {
+   657→  const schema: HowToSchema = {
+   658→    '@context': 'https://schema.org',
+   659→    '@type': 'HowTo',
+   660→    name: (existingData?.name as string) ?? '',
+   661→    step: [],
+   662→  }
+   663→
+   664→  if (existingData?.description) {
+   665→    schema.description = existingData.description as string
+   666→  }
+   667→
+   668→  if (existingData?.totalTime) {
+   669→    schema.totalTime = existingData.totalTime as string
+   670→  }
+   671→
+   672→  if (Array.isArray(existingData?.steps)) {
+   673→    const steps = existingData.steps as HowToStepInput[]
+   674→    schema.step = steps.map((s, index) => ({
+   675→      '@type': 'HowToStep' as const,
+   676→      ...(s.name ? { name: s.name } : {}),
+   677→      text: s.text,
+   678→      ...(s.url ? { url: s.url } : {}),
+   679→      ...(s.image ? { image: s.image } : {}),
+   680→      position: index + 1,
+   681→    }))
+   682→  }
+   683→
+   684→  if (Array.isArray(existingData?.tools)) {
+   685→    schema.tool = (existingData.tools as string[]).map((tool) => ({
+   686→      '@type': 'HowToTool' as const,
+   687→      name: tool,
+   688→    }))
+   689→  }
+   690→
+   691→  return schema
+   692→}
+   693→
+   694→// ============================================================================
+   695→// Person Schema Builder
+   696→// ============================================================================
+   697→
+   698→function buildPersonSchema(existingData?: Record<string, unknown>): PersonSchema {
+   699→  const schema: PersonSchema = {
+   700→    '@context': 'https://schema.org',
+   701→    '@type': 'Person',
+   702→    name: (existingData?.name as string) ?? '',
+   703→  }
+   704→
+   705→  if (existingData?.url) schema.url = existingData.url as string
+   706→  if (existingData?.jobTitle) schema.jobTitle = existingData.jobTitle as string
+   707→  if (existingData?.image) schema.image = existingData.image as string
+   708→
+   709→  if (existingData?.worksFor) {
+   710→    if (typeof existingData.worksFor === 'string') {
+   711→      schema.worksFor = { '@type': 'Organization', name: existingData.worksFor }
+   712→    } else {
+   713→      schema.worksFor = existingData.worksFor as { '@type': 'Organization'; name: string }
+   714→    }
+   715→  }
+   716→
+   717→  if (Array.isArray(existingData?.sameAs)) {
+   718→    schema.sameAs = existingData.sameAs as string[]
+   719→  }
+   720→
+   721→  return schema
+   722→}
+   723→
+   724→// ============================================================================
+   725→// Event Schema Builder
+   726→// ============================================================================
+   727→
+   728→function buildEventSchema(existingData?: Record<string, unknown>): EventSchema {
+   729→  const schema: EventSchema = {
+   730→    '@context': 'https://schema.org',
+   731→    '@type': 'Event',
+   732→    name: (existingData?.name as string) ?? '',
+   733→    startDate: (existingData?.startDate as string) ?? '',
+   734→    location: (existingData?.location as string) ?? '',
+   735→  }
+   736→
+   737→  if (existingData?.endDate) schema.endDate = existingData.endDate as string
+   738→  if (existingData?.description) schema.description = existingData.description as string
+   739→
+   740→  if (existingData?.organizer) {
+   741→    if (typeof existingData.organizer === 'string') {
+   742→      schema.organizer = { '@type': 'Organization', name: existingData.organizer }
+   743→    } else {
+   744→      schema.organizer = existingData.organizer as { '@type': 'Organization'; name: string }
+   745→    }
+   746→  }
+   747→
+   748→  if (existingData?.offers) {
+   749→    const offerData = existingData.offers as Record<string, unknown>
+   750→    schema.offers = {
+   751→      '@type': 'Offer',
+   752→      price: (offerData.price as number) ?? 0,
+   753→      priceCurrency: (offerData.priceCurrency as string) ?? 'EUR',
+   754→      ...(offerData.availability ? { availability: offerData.availability as string } : {}),
+   755→      ...(offerData.url ? { url: offerData.url as string } : {}),
+   756→    }
+   757→  }
+   758→
+   759→  return schema
+   760→}
+   761→
+   762→// ============================================================================
+   763→// JobPosting Schema Builder
+   764→// ============================================================================
+   765→
+   766→function buildJobPostingSchema(
+   767→  brandProfile: BrandProfileData | null,
+   768→  existingData?: Record<string, unknown>
+   769→): JobPostingSchema {
+   770→  const schema: JobPostingSchema = {
+   771→    '@context': 'https://schema.org',
+   772→    '@type': 'JobPosting',
+   773→    title: (existingData?.title as string) ?? '',
+   774→    description: (existingData?.description as string) ?? '',
+   775→    hiringOrganization: (existingData?.hiringOrganization as string)
+   776→      ?? brandProfile?.brandName
+   777→      ?? '',
+   778→    jobLocation: (existingData?.jobLocation as PostalAddressSchema) ?? {
+   779→      '@type': 'PostalAddress',
+   780→    },
+   781→  }
+   782→
+   783→  if (existingData?.employmentType) {
+   784→    schema.employmentType = existingData.employmentType as string
+   785→  }
+   786→  if (existingData?.datePosted) {
+   787→    schema.datePosted = existingData.datePosted as string
+   788→  }
+   789→
+   790→  return schema
+   791→}
+   792→
+   793→// ============================================================================
+   794→// Service Schema Builder
+   795→// ============================================================================
+   796→
+   797→function buildServiceSchema(
+   798→  brandProfile: BrandProfileData | null,
+   799→  existingData?: Record<string, unknown>
+   800→): ServiceSchema {
+   801→  const schema: ServiceSchema = {
+   802→    '@context': 'https://schema.org',
+   803→    '@type': 'Service',
+   804→    name: (existingData?.name as string) ?? '',
+   805→    provider: (existingData?.provider as string)
+   806→      ?? brandProfile?.brandName
+   807→      ?? '',
+   808→  }
+   809→
+   810→  if (existingData?.description) {
+   811→    schema.description = existingData.description as string
+   812→  }
+   813→  if (existingData?.areaServed) {
+   814→    schema.areaServed = existingData.areaServed as string | PostalAddressSchema
+   815→  }
+   816→  if (existingData?.serviceType) {
+   817→    schema.serviceType = existingData.serviceType as string
+   818→  }
+   819→
+   820→  return schema
+   821→}
+   822→
+   823→// ============================================================================
+   824→// WebSite Schema Builder
+   825→// ============================================================================
+   826→
+   827→function buildWebSiteSchema(
+   828→  project: Awaited<ReturnType<typeof loadProject>>,
+   829→  brandProfile: BrandProfileData | null
+   830→): WebSiteSchema {
+   831→  const websiteUrl = brandProfile?.contactInformation?.website ?? project?.websiteUrl ?? ''
+   832→
+   833→  const schema: WebSiteSchema = {
+   834→    '@context': 'https://schema.org',
+   835→    '@type': 'WebSite',
+   836→    name: brandProfile?.brandName ?? project?.name ?? '',
+   837→    url: websiteUrl,
+   838→  }
+   839→
+   840→  // Add SearchAction if website URL is available
+   841→  if (websiteUrl) {
+   842→    const searchAction: SearchActionSchema = {
+   843→      '@type': 'SearchAction',
+   844→      target: {
+   845→        '@type': 'EntryPoint',
+   846→        urlTemplate: `${websiteUrl}/search?q={search_term_string}`,
+   847→      },
+   848→      'query-input': 'required name=search_term_string',
+   849→    }
+   850→    schema.potentialAction = searchAction
+   851→  }
+   852→
+   853→  return schema
+   854→}
+   855→
+   856→// ============================================================================
+   857→// WebPage Schema Builder
+   858→// ============================================================================
+   859→
+   860→function buildWebPageSchema(
+   861→  pageData: Awaited<ReturnType<typeof loadPage>>,
+   862→  url?: string
+   863→): WebPageSchema {
+   864→  const schema: WebPageSchema = {
+   865→    '@context': 'https://schema.org',
+   866→    '@type': 'WebPage',
+   867→  }
+   868→
+   869→  if (pageData?.title || pageData?.h1) {
+   870→    schema.name = pageData.title ?? pageData.h1 ?? undefined
+   871→  }
+   872→
+   873→  if (pageData?.description) {
+   874→    schema.description = pageData.description
+   875→  }
+   876→
+   877→  const pageUrl = url ?? pageData?.url
+   878→  if (pageUrl) {
+   879→    schema.url = pageUrl
+   880→  }
+   881→
+   882→  if (pageData?.publicationDate) {
+   883→    schema.datePublished = new Date(pageData.publicationDate).toISOString()
+   884→  }
+   885→
+   886→  if (pageData?.modificationDate) {
+   887→    schema.dateModified = new Date(pageData.modificationDate).toISOString()
+   888→  }
+   889→
+   890→  return schema
+   891→}
+   892→
+   893→// ============================================================================
+   894→// Public Individual Generator Functions
+   895→// ============================================================================
+   896→
+   897→/**
+   898→ * Generate Organization schema from BrandProfile data
+   899→ */
+   900→export async function generateOrganizationSchema(
+   901→  projectId: string
+   902→): Promise<OrganizationSchema> {
+   903→  const brandProfile = await loadBrandProfile(projectId)
+   904→  const project = await loadProject(projectId)
+   905→  return buildOrganizationSchema(projectId, brandProfile, project)
+   906→}
+   907→
+   908→/**
+   909→ * Generate LocalBusiness schema from BrandProfile and optional Location
+   910→ */
+   911→export async function generateLocalBusinessSchema(
+   912→  projectId: string,
+   913→  locationId?: string
+   914→): Promise<LocalBusinessSchema> {
+   915→  const brandProfile = await loadBrandProfile(projectId)
+   916→  const project = await loadProject(projectId)
+   917→  const baseSchema = await buildLocalBusinessSchema(projectId, brandProfile, project)
+   918→
+   919→  // If a specific location is provided, override with that location's data
+   920→  if (locationId) {
+   921→    const location = await loadLocation(locationId)
+   922→    if (location) {
+   923→      if (location.address || location.city || location.postalCode || location.country) {
+   924→        const address: PostalAddressSchema = {
+   925→          '@type': 'PostalAddress',
+   926→        }
+   927→        if (location.address) address.streetAddress = location.address
+   928→        if (location.city) address.addressLocality = location.city
+   929→        if (location.postalCode) address.postalCode = location.postalCode
+   930→        if (location.country) address.addressCountry = location.country
+   931→        baseSchema.address = address
+   932→      }
+   933→
+   934→      if (location.phone) {
+   935→        baseSchema.telephone = location.phone
+   936→      }
+   937→
+   938→      if (location.latitude !== null && location.latitude !== undefined &&
+   939→          location.longitude !== null && location.longitude !== undefined) {
+   940→        baseSchema.geo = {
+   941→          '@type': 'GeoCoordinates',
+   942→          latitude: location.latitude,
+   943→          longitude: location.longitude,
+   944→        }
+   945→      }
+   946→
+   947→      // Use location name as the business name if available
+   948→      if (location.name) {
+   949→        baseSchema.name = location.name
+   950→      }
+   951→    }
+   952→  }
+   953→
+   954→  return baseSchema
+   955→}
+   956→
+   957→/**
+   958→ * Generate Product schema
+   959→ */
+   960→export function generateProductSchema(
+   961→  projectId: string,
+   962→  productName: string,
+   963→  price?: number,
+   964→  priceCurrency?: string,
+   965→  description?: string,
+   966→  image?: string,
+   967→  brand?: string,
+   968→  sku?: string,
+   969→  mpn?: string,
+   970→  availability?: string
+   971→): ProductSchema {
+   972→  const schema: ProductSchema = {
+   973→    '@context': 'https://schema.org',
+   974→    '@type': 'Product',
+   975→    name: productName,
+   976→  }
+   977→
+   978→  if (description) schema.description = description
+   979→  if (image) schema.image = image
+   980→  if (brand) schema.brand = { '@type': 'Brand', name: brand }
+   981→  if (sku) schema.sku = sku
+   982→  if (mpn) schema.mpn = mpn
+   983→
+   984→  if (price !== undefined) {
+   985→    const offer: OfferSchema = {
+   986→      '@type': 'Offer',
+   987→      price,
+   988→      priceCurrency: priceCurrency ?? 'EUR',
+   989→    }
+   990→    if (availability) offer.availability = availability
+   991→    schema.offers = offer
+   992→  }
+   993→
+   994→  return schema
+   995→}
+   996→
+   997→/**
+   998→ * Generate FAQPage schema from questions
+   999→ */
+  1000→export function generateFAQPageSchema(
+  1001→  questions: Array<FAQInput>
+  1002→): FAQPageSchema {
+  1003→  const mainEntity: FAQQuestion[] = questions.map((q) => ({
+  1004→    '@type': 'Question' as const,
+  1005→    name: q.question,
+  1006→    acceptedAnswer: {
+  1007→      '@type': 'Answer' as const,
+  1008→      text: q.answer,
+  1009→    },
+  1010→  }))
+  1011→
+  1012→  return {
+  1013→    '@context': 'https://schema.org',
+  1014→    '@type': 'FAQPage',
+  1015→    mainEntity,
+  1016→  }
+  1017→}
+  1018→
+  1019→/**
+  1020→ * Generate BreadcrumbList schema from items
+  1021→ */
+  1022→export function generateBreadcrumbSchema(
+  1023→  items: Array<BreadcrumbInput>
+  1024→): BreadcrumbListSchema {
+  1025→  const itemListElement: BreadcrumbItem[] = items.map((item, index) => ({
+  1026→    '@type': 'ListItem' as const,
+  1027→    position: index + 1,
+  1028→    name: item.name,
+  1029→    ...(item.url ? { item: item.url } : {}),
+  1030→  }))
+  1031→
+  1032→  return {
+  1033→    '@context': 'https://schema.org',
+  1034→    '@type': 'BreadcrumbList',
+  1035→    itemListElement,
+  1036→  }
+  1037→}
+  1038→
+  1039→/**
+  1040→ * Generate Article schema from ContentBrief
+  1041→ */
+  1042→export async function generateArticleSchema(
+  1043→  briefId: string
+  1044→): Promise<ArticleSchema> {
+  1045→  const brief = await loadContentBrief(briefId)
+  1046→  if (!brief) {
+  1047→    return {
+  1048→      '@context': 'https://schema.org',
+  1049→      '@type': 'Article',
+  1050→      headline: '',
+  1051→      author: '',
+  1052→      datePublished: '',
+  1053→    }
+  1054→  }
+  1055→
+  1056→  const latestVersion = brief.versions[0]
+  1057→  const brandProfile = await loadBrandProfile(brief.projectId)
+  1058→
+  1059→  const schema: ArticleSchema = {
+  1060→    '@context': 'https://schema.org',
+  1061→    '@type': 'Article',
+  1062→    headline: brief.title,
+  1063→    author: '', // Would need author data from the system
+  1064→    datePublished: latestVersion
+  1065→      ? new Date(latestVersion.createdAt).toISOString()
+  1066→      : new Date(brief.createdAt).toISOString(),
+  1067→  }
+  1068→
+  1069→  if (latestVersion) {
+  1070→    schema.dateModified = new Date(latestVersion.updatedAt).toISOString()
+  1071→  }
+  1072→
+  1073→  // Publisher from brand profile
+  1074→  if (brandProfile?.brandName) {
+  1075→    schema.publisher = {
+  1076→      '@type': 'Organization',
+  1077→      name: brandProfile.brandName,
+  1078→    }
+  1079→  }
+  1080→
+  1081→  // Description from target keyword or secondary keywords
+  1082→  if (brief.targetKeyword) {
+  1083→    schema.description = `Artikel over ${brief.targetKeyword}`
+  1084→  }
+  1085→
+  1086→  return schema
+  1087→}
+  1088→
+  1089→/**
+  1090→ * Generate HowTo schema from steps
+  1091→ */
+  1092→export function generateHowToSchema(
+  1093→  name: string,
+  1094→  steps: Array<HowToStepInput>,
+  1095→  description?: string,
+  1096→  tools?: string[],
+  1097→  totalTime?: string
+  1098→): HowToSchema {
+  1099→  const howToSteps: HowToStep[] = steps.map((s, index) => ({
+  1100→    '@type': 'HowToStep' as const,
+  1101→    ...(s.name ? { name: s.name } : {}),
+  1102→    text: s.text,
+  1103→    ...(s.url ? { url: s.url } : {}),
+  1104→    ...(s.image ? { image: s.image } : {}),
+  1105→    position: index + 1,
+  1106→  }))
+  1107→
+  1108→  const schema: HowToSchema = {
+  1109→    '@context': 'https://schema.org',
+  1110→    '@type': 'HowTo',
+  1111→    name,
+  1112→    step: howToSteps,
+  1113→  }
+  1114→
+  1115→  if (description) schema.description = description
+  1116→  if (totalTime) schema.totalTime = totalTime
+  1117→
+  1118→  if (tools && tools.length > 0) {
+  1119→    schema.tool = tools.map((tool) => ({
+  1120→      '@type': 'HowToTool' as const,
+  1121→      name: tool,
+  1122→    }))
+  1123→  }
+  1124→
+  1125→  return schema
+  1126→}
+  1127→
+  1128→/**
+  1129→ * Generate Person schema
+  1130→ */
+  1131→export function generatePersonSchema(
+  1132→  name: string,
+  1133→  url?: string,
+  1134→  jobTitle?: string,
+  1135→  worksFor?: string,
+  1136→  image?: string,
+  1137→  sameAs?: string[]
+  1138→): PersonSchema {
+  1139→  const schema: PersonSchema = {
+  1140→    '@context': 'https://schema.org',
+  1141→    '@type': 'Person',
+  1142→    name,
+  1143→  }
+  1144→
+  1145→  if (url) schema.url = url
+  1146→  if (jobTitle) schema.jobTitle = jobTitle
+  1147→  if (worksFor) schema.worksFor = { '@type': 'Organization', name: worksFor }
+  1148→  if (image) schema.image = image
+  1149→  if (sameAs && sameAs.length > 0) schema.sameAs = sameAs
+  1150→
+  1151→  return schema
+  1152→}
+  1153→
+  1154→/**
+  1155→ * Generate Event schema
+  1156→ */
+  1157→export function generateEventSchema(
+  1158→  name: string,
+  1159→  startDate: string,
+  1160→  location: string | PostalAddressSchema,
+  1161→  endDate?: string,
+  1162→  organizer?: string,
+  1163→  description?: string,
+  1164→  offers?: { price: number; priceCurrency: string; availability?: string }
+  1165→): EventSchema {
+  1166→  const schema: EventSchema = {
+  1167→    '@context': 'https://schema.org',
+  1168→    '@type': 'Event',
+  1169→    name,
+  1170→    startDate,
+  1171→    location,
+  1172→  }
+  1173→
+  1174→  if (endDate) schema.endDate = endDate
+  1175→  if (description) schema.description = description
+  1176→  if (organizer) schema.organizer = { '@type': 'Organization', name: organizer }
+  1177→  if (offers) {
+  1178→    schema.offers = {
+  1179→      '@type': 'Offer',
+  1180→      price: offers.price,
+  1181→      priceCurrency: offers.priceCurrency,
+  1182→      ...(offers.availability ? { availability: offers.availability } : {}),
+  1183→    }
+  1184→  }
+  1185→
+  1186→  return schema
+  1187→}
+  1188→
+  1189→/**
+  1190→ * Generate JobPosting schema
+  1191→ */
+  1192→export function generateJobPostingSchema(
+  1193→  title: string,
+  1194→  description: string,
+  1195→  hiringOrganization: string,
+  1196→  jobLocation: PostalAddressSchema,
+  1197→  employmentType?: string,
+  1198→  datePosted?: string
+  1199→): JobPostingSchema {
+  1200→  const schema: JobPostingSchema = {
+  1201→    '@context': 'https://schema.org',
+  1202→    '@type': 'JobPosting',
+  1203→    title,
+  1204→    description,
+  1205→    hiringOrganization: { '@type': 'Organization', name: hiringOrganization },
+  1206→    jobLocation,
+  1207→  }
+  1208→
+  1209→  if (employmentType) schema.employmentType = employmentType
+  1210→  if (datePosted) schema.datePosted = datePosted
+  1211→
+  1212→  return schema
+  1213→}
+  1214→
+  1215→/**
+  1216→ * Generate Service schema
+  1217→ */
+  1218→export function generateServiceSchema(
+  1219→  name: string,
+  1220→  provider: string,
+  1221→  description?: string,
+  1222→  areaServed?: string,
+  1223→  serviceType?: string
+  1224→): ServiceSchema {
+  1225→  const schema: ServiceSchema = {
+  1226→    '@context': 'https://schema.org',
+  1227→    '@type': 'Service',
+  1228→    name,
+  1229→    provider: { '@type': 'Organization', name: provider },
+  1230→  }
+  1231→
+  1232→  if (description) schema.description = description
+  1233→  if (areaServed) schema.areaServed = areaServed
+  1234→  if (serviceType) schema.serviceType = serviceType
+  1235→
+  1236→  return schema
+  1237→}
+  1238→
+  1239→/**
+  1240→ * Generate WebSite schema
+  1241→ */
+  1242→export function generateWebSiteSchema(
+  1243→  name: string,
+  1244→  url: string,
+  1245→  searchUrlTemplate?: string
+  1246→): WebSiteSchema {
+  1247→  const schema: WebSiteSchema = {
+  1248→    '@context': 'https://schema.org',
+  1249→    '@type': 'WebSite',
+  1250→    name,
+  1251→    url,
+  1252→  }
+  1253→
+  1254→  if (searchUrlTemplate) {
+  1255→    schema.potentialAction = {
+  1256→      '@type': 'SearchAction',
+  1257→      target: {
+  1258→        '@type': 'EntryPoint',
+  1259→        urlTemplate: searchUrlTemplate,
+  1260→      },
+  1261→      'query-input': 'required name=search_term_string',
+  1262→    }
+  1263→  }
+  1264→
+  1265→  return schema
+  1266→}
+  1267→
+  1268→/**
+  1269→ * Generate WebPage schema
+  1270→ */
+  1271→export function generateWebPageSchema(
+  1272→  name: string,
+  1273→  url: string,
+  1274→  description?: string,
+  1275→  breadcrumb?: BreadcrumbListSchema,
+  1276→  datePublished?: string,
+  1277→  dateModified?: string
+  1278→): WebPageSchema {
+  1279→  const schema: WebPageSchema = {
+  1280→    '@context': 'https://schema.org',
+  1281→    '@type': 'WebPage',
+  1282→    name,
+  1283→    url,
+  1284→  }
+  1285→
+  1286→  if (description) schema.description = description
+  1287→  if (breadcrumb) schema.breadcrumb = breadcrumb
+  1288→  if (datePublished) schema.datePublished = datePublished
+  1289→  if (dateModified) schema.dateModified = dateModified
+  1290→
+  1291→  return schema
+  1292→}
+  1293→
+  1294→/**
+  1295→ * Generate Review schema
+  1296→ */
+  1297→export function generateReviewSchema(
+  1298→  author: string,
+  1299→  ratingValue: number,
+  1300→  reviewBody?: string,
+  1301→  datePublished?: string,
+  1302→  bestRating?: number,
+  1303→  worstRating?: number
+  1304→): ReviewSchema {
+  1305→  const rating: RatingSchema = {
+  1306→    '@type': 'Rating',
+  1307→    ratingValue,
+  1308→  }
+  1309→  if (bestRating !== undefined) rating.bestRating = bestRating
+  1310→  if (worstRating !== undefined) rating.worstRating = worstRating
+  1311→
+  1312→  const schema: ReviewSchema = {
+  1313→    '@context': 'https://schema.org',
+  1314→    '@type': 'Review',
+  1315→    author,
+  1316→    reviewRating: rating,
+  1317→  }
+  1318→
+  1319→  if (reviewBody) schema.reviewBody = reviewBody
+  1320→  if (datePublished) schema.datePublished = datePublished
+  1321→
+  1322→  return schema
+  1323→}
+  1324→
+  1325→/**
+  1326→ * Generate Offer schema
+  1327→ */
+  1328→export function generateOfferSchema(
+  1329→  price: number,
+  1330→  priceCurrency: string,
+  1331→  availability?: string,
+  1332→  url?: string,
+  1333→  priceValidUntil?: string
+  1334→): OfferSchema {
+  1335→  const schema: OfferSchema = {
+  1336→    '@context': 'https://schema.org',
+  1337→    '@type': 'Offer',
+  1338→    price,
+  1339→    priceCurrency,
+  1340→  }
+  1341→
+  1342→  if (availability) schema.availability = availability
+  1343→  if (url) schema.url = url
+  1344→  if (priceValidUntil) schema.priceValidUntil = priceValidUntil
+  1345→
+  1346→  return schema
+  1347→}
+  1348→
+  1349→/**
+  1350→ * Update existing structured data record
+  1351→ */
+  1352→export async function updateStructuredData(
+  1353→  id: string,
+  1354→  data: Record<string, unknown>,
+  1355→  type: StructuredDataType
+  1356→): Promise<StructuredDataGenerationResult> {
+  1357→  const validation = validateStructuredData(type, data)
+  1358→  const jsonLd = JSON.stringify(data, null, 2)
+  1359→
+  1360→  const updated = await db.structuredData.update({
+  1361→    where: { id },
+  1362→    data: {
+  1363→      data: jsonLd,
+  1364→      isValid: validation.isValid,
+  1365→      validationErrors: validation.errors.length > 0
+  1366→        ? JSON.stringify(validation.errors)
+  1367→        : null,
+  1368→      missingFields: validation.missingRequiredFields.length > 0
+  1369→        ? JSON.stringify(validation.missingRequiredFields)
+  1370→        : null,
+  1371→      isAutoGenerated: false,
+  1372→    },
+  1373→  })
+  1374→
+  1375→  return {
+  1376→    jsonLd,
+  1377→    validation,
+  1378→    structuredDataId: updated.id,
+  1379→  }
+  1380→}
+  1381→
+  1382→/**
+  1383→ * Approve structured data
+  1384→ */
+  1385→export async function approveStructuredData(
+  1386→  id: string,
+  1387→  approvedBy: string
+  1388→): Promise<void> {
+  1389→  await db.structuredData.update({
+  1390→    where: { id },
+  1391→    data: {
+  1392→      approvedBy,
+  1393→      approvedAt: new Date(),
+  1394→    },
+  1395→  })
+  1396→}
+  1397→
+  1398→/**
+  1399→ * Get structured data for a project
+  1400→ */
+  1401→export async function getProjectStructuredData(
+  1402→  projectId: string,
+  1403→  type?: StructuredDataType
+  1404→) {
+  1405→  return db.structuredData.findMany({
+  1406→    where: {
+  1407→      projectId,
+  1408→      ...(type ? { type } : {}),
+  1409→    },
+  1410→    orderBy: { createdAt: 'desc' },
+  1411→  })
+  1412→}
+  1413→
+  1414→/**
+  1415→ * Get structured data for a specific page
+  1416→ */
+  1417→export async function getPageStructuredData(pageId: string) {
+  1418→  return db.structuredData.findMany({
+  1419→    where: { pageId },
+  1420→    orderBy: { createdAt: 'desc' },
+  1421→  })
+  1422→}
+  1423→
+  1424→/**
+  1425→ * Delete structured data
+  1426→ */
+  1427→export async function deleteStructuredData(id: string): Promise<void> {
+  1428→  await db.structuredData.delete({
+  1429→    where: { id },
+  1430→  })
+  1431→}
+  1432→

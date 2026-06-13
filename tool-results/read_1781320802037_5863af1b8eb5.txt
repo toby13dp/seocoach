@@ -1,0 +1,1345 @@
+     1→     1→// ============================================================================
+     2→     2→// Link Candidate Generator — SEOCoach
+     3→     3→// AI-Driven SEO Automation Platform (Dutch Market)
+     4→     4→// ============================================================================
+     5→     5→// Generates internal link candidates using five strategies:
+     6→     6→//   1. SEMANTIC — AI-driven semantic relationship detection
+     7→     7→//   2. TOPIC_CLUSTER — Links pages within the same topic cluster
+     8→     8→//   3. ORPHAN_PAGE — Suggests links to pages with no incoming links
+     9→     9→//   4. STRONG_PAGE — Links from high-authority pages to related newer pages
+    10→    10→//   5. BROKEN_REPLACEMENT — Suggests replacement targets for broken links
+    11→    11→//
+    12→    12→// All user-facing strings and recommendations are in Dutch.
+    13→    13→// Approval-first: no link is published without explicit approval.
+    14→    14→// ============================================================================
+    15→    15→
+    16→    16→import { db } from '@/lib/db';
+    17→    17→import { providerManager } from '@/lib/ai/provider-manager';
+    18→    18→import type {
+    19→    19→  LinkCandidate,
+    20→    20→  LinkStrategy,
+    21→    21→  CannibalizationWarning,
+    22→    22→  PageLinkProfile,
+    23→    23→  CandidateGenerationResult,
+    24→    24→} from './types';
+    25→    25→import { generateAnchorVariations } from './anchor-variation';
+    26→    26→
+    27→    27→// ============================================================================
+    28→    28→// Main Entry Point
+    29→    29→// ============================================================================
+    30→    30→
+    31→    31→/**
+    32→    32→ * Generate link candidates for a project using all available strategies.
+    33→    33→ *
+    34→    34→ * Fetches the latest crawl data, topic clusters, and technical issues,
+    35→    35→ * then runs each strategy to produce candidates. Candidates are saved
+    36→    36→ * to the InternalLink table in the database.
+    37→    37→ *
+    38→    38→ * @param projectId - The project to generate candidates for
+    39→    39→ * @returns Summary of the generation results including counts and warnings
+    40→    40→ */
+    41→    41→export async function generateLinkCandidates(
+    42→    42→  projectId: string
+    43→    43→): Promise<CandidateGenerationResult> {
+    44→    44→  // 1. Fetch pages from the latest completed crawl
+    45→    45→  const pages = await fetchLatestCrawlPages(projectId);
+    46→    46→  if (pages.length < 2) {
+    47→    47→    return {
+    48→    48→      totalCandidates: 0,
+    49→    49→      byStrategy: {
+    50→    50→        SEMANTIC: 0,
+    51→    51→        TOPIC_CLUSTER: 0,
+    52→    52→        ORPHAN_PAGE: 0,
+    53→    53→        STRONG_PAGE: 0,
+    54→    54→        BROKEN_REPLACEMENT: 0,
+    55→    55→      },
+    56→    56→      cannibalizationWarnings: [],
+    57→    57→      summary: 'Niet genoeg pagina\'s gevonden om interne links te suggereren. Zorg ervoor dat er minstens twee gecrawlde pagina\'s beschikbaar zijn.',
+    58→    58→    };
+    59→    59→  }
+    60→    60→
+    61→    61→  // 2. Build page link profiles
+    62→    62→  const profiles = await buildPageLinkProfiles(projectId, pages);
+    63→    63→
+    64→    64→  // 3. Detect existing links for deduplication
+    65→    65→  const existingLinks = await fetchExistingLinks(projectId);
+    66→    66→
+    67→    67→  // 4. Fetch topic clusters and their pages
+    68→    68→  const clusterPageMap = await fetchTopicClusterMap(projectId);
+    69→    69→
+    70→    70→  // 5. Fetch broken links from technical issues
+    71→    71→  const brokenLinks = await fetchBrokenLinks(projectId);
+    72→    72→
+    73→    73→  // 6. Run all strategies
+    74→    74→  const allCandidates: LinkCandidate[] = [];
+    75→    75→  const strategyCounts: Record<LinkStrategy, number> = {
+    76→    76→    SEMANTIC: 0,
+    77→    77→    TOPIC_CLUSTER: 0,
+    78→    78→    ORPHAN_PAGE: 0,
+    79→    79→    STRONG_PAGE: 0,
+    80→    80→    BROKEN_REPLACEMENT: 0,
+    81→    81→  };
+    82→    82→
+    83→    83→  // SEMANTIC strategy
+    84→    84→  const semanticCandidates = await generateSemanticCandidates(projectId, profiles, existingLinks);
+    85→    85→  for (const c of semanticCandidates) {
+    86→    86→    allCandidates.push(c);
+    87→    87→    strategyCounts.SEMANTIC++;
+    88→    88→  }
+    89→    89→
+    90→    90→  // TOPIC_CLUSTER strategy
+    91→    91→  const clusterCandidates = generateTopicClusterCandidates(profiles, clusterPageMap, existingLinks);
+    92→    92→  for (const c of clusterCandidates) {
+    93→    93→    allCandidates.push(c);
+    94→    94→    strategyCounts.TOPIC_CLUSTER++;
+    95→    95→  }
+    96→    96→
+    97→    97→  // ORPHAN_PAGE strategy
+    98→    98→  const orphanCandidates = generateOrphanPageCandidates(profiles, existingLinks);
+    99→    99→  for (const c of orphanCandidates) {
+   100→   100→    allCandidates.push(c);
+   101→   101→    strategyCounts.ORPHAN_PAGE++;
+   102→   102→  }
+   103→   103→
+   104→   104→  // STRONG_PAGE strategy
+   105→   105→  const strongCandidates = generateStrongPageCandidates(profiles, existingLinks);
+   106→   106→  for (const c of strongCandidates) {
+   107→   107→    allCandidates.push(c);
+   108→   108→    strategyCounts.STRONG_PAGE++;
+   109→   109→  }
+   110→   110→
+   111→   111→  // BROKEN_REPLACEMENT strategy
+   112→   112→  const brokenCandidates = generateBrokenReplacementCandidates(profiles, brokenLinks, existingLinks);
+   113→   113→  for (const c of brokenCandidates) {
+   114→   114→    allCandidates.push(c);
+   115→   115→    strategyCounts.BROKEN_REPLACEMENT++;
+   116→   116→  }
+   117→   117→
+   118→   118→  // 7. Deduplicate candidates (same source-target pair)
+   119→   119→  const deduped = deduplicateCandidates(allCandidates);
+   120→   120→
+   121→   121→  // 8. Check for cannibalization
+   122→   122→  const cannibalizationWarnings = detectCannibalization(profiles, deduped);
+   123→   123→
+   124→   124→  // 9. Adjust confidence for cannibalization warnings
+   125→   125→  const adjustedCandidates = adjustConfidenceForCannibalization(deduped, cannibalizationWarnings);
+   126→   126→
+   127→   127→  // 10. Save candidates to database
+   128→   128→  const savedCandidates = await saveCandidatesToDatabase(adjustedCandidates);
+   129→   129→
+   130→   130→  // Build summary
+   131→   131→  const totalSaved = savedCandidates.length;
+   132→   132→  const warningCount = cannibalizationWarnings.length;
+   133→   133→  const summary = `Er zijn ${totalSaved} interne link-suggesties gegenereerd over ${pages.length} pagina's. ` +
+   134→   134→    `Strategieën: semantisch (${strategyCounts.SEMANTIC}), topic cluster (${strategyCounts.TOPIC_CLUSTER}), ` +
+   135→   135→    `weespagina (${strategyCounts.ORPHAN_PAGE}), sterke pagina (${strategyCounts.STRONG_PAGE}), ` +
+   136→   136→    `gebroken vervanging (${strategyCounts.BROKEN_REPLACEMENT}). ` +
+   137→   137→    (warningCount > 0
+   138→   138→      ? `Er zijn ${warningCount} kannibalisatie-waarschuwingen gevonden.`
+   139→   139→      : 'Geen kannibalisatie-waarschuwingen gevonden.');
+   140→   140→
+   141→   141→  return {
+   142→   142→    totalCandidates: totalSaved,
+   143→   143→    byStrategy: strategyCounts,
+   144→   144→    cannibalizationWarnings,
+   145→   145→    summary,
+   146→   146→  };
+   147→   147→}
+   148→   148→
+   149→   149→// ============================================================================
+   150→   150→// Data Fetching Helpers
+   151→   151→// ============================================================================
+   152→   152→
+   153→   153→/**
+   154→   154→ * Fetch pages from the latest completed crawl session for a project.
+   155→   155→ */
+   156→   156→async function fetchLatestCrawlPages(projectId: string): Promise<Array<{
+   157→   157→  id: string;
+   158→   158→  url: string;
+   159→   159→  normalizedUrl: string;
+   160→   160→  title: string | null;
+   161→   161→  description: string | null;
+   162→   162→  h1: string | null;
+   163→   163→  wordCount: number;
+   164→   164→  internalLinkCount: number;
+   165→   165→  externalLinkCount: number;
+   166→   166→  isOrphan: boolean;
+   167→   167→  mainContent: string | null;
+   168→   168→  internalLinks: string | null;
+   169→   169→  projectId: string;
+   170→   170→}>> {
+   171→   171→  // Find the latest completed crawl session
+   172→   172→  const latestSession = await db.crawlSession.findFirst({
+   173→   173→    where: {
+   174→   174→      projectId,
+   175→   175→      status: 'COMPLETED',
+   176→   176→    },
+   177→   177→    orderBy: { completedAt: 'desc' },
+   178→   178→  });
+   179→   179→
+   180→   180→  if (!latestSession) {
+   181→   181→    return [];
+   182→   182→  }
+   183→   183→
+   184→   184→  // Fetch all pages from this session
+   185→   185→  const pages = await db.page.findMany({
+   186→   186→    where: {
+   187→   187→      crawlSessionId: latestSession.id,
+   188→   188→      deletedAt: null,
+   189→   189→      status: 'OK',
+   190→   190→    },
+   191→   191→    select: {
+   192→   192→      id: true,
+   193→   193→      url: true,
+   194→   194→      normalizedUrl: true,
+   195→   195→      title: true,
+   196→   196→      description: true,
+   197→   197→      h1: true,
+   198→   198→      wordCount: true,
+   199→   199→      internalLinkCount: true,
+   200→   200→      externalLinkCount: true,
+   201→   201→      isOrphan: true,
+   202→   202→      mainContent: true,
+   203→   203→      internalLinks: true,
+   204→   204→      projectId: true,
+   205→   205→    },
+   206→   206→  });
+   207→   207→
+   208→   208→  return pages;
+   209→   209→}
+   210→   210→
+   211→   211→/**
+   212→   212→ * Build detailed link profiles for each page.
+   213→   213→ * Enriches page data with keyword targeting and topic cluster membership.
+   214→   214→ */
+   215→   215→async function buildPageLinkProfiles(
+   216→   216→  projectId: string,
+   217→   217→  pages: Array<{
+   218→   218→    id: string;
+   219→   219→    url: string;
+   220→   220→    normalizedUrl: string;
+   221→   221→    title: string | null;
+   222→   222→    description: string | null;
+   223→   223→    h1: string | null;
+   224→   224→    wordCount: number;
+   225→   225→    internalLinkCount: number;
+   226→   226→    externalLinkCount: number;
+   227→   227→    isOrphan: boolean;
+   228→   228→    mainContent: string | null;
+   229→   229→    internalLinks: string | null;
+   230→   230→    projectId: string;
+   231→   231→  }>
+   232→   232→): Promise<PageLinkProfile[]> {
+   233→   233→  // Fetch keyword-page relationships for the project
+   234→   234→  const keywordPages = await db.keywordPage.findMany({
+   235→   235→    where: {
+   236→   236→      keyword: {
+   237→   237→        projectId,
+   238→   238→        deletedAt: null,
+   239→   239→      },
+   240→   240→      page: {
+   241→   241→        projectId,
+   242→   242→      },
+   243→   243→    },
+   244→   244→    select: {
+   245→   245→      pageId: true,
+   246→   246→      relevance: true,
+   247→   247→      keyword: {
+   248→   248→        select: {
+   249→   249→          keyword: true,
+   250→   250→        },
+   251→   251→      },
+   252→   252→    },
+   253→   253→    orderBy: {
+   254→   254→      relevance: 'desc',
+   255→   255→    },
+   256→   256→  });
+   257→   257→
+   258→   258→  // Map pageId → primary keyword (highest relevance)
+   259→   259→  const pageKeywordMap = new Map<string, string>();
+   260→   260→  for (const kp of keywordPages) {
+   261→   261→    if (!pageKeywordMap.has(kp.pageId)) {
+   262→   262→      pageKeywordMap.set(kp.pageId, kp.keyword.keyword);
+   263→   263→    }
+   264→   264→  }
+   265→   265→
+   266→   266→  // Fetch topic assignments for pages
+   267→   267→  const topics = await db.topic.findMany({
+   268→   268→    where: {
+   269→   269→      projectId,
+   270→   270→      deletedAt: null,
+   271→   271→    },
+   272→   272→    select: {
+   273→   273→      id: true,
+   274→   274→      clusterId: true,
+   275→   275→      isPillar: true,
+   276→   276→      pillarPageId: true,
+   277→   277→    },
+   278→   278→  });
+   279→   279→
+   280→   280→  // Build a map of pillarPageId → clusterId
+   281→   281→  const pageClusterMap = new Map<string, { clusterId: string | null; isPillar: boolean }>();
+   282→   282→  for (const topic of topics) {
+   283→   283→    if (topic.pillarPageId) {
+   284→   284→      pageClusterMap.set(topic.pillarPageId, {
+   285→   285→        clusterId: topic.clusterId,
+   286→   286→        isPillar: topic.isPillar,
+   287→   287→      });
+   288→   288→    }
+   289→   289→  }
+   290→   290→
+   291→   291→  // Build initial profiles (without incoming link counts)
+   292→   292→  const initialProfiles: PageLinkProfile[] = pages.map((page) => {
+   293→   293→    // Parse existing outgoing URLs from the internalLinks JSON field
+   294→   294→    let existingOutgoingUrls: string[] = [];
+   295→   295→    if (page.internalLinks) {
+   296→   296→      try {
+   297→   297→        const parsed = JSON.parse(page.internalLinks) as unknown;
+   298→   298→        if (Array.isArray(parsed)) {
+   299→   299→          existingOutgoingUrls = parsed.filter((u): u is string => typeof u === 'string');
+   300→   300→        }
+   301→   301→      } catch {
+   302→   302→        // Invalid JSON, treat as no known outgoing links
+   303→   303→        existingOutgoingUrls = [];
+   304→   304→      }
+   305→   305→    }
+   306→   306→
+   307→   307→    // Build snippet from description, h1, or title
+   308→   308→    const snippet = page.description ?? page.h1 ?? page.title ?? null;
+   309→   309→    const clusterInfo = pageClusterMap.get(page.id);
+   310→   310→
+   311→   311→    return {
+   312→   312→      pageId: page.id,
+   313→   313→      url: page.url,
+   314→   314→      normalizedUrl: page.normalizedUrl,
+   315→   315→      title: page.title,
+   316→   316→      snippet,
+   317→   317→      primaryKeyword: pageKeywordMap.get(page.id) ?? null,
+   318→   318→      incomingLinks: 0, // Will be computed below
+   319→   319→      outgoingLinks: page.internalLinkCount,
+   320→   320→      wordCount: page.wordCount,
+   321→   321→      isOrphan: page.isOrphan,
+   322→   322→      clusterId: clusterInfo?.clusterId ?? null,
+   323→   323→      isPillar: clusterInfo?.isPillar ?? false,
+   324→   324→      existingOutgoingUrls,
+   325→   325→      mainContent: page.mainContent,
+   326→   326→    };
+   327→   327→  });
+   328→   328→
+   329→   329→  // Compute incoming links for each page by analyzing all pages' outgoing link arrays
+   330→   330→  const normalizedUrlToId = new Map<string, string>();
+   331→   331→  for (const p of initialProfiles) {
+   332→   332→    normalizedUrlToId.set(p.normalizedUrl, p.pageId);
+   333→   333→  }
+   334→   334→  const incomingCounts = computeIncomingLinks(initialProfiles, normalizedUrlToId);
+   335→   335→
+   336→   336→  // Apply incoming link counts to profiles
+   337→   337→  for (const profile of initialProfiles) {
+   338→   338→    profile.incomingLinks = incomingCounts.get(profile.pageId) ?? 0;
+   339→   339→  }
+   340→   340→
+   341→   341→  return initialProfiles;
+   342→   342→}
+   343→   343→
+   344→   344→/**
+   345→   345→ * Count incoming links for each page by analyzing all pages' outgoing link arrays.
+   346→   346→ * Returns a map of page normalizedUrl → incoming link count.
+   347→   347→ */
+   348→   348→function computeIncomingLinks(
+   349→   349→  profiles: PageLinkProfile[],
+   350→   350→  pageNormalizedUrls: Map<string, string> // normalizedUrl → pageId
+   351→   351→): Map<string, number> {
+   352→   352→  const incomingCount = new Map<string, number>();
+   353→   353→  for (const profile of profiles) {
+   354→   354→    incomingCount.set(profile.pageId, 0);
+   355→   355→  }
+   356→   356→
+   357→   357→  for (const profile of profiles) {
+   358→   358→    for (const url of profile.existingOutgoingUrls) {
+   359→   359→      const targetId = pageNormalizedUrls.get(url);
+   360→   360→      if (targetId && incomingCount.has(targetId)) {
+   361→   361→        incomingCount.set(targetId, (incomingCount.get(targetId) ?? 0) + 1);
+   362→   362→      }
+   363→   363→    }
+   364→   364→  }
+   365→   365→
+   366→   366→  return incomingCount;
+   367→   367→}
+   368→   368→
+   369→   369→/**
+   370→   370→ * Fetch existing approved/published internal links from the database
+   371→   371→ * for deduplication purposes.
+   372→   372→ */
+   373→   373→async function fetchExistingLinks(
+   374→   374→  projectId: string
+   375→   375→): Promise<Set<string>> {
+   376→   376→  const links = await db.internalLink.findMany({
+   377→   377→    where: {
+   378→   378→      projectId,
+   379→   379→      deletedAt: null,
+   380→   380→      status: { in: ['PENDING', 'APPROVED', 'PUBLISHED'] },
+   381→   381→    },
+   382→   382→    select: {
+   383→   383→      sourceUrl: true,
+   384→   384→      targetUrl: true,
+   385→   385→    },
+   386→   386→  });
+   387→   387→
+   388→   388→  const existing = new Set<string>();
+   389→   389→  for (const link of links) {
+   390→   390→    existing.add(`${link.sourceUrl}→${link.targetUrl}`);
+   391→   391→  }
+   392→   392→  return existing;
+   393→   393→}
+   394→   394→
+   395→   395→/**
+   396→   396→ * Fetch the mapping of topic clusters to their member page IDs.
+   397→   397→ * Returns a map of clusterId → array of PageLinkProfile indices.
+   398→   398→ */
+   399→   399→async function fetchTopicClusterMap(
+   400→   400→  projectId: string
+   401→   401→): Promise<Map<string, string[]>> {
+   402→   402→  // Fetch topics with their cluster assignments
+   403→   403→  const topics = await db.topic.findMany({
+   404→   404→    where: {
+   405→   405→      projectId,
+   406→   406→      deletedAt: null,
+   407→   407→      clusterId: { not: null },
+   408→   408→    },
+   409→   409→    select: {
+   410→   410→      id: true,
+   411→   411→      clusterId: true,
+   412→   412→      pillarPageId: true,
+   413→   413→      name: true,
+   414→   414→    },
+   415→   415→  });
+   416→   416→
+   417→   417→  const clusterMap = new Map<string, string[]>();
+   418→   418→  for (const topic of topics) {
+   419→   419→    const clusterId = topic.clusterId;
+   420→   420→    if (!clusterId) continue;
+   421→   421→
+   422→   422→    if (!clusterMap.has(clusterId)) {
+   423→   423→      clusterMap.set(clusterId, []);
+   424→   424→    }
+   425→   425→    // Use pillarPageId as the page identifier for this topic
+   426→   426→    if (topic.pillarPageId) {
+   427→   427→      const pages = clusterMap.get(clusterId) ?? [];
+   428→   428→      if (!pages.includes(topic.pillarPageId)) {
+   429→   429→        pages.push(topic.pillarPageId);
+   430→   430→        clusterMap.set(clusterId, pages);
+   431→   431→      }
+   432→   432→    }
+   433→   433→  }
+   434→   434→
+   435→   435→  return clusterMap;
+   436→   436→}
+   437→   437→
+   438→   438→/**
+   439→   439→ * Fetch broken links from TechnicalIssue data.
+   440→   440→ * Looks for issues related to broken internal links (4xx/5xx errors).
+   441→   441→ */
+   442→   442→async function fetchBrokenLinks(
+   443→   443→  projectId: string
+   444→   444→): Promise<Array<{
+   445→   445→  id: string;
+   446→   446→  ruleName: string;
+   447→   447→  affectedUrls: string[];
+   448→   448→  evidence: string | null;
+   449→   449→  pageId: string | null;
+   450→   450→}>> {
+   451→   451→  const issues = await db.technicalIssue.findMany({
+   452→   452→    where: {
+   453→   453→      projectId,
+   454→   454→      dismissed: false,
+   455→   455→      ruleName: {
+   456→   456→        in: [
+   457→   457→          'broken_internal_link',
+   458→   458→          'broken_link',
+   459→   459→          'link_404',
+   460→   460→          'link_5xx',
+   461→   461→          'broken_internal_links',
+   462→   462→        ],
+   463→   463→      },
+   464→   464→    },
+   465→   465→    select: {
+   466→   466→      id: true,
+   467→   467→      ruleName: true,
+   468→   468→      affectedUrls: true,
+   469→   469→      evidence: true,
+   470→   470→      pageId: true,
+   471→   471→    },
+   472→   472→  });
+   473→   473→
+   474→   474→  // Parse affected URLs from JSON
+   475→   475→  return issues.map((issue) => ({
+   476→   476→    id: issue.id,
+   477→   477→    ruleName: issue.ruleName,
+   478→   478→    affectedUrls: parseJsonArray(issue.affectedUrls),
+   479→   479→    evidence: issue.evidence,
+   480→   480→    pageId: issue.pageId,
+   481→   481→  }));
+   482→   482→}
+   483→   483→
+   484→   484→// ============================================================================
+   485→   485→// Strategy: SEMANTIC
+   486→   486→// ============================================================================
+   487→   487→
+   488→   488→/**
+   489→   489→ * Generate link candidates based on semantic relationships between pages.
+   490→   490→ * Uses AI to find pages where a link would be natural and helpful.
+   491→   491→ */
+   492→   492→async function generateSemanticCandidates(
+   493→   493→  projectId: string,
+   494→   494→  profiles: PageLinkProfile[],
+   495→   495→  existingLinks: Set<string>
+   496→   496→): Promise<LinkCandidate[]> {
+   497→   497→  if (profiles.length < 2) {
+   498→   498→    return [];
+   499→   499→  }
+   500→   500→
+   501→   501→  const candidates: LinkCandidate[] = [];
+   502→   502→
+   503→   503→  try {
+   504→   504→    // Build a concise page inventory for the AI prompt
+   505→   505→    const pageInventory = profiles
+   506→   506→      .slice(0, 50) // Limit to avoid token overflow
+   507→   507→      .map((p, i) => {
+   508→   508→        const keywordStr = p.primaryKeyword ? ` (keyword: "${p.primaryKeyword}")` : '';
+   509→   509→        const snippetStr = p.snippet ? ` — "${p.snippet.slice(0, 80)}"` : '';
+   510→   510→        return `[${i + 1}] ${p.url}${keywordStr}${snippetStr}`;
+   511→   511→      })
+   512→   512→      .join('\n');
+   513→   513→
+   514→   514→    const prompt = `Je bent een SEO-expert voor de Nederlandse markt. Analyseer de volgende lijst van webpagina's en stel interne links voor tussen semantisch gerelateerde pagina's.
+   515→   515→
+   516→   516→Regels:
+   517→   517→- Stel alleen links voor tussen pagina's die inhoudelijk gerelateerd zijn
+   518→   518→- Geef specifieke ankertekst in het Nederlands
+   519→   519→- Geef een betrouwbaarheidsscore van 0.0 tot 1.0
+   520→   520→- Maximale 10 suggesties
+   521→   521→- Geef NIET links tussen pagina's die al naar elkaar linken
+   522→   522→
+   523→   523→Pagina's:
+   524→   524→${pageInventory}
+   525→   525→
+   526→   526→Antwoord in JSON-formaat als een array:
+   527→   527→[{"source_index": 1, "target_index": 2, "anchor_text": "voorbeeld ankertekst", "reason": "waarom deze link natuurlijk is", "confidence": 0.8}]`;
+   528→   528→
+   529→   529→    const response = await providerManager.fallbackGenerate(projectId, {
+   530→   530→      messages: [
+   531→   531→        {
+   532→   532→          role: 'system',
+   533→   533→          content: 'Je bent een SEO-expert die interne link-suggesties genereert voor Nederlandse websites. Antwoord altijd in geldig JSON-formaat.',
+   534→   534→        },
+   535→   535→        { role: 'user', content: prompt },
+   536→   536→      ],
+   537→   537→      purpose: 'internal-linking-semantic',
+   538→   538→      temperature: 0.3,
+   539→   539→      maxTokens: 2048,
+   540→   540→      jsonMode: true,
+   541→   541→    });
+   542→   542→
+   543→   543→    if (response.success && response.content) {
+   544→   544→      // Parse the AI response
+   545→   545→      const parsed = parseAIResponse(response.content);
+   546→   546→      for (const suggestion of parsed) {
+   547→   547→        const sourceIndex = (suggestion.source_index as number) - 1;
+   548→   548→        const targetIndex = (suggestion.target_index as number) - 1;
+   549→   549→
+   550→   550→        if (sourceIndex < 0 || sourceIndex >= profiles.length) continue;
+   551→   551→        if (targetIndex < 0 || targetIndex >= profiles.length) continue;
+   552→   552→        if (sourceIndex === targetIndex) continue;
+   553→   553→
+   554→   554→        const source = profiles[sourceIndex];
+   555→   555→        const target = profiles[targetIndex];
+   556→   556→        const linkKey = `${source.url}→${target.url}`;
+   557→   557→
+   558→   558→        // Skip if already existing
+   559→   559→        if (existingLinks.has(linkKey)) continue;
+   560→   560→        // Skip if source already links to target
+   561→   561→        if (source.existingOutgoingUrls.some((u) => target.url.includes(u))) continue;
+   562→   562→
+   563→   563→        const anchorText = typeof suggestion.anchor_text === 'string' && suggestion.anchor_text.length > 0
+   564→   564→          ? suggestion.anchor_text
+   565→   565→          : (target.title ?? target.url);
+   566→   566→
+   567→   567→        const confidence = typeof suggestion.confidence === 'number'
+   568→   568→          ? Math.max(0, Math.min(1, suggestion.confidence))
+   569→   569→          : 0.6;
+   570→   570→
+   571→   571→        candidates.push({
+   572→   572→          projectId,
+   573→   573→          sourcePageId: source.pageId,
+   574→   574→          targetPageId: target.pageId,
+   575→   575→          sourceUrl: source.url,
+   576→   576→          targetUrl: target.url,
+   577→   577→          anchorText,
+   578→   578→          surroundingText: typeof suggestion.reason === 'string' ? suggestion.reason : null,
+   579→   579→          strategy: 'SEMANTIC',
+   580→   580→          confidence,
+   581→   581→          isExisting: false,
+   582→   582→          isBroken: false,
+   583→   583→          replacesLinkId: null,
+   584→   584→        });
+   585→   585→      }
+   586→   586→    }
+   587→   587→  } catch (error) {
+   588→   588→    const msg = error instanceof Error ? error.message : String(error);
+   589→   589→    console.error(`[LinkCandidateGenerator] Fout bij semantische kandidaatgeneratie: ${msg}`);
+   590→   590→  }
+   591→   591→
+   592→   592→  return candidates;
+   593→   593→}
+   594→   594→
+   595→   595→// ============================================================================
+   596→   596→// Strategy: TOPIC_CLUSTER
+   597→   597→// ============================================================================
+   598→   598→
+   599→   599→/**
+   600→   600→ * Generate link candidates between pages within the same topic cluster.
+   601→   601→ * Links pages that belong to the same cluster but aren't already connected.
+   602→   602→ */
+   603→   603→function generateTopicClusterCandidates(
+   604→   604→  profiles: PageLinkProfile[],
+   605→   605→  clusterPageMap: Map<string, string[]>,
+   606→   606→  existingLinks: Set<string>
+   607→   607→): LinkCandidate[] {
+   608→   608→  const candidates: LinkCandidate[] = [];
+   609→   609→
+   610→   610→  for (const entry of Array.from(clusterPageMap.entries())) {
+   611→   611→    const clusterId = entry[0];
+   612→   612→    const pageIds = entry[1];
+   613→   613→    // Find profiles for pages in this cluster
+   614→   614→    const clusterProfiles = profiles.filter((p) =>
+   615→   615→      pageIds.includes(p.pageId) || p.clusterId === clusterId
+   616→   616→    );
+   617→   617→
+   618→   618→    if (clusterProfiles.length < 2) continue;
+   619→   619→
+   620→   620→    // Suggest links between pillar page and sub-pages, and between sub-pages
+   621→   621→    const pillarPages = clusterProfiles.filter((p) => p.isPillar);
+   622→   622→    const subPages = clusterProfiles.filter((p) => !p.isPillar);
+   623→   623→
+   624→   624→    for (const pillar of pillarPages) {
+   625→   625→      for (const sub of subPages) {
+   626→   626→        // Link from pillar to sub-page
+   627→   627→        const linkKey = `${pillar.url}→${sub.url}`;
+   628→   628→        if (!existingLinks.has(linkKey) && !pillar.existingOutgoingUrls.some((u) => sub.url.includes(u))) {
+   629→   629→          const anchorText = sub.primaryKeyword ?? sub.title ?? sub.url;
+   630→   630→          candidates.push({
+   631→   631→            projectId: '',
+   632→   632→            sourcePageId: pillar.pageId,
+   633→   633→            targetPageId: sub.pageId,
+   634→   634→            sourceUrl: pillar.url,
+   635→   635→            targetUrl: sub.url,
+   636→   636→            anchorText,
+   637→   637→            surroundingText: `Link van pijlerpagina naar sub-pagina binnen cluster`,
+   638→   638→            strategy: 'TOPIC_CLUSTER',
+   639→   639→            confidence: 0.8,
+   640→   640→            isExisting: false,
+   641→   641→            isBroken: false,
+   642→   642→            replacesLinkId: null,
+   643→   643→          });
+   644→   644→        }
+   645→   645→
+   646→   646→        // Link from sub-page to pillar page
+   647→   647→        const reverseKey = `${sub.url}→${pillar.url}`;
+   648→   648→        if (!existingLinks.has(reverseKey) && !sub.existingOutgoingUrls.some((u) => pillar.url.includes(u))) {
+   649→   649→          const anchorText = pillar.primaryKeyword ?? pillar.title ?? pillar.url;
+   650→   650→          candidates.push({
+   651→   651→            projectId: '',
+   652→   652→            sourcePageId: sub.pageId,
+   653→   653→            targetPageId: pillar.pageId,
+   654→   654→            sourceUrl: sub.url,
+   655→   655→            targetUrl: pillar.url,
+   656→   656→            anchorText,
+   657→   657→            surroundingText: `Link van sub-pagina naar pijlerpagina binnen cluster`,
+   658→   658→            strategy: 'TOPIC_CLUSTER',
+   659→   659→            confidence: 0.75,
+   660→   660→            isExisting: false,
+   661→   661→            isBroken: false,
+   662→   662→            replacesLinkId: null,
+   663→   663→          });
+   664→   664→        }
+   665→   665→      }
+   666→   666→    }
+   667→   667→
+   668→   668→    // Also suggest links between sub-pages that are related
+   669→   669→    for (let i = 0; i < subPages.length; i++) {
+   670→   670→      for (let j = i + 1; j < subPages.length; j++) {
+   671→   671→        const a = subPages[i];
+   672→   672→        const b = subPages[j];
+   673→   673→
+   674→   674→        // a → b
+   675→   675→        const keyAB = `${a.url}→${b.url}`;
+   676→   676→        if (!existingLinks.has(keyAB) && !a.existingOutgoingUrls.some((u) => b.url.includes(u))) {
+   677→   677→          candidates.push({
+   678→   678→            projectId: '',
+   679→   679→            sourcePageId: a.pageId,
+   680→   680→            targetPageId: b.pageId,
+   681→   681→            sourceUrl: a.url,
+   682→   682→            targetUrl: b.url,
+   683→   683→            anchorText: b.primaryKeyword ?? b.title ?? b.url,
+   684→   684→            surroundingText: `Gerelateerde pagina binnen hetzelfde cluster`,
+   685→   685→            strategy: 'TOPIC_CLUSTER',
+   686→   686→            confidence: 0.65,
+   687→   687→            isExisting: false,
+   688→   688→            isBroken: false,
+   689→   689→            replacesLinkId: null,
+   690→   690→          });
+   691→   691→        }
+   692→   692→
+   693→   693→        // b → a
+   694→   694→        const keyBA = `${b.url}→${a.url}`;
+   695→   695→        if (!existingLinks.has(keyBA) && !b.existingOutgoingUrls.some((u) => a.url.includes(u))) {
+   696→   696→          candidates.push({
+   697→   697→            projectId: '',
+   698→   698→            sourcePageId: b.pageId,
+   699→   699→            targetPageId: a.pageId,
+   700→   700→            sourceUrl: b.url,
+   701→   701→            targetUrl: a.url,
+   702→   702→            anchorText: a.primaryKeyword ?? a.title ?? a.url,
+   703→   703→            surroundingText: `Gerelateerde pagina binnen hetzelfde cluster`,
+   704→   704→            strategy: 'TOPIC_CLUSTER',
+   705→   705→            confidence: 0.65,
+   706→   706→            isExisting: false,
+   707→   707→            isBroken: false,
+   708→   708→            replacesLinkId: null,
+   709→   709→          });
+   710→   710→        }
+   711→   711→      }
+   712→   712→    }
+   713→   713→  }
+   714→   714→
+   715→   715→  // projectId will be resolved during saveCandidatesToDatabase
+   716→   716→  return candidates;
+   717→   717→}
+   718→   718→
+   719→   719→// ============================================================================
+   720→   720→// Strategy: ORPHAN_PAGE
+   721→   721→// ============================================================================
+   722→   722→
+   723→   723→/**
+   724→   724→ * Generate link candidates for orphan pages (pages with no internal links
+   725→   725→ * pointing to them). Suggests links from strong, related pages.
+   726→   726→ */
+   727→   727→function generateOrphanPageCandidates(
+   728→   728→  profiles: PageLinkProfile[],
+   729→   729→  existingLinks: Set<string>
+   730→   730→): LinkCandidate[] {
+   731→   731→  const candidates: LinkCandidate[] = [];
+   732→   732→  const orphanPages = profiles.filter((p) => p.isOrphan);
+   733→   733→
+   734→   734→  if (orphanPages.length === 0) {
+   735→   735→    return candidates;
+   736→   736→  }
+   737→   737→
+   738→   738→  // Use pre-computed incoming link counts from profiles
+   739→   739→  // (already computed in buildPageLinkProfiles)
+   740→   740→
+   741→   741→  // Find strong pages: those with the most incoming links
+   742→   742→  const strongPages = profiles
+   743→   743→    .filter((p) => !p.isOrphan && p.incomingLinks > 0)
+   744→   744→    .sort((a, b) => b.incomingLinks - a.incomingLinks)
+   745→   745→    .slice(0, 20); // Top 20 strong pages
+   746→   746→
+   747→   747→  for (const orphan of orphanPages) {
+   748→   748→    // Find the best source pages for this orphan
+   749→   749→    // Prioritize pages that are thematically related (same keyword topic)
+   750→   750→    const potentialSources = strongPages.filter((sp) => {
+   751→   751→      // Don't link from the orphan to itself
+   752→   752→      if (sp.pageId === orphan.pageId) return false;
+   753→   753→      // Check if not already linked
+   754→   754→      const linkKey = `${sp.url}→${orphan.url}`;
+   755→   755→      if (existingLinks.has(linkKey)) return false;
+   756→   756→      // Check if source doesn't already link to this orphan
+   757→   757→      if (sp.existingOutgoingUrls.some((u) => orphan.url.includes(u))) return false;
+   758→   758→      return true;
+   759→   759→    });
+   760→   760→
+   761→   761→    // Score potential sources by relevance
+   762→   762→    const scoredSources = potentialSources.map((sp) => {
+   763→   763→      let relevanceScore = 0;
+   764→   764→
+   765→   765→      // Same cluster bonus
+   766→   766→      if (sp.clusterId && sp.clusterId === orphan.clusterId) {
+   767→   767→        relevanceScore += 0.3;
+   768→   768→      }
+   769→   769→
+   770→   770→      // Keyword overlap bonus
+   771→   771→      if (sp.primaryKeyword && orphan.primaryKeyword && sp.primaryKeyword !== orphan.primaryKeyword) {
+   772→   772→        // Different keywords in same domain = good link opportunity
+   773→   773→        relevanceScore += 0.2;
+   774→   774→      }
+   775→   775→
+   776→   776→      // Authority bonus (more incoming links = more authority)
+   777→   777→      relevanceScore += Math.min(sp.incomingLinks * 0.05, 0.3);
+   778→   778→
+   779→   779→      // Pillar page bonus
+   780→   780→      if (sp.isPillar) {
+   781→   781→        relevanceScore += 0.2;
+   782→   782→      }
+   783→   783→
+   784→   784→      return { source: sp, score: Math.min(relevanceScore, 1.0) };
+   785→   785→    });
+   786→   786→
+   787→   787→    // Sort by relevance and take top 3
+   788→   788→    const topSources = scoredSources
+   789→   789→      .sort((a, b) => b.score - a.score)
+   790→   790→      .slice(0, 3);
+   791→   791→
+   792→   792→    for (const { source, score } of topSources) {
+   793→   793→      const anchorText = orphan.primaryKeyword ?? orphan.title ?? orphan.url;
+   794→   794→      candidates.push({
+   795→   795→        projectId: '',
+   796→   796→        sourcePageId: source.pageId,
+   797→   797→        targetPageId: orphan.pageId,
+   798→   798→        sourceUrl: source.url,
+   799→   799→        targetUrl: orphan.url,
+   800→   800→        anchorText,
+   801→   801→        surroundingText: `Voorgestelde link naar weespagina vanaf sterke pagina`,
+   802→   802→        strategy: 'ORPHAN_PAGE',
+   803→   803→        confidence: Math.max(0.4, Math.min(0.9, score + 0.4)),
+   804→   804→        isExisting: false,
+   805→   805→        isBroken: false,
+   806→   806→        replacesLinkId: null,
+   807→   807→      });
+   808→   808→    }
+   809→   809→  }
+   810→   810→
+   811→   811→  return candidates;
+   812→   812→}
+   813→   813→
+   814→   814→// ============================================================================
+   815→   815→// Strategy: STRONG_PAGE
+   816→   816→// ============================================================================
+   817→   817→
+   818→   818→/**
+   819→   819→ * Generate link candidates from high-authority pages to related newer pages.
+   820→   820→ * Identifies pages with the most internal links pointing to them
+   821→   821→ * and suggests linking from them to related content.
+   822→   822→ */
+   823→   823→function generateStrongPageCandidates(
+   824→   824→  profiles: PageLinkProfile[],
+   825→   825→  existingLinks: Set<string>
+   826→   826→): LinkCandidate[] {
+   827→   827→  const candidates: LinkCandidate[] = [];
+   828→   828→
+   829→   829→  // Use pre-computed incoming link counts from profiles
+   830→   830→  // (already computed in buildPageLinkProfiles)
+   831→   831→
+   832→   832→  // Identify strong pages: top 15% by incoming links
+   833→   833→  const sortedByIncoming = [...profiles]
+   834→   834→    .sort((a, b) => b.incomingLinks - a.incomingLinks);
+   835→   835→
+   836→   836→  const topCount = Math.max(3, Math.ceil(sortedByIncoming.length * 0.15));
+   837→   837→  const strongPages = sortedByIncoming.slice(0, topCount);
+   838→   838→
+   839→   839→  // Identify "newer" pages: pages with few incoming links but good content
+   840→   840→  const newerPages = profiles.filter((p) => {
+   841→   841→    return p.incomingLinks <= 2 && !p.isOrphan && p.wordCount > 300;
+   842→   842→  });
+   843→   843→
+   844→   844→  for (const strongPage of strongPages) {
+   845→   845→    // Find related newer pages to link to
+   846→   846→    const relatedNewPages = newerPages.filter((np) => {
+   847→   847→      if (np.pageId === strongPage.pageId) return false;
+   848→   848→      const linkKey = `${strongPage.url}→${np.url}`;
+   849→   849→      if (existingLinks.has(linkKey)) return false;
+   850→   850→      if (strongPage.existingOutgoingUrls.some((u) => np.url.includes(u))) return false;
+   851→   851→      return true;
+   852→   852→    });
+   853→   853→
+   854→   854→    // Score by relevance
+   855→   855→    const scored = relatedNewPages.map((np) => {
+   856→   856→      let relevance = 0;
+   857→   857→
+   858→   858→      // Same cluster
+   859→   859→      if (strongPage.clusterId && strongPage.clusterId === np.clusterId) {
+   860→   860→        relevance += 0.3;
+   861→   861→      }
+   862→   862→
+   863→   863→      // Complementary keywords
+   864→   864→      if (strongPage.primaryKeyword && np.primaryKeyword && strongPage.primaryKeyword !== np.primaryKeyword) {
+   865→   865→        relevance += 0.25;
+   866→   866→      }
+   867→   867→
+   868→   868→      return { page: np, relevance: Math.min(relevance, 1.0) };
+   869→   869→    });
+   870→   870→
+   871→   871→    const topRelated = scored
+   872→   872→      .sort((a, b) => b.relevance - a.relevance)
+   873→   873→      .slice(0, 2);
+   874→   874→
+   875→   875→    for (const { page, relevance } of topRelated) {
+   876→   876→      const anchorText = page.primaryKeyword ?? page.title ?? page.url;
+   877→   877→      candidates.push({
+   878→   878→        projectId: '',
+   879→   879→        sourcePageId: strongPage.pageId,
+   880→   880→        targetPageId: page.pageId,
+   881→   881→        sourceUrl: strongPage.url,
+   882→   882→        targetUrl: page.url,
+   883→   883→        anchorText,
+   884→   884→        surroundingText: `Link van sterke pagina naar gerelateerde content`,
+   885→   885→        strategy: 'STRONG_PAGE',
+   886→   886→        confidence: Math.max(0.4, Math.min(0.85, relevance + 0.45)),
+   887→   887→        isExisting: false,
+   888→   888→        isBroken: false,
+   889→   889→        replacesLinkId: null,
+   890→   890→      });
+   891→   891→    }
+   892→   892→  }
+   893→   893→
+   894→   894→  return candidates;
+   895→   895→}
+   896→   896→
+   897→   897→// ============================================================================
+   898→   898→// Strategy: BROKEN_REPLACEMENT
+   899→   899→// ============================================================================
+   900→   900→
+   901→   901→/**
+   902→   902→ * Generate link candidates to replace broken links.
+   903→   903→ * Finds broken internal links from TechnicalIssue data and suggests
+   904→   904→ * appropriate replacement target pages.
+   905→   905→ */
+   906→   906→function generateBrokenReplacementCandidates(
+   907→   907→  profiles: PageLinkProfile[],
+   908→   908→  brokenLinks: Array<{
+   909→   909→    id: string;
+   910→   910→    ruleName: string;
+   911→   911→    affectedUrls: string[];
+   912→   912→    evidence: string | null;
+   913→   913→    pageId: string | null;
+   914→   914→  }>,
+   915→   915→  existingLinks: Set<string>
+   916→   916→): LinkCandidate[] {
+   917→   917→  const candidates: LinkCandidate[] = [];
+   918→   918→
+   919→   919→  if (brokenLinks.length === 0) {
+   920→   920→    return candidates;
+   921→   921→  }
+   922→   922→
+   923→   923→  // Build a URL → profile lookup
+   924→   924→  const urlProfileMap = new Map<string, PageLinkProfile>();
+   925→   925→  for (const p of profiles) {
+   926→   926→    urlProfileMap.set(p.url, p);
+   927→   927→    urlProfileMap.set(p.normalizedUrl, p);
+   928→   928→  }
+   929→   929→
+   930→   930→  for (const brokenLink of brokenLinks) {
+   931→   931→    // Find the source page where the broken link exists
+   932→   932→    const sourcePage = brokenLink.pageId
+   933→   933→      ? profiles.find((p) => p.pageId === brokenLink.pageId)
+   934→   934→      : null;
+   935→   935→
+   936→   936→    if (!sourcePage) continue;
+   937→   937→
+   938→   938→    // Parse broken target URLs from evidence
+   939→   939→    const brokenTargetUrls = brokenLink.affectedUrls;
+   940→   940→    if (brokenTargetUrls.length === 0) continue;
+   941→   941→
+   942→   942→    for (const brokenUrl of brokenTargetUrls) {
+   943→   943→      // Find a suitable replacement page
+   944→   944→      // Look for pages with similar URL patterns or same keyword topics
+   945→   945→      const replacementCandidates = findReplacementCandidates(
+   946→   946→        brokenUrl,
+   947→   947→        sourcePage,
+   948→   948→        profiles,
+   949→   949→        existingLinks
+   950→   950→      );
+   951→   951→
+   952→   952→      for (const replacement of replacementCandidates) {
+   953→   953→        candidates.push({
+   954→   954→          projectId: '',
+   955→   955→          sourcePageId: sourcePage.pageId,
+   956→   956→          targetPageId: replacement.pageId,
+   957→   957→          sourceUrl: sourcePage.url,
+   958→   958→          targetUrl: replacement.url,
+   959→   959→          anchorText: replacement.primaryKeyword ?? replacement.title ?? replacement.url,
+   960→   960→          surroundingText: `Vervanging voor gebroken link naar ${brokenUrl}`,
+   961→   961→          strategy: 'BROKEN_REPLACEMENT',
+   962→   962→          confidence: replacement.confidence,
+   963→   963→          isExisting: false,
+   964→   964→          isBroken: false,
+   965→   965→          replacesLinkId: brokenLink.id,
+   966→   966→        });
+   967→   967→      }
+   968→   968→    }
+   969→   969→  }
+   970→   970→
+   971→   971→  return candidates;
+   972→   972→}
+   973→   973→
+   974→   974→/**
+   975→   975→ * Find suitable replacement pages for a broken link URL.
+   976→   976→ * Scores candidates by URL similarity and keyword relevance.
+   977→   977→ */
+   978→   978→function findReplacementCandidates(
+   979→   979→  brokenUrl: string,
+   980→   980→  sourcePage: PageLinkProfile,
+   981→   981→  allProfiles: PageLinkProfile[],
+   982→   982→  existingLinks: Set<string>
+   983→   983→): Array<PageLinkProfile & { confidence: number }> {
+   984→   984→  const results: Array<PageLinkProfile & { confidence: number }> = [];
+   985→   985→
+   986→   986→  // Extract path segments from the broken URL for matching
+   987→   987→  const brokenPath = extractPath(brokenUrl).toLowerCase();
+   988→   988→  const brokenSegments = brokenPath.split('/').filter((s) => s.length > 0);
+   989→   989→
+   990→   990→  for (const profile of allProfiles) {
+   991→   991→    if (profile.pageId === sourcePage.pageId) continue;
+   992→   992→
+   993→   993→    // Skip if already linked
+   994→   994→    const linkKey = `${sourcePage.url}→${profile.url}`;
+   995→   995→    if (existingLinks.has(linkKey)) continue;
+   996→   996→    if (sourcePage.existingOutgoingUrls.some((u) => profile.url.includes(u))) continue;
+   997→   997→
+   998→   998→    let score = 0;
+   999→   999→
+  1000→  1000→    // URL path similarity
+  1001→  1001→    const profilePath = extractPath(profile.url).toLowerCase();
+  1002→  1002→    const profileSegments = profilePath.split('/').filter((s) => s.length > 0);
+  1003→  1003→
+  1004→  1004→    // Check for common path segments
+  1005→  1005→    const commonSegments = brokenSegments.filter((s) => profileSegments.includes(s));
+  1006→  1006→    score += commonSegments.length * 0.15;
+  1007→  1007→
+  1008→  1008→    // Check if the page title contains parts of the broken URL
+  1009→  1009→    if (profile.title) {
+  1010→  1010→      const titleLower = profile.title.toLowerCase();
+  1011→  1011→      for (const segment of brokenSegments) {
+  1012→  1012→        if (segment.length > 3 && titleLower.includes(segment)) {
+  1013→  1013→          score += 0.1;
+  1014→  1014→        }
+  1015→  1015→      }
+  1016→  1016→    }
+  1017→  1017→
+  1018→  1018→    // Same cluster bonus
+  1019→  1019→    if (sourcePage.clusterId && sourcePage.clusterId === profile.clusterId) {
+  1020→  1020→      score += 0.2;
+  1021→  1021→    }
+  1022→  1022→
+  1023→  1023→    // Complementary keyword bonus
+  1024→  1024→    if (sourcePage.primaryKeyword && profile.primaryKeyword && sourcePage.primaryKeyword !== profile.primaryKeyword) {
+  1025→  1025→      score += 0.15;
+  1026→  1026→    }
+  1027→  1027→
+  1028→  1028→    const confidence = Math.max(0.3, Math.min(0.9, score));
+  1029→  1029→    if (confidence >= 0.4) {
+  1030→  1030→      results.push({ ...profile, confidence });
+  1031→  1031→    }
+  1032→  1032→  }
+  1033→  1033→
+  1034→  1034→  // Return top 3 replacements sorted by confidence
+  1035→  1035→  return results.sort((a, b) => b.confidence - a.confidence).slice(0, 3);
+  1036→  1036→}
+  1037→  1037→
+  1038→  1038→// ============================================================================
+  1039→  1039→// Cannibalization Detection
+  1040→  1040→// ============================================================================
+  1041→  1041→
+  1042→  1042→/**
+  1043→  1043→ * Detect potential keyword cannibalization between pages.
+  1044→  1044→ * Warns when two pages target the same primary keyword and
+  1045→  1045→ * a link between them might confuse search engines.
+  1046→  1046→ */
+  1047→  1047→function detectCannibalization(
+  1048→  1048→  profiles: PageLinkProfile[],
+  1049→  1049→  candidates: LinkCandidate[]
+  1050→  1050→): CannibalizationWarning[] {
+  1051→  1051→  const warnings: CannibalizationWarning[] = [];
+  1052→  1052→
+  1053→  1053→  // Build a map of keyword → pages targeting it
+  1054→  1054→  const keywordPageMap = new Map<string, PageLinkProfile[]>();
+  1055→  1055→  for (const profile of profiles) {
+  1056→  1056→    if (profile.primaryKeyword) {
+  1057→  1057→      const keyword = profile.primaryKeyword.toLowerCase();
+  1058→  1058→      if (!keywordPageMap.has(keyword)) {
+  1059→  1059→        keywordPageMap.set(keyword, []);
+  1060→  1060→      }
+  1061→  1061→      keywordPageMap.get(keyword)!.push(profile);
+  1062→  1062→    }
+  1063→  1063→  }
+  1064→  1064→
+  1065→  1065→  // Find candidates where both source and target target the same keyword
+  1066→  1066→  for (const candidate of candidates) {
+  1067→  1067→    const sourceProfile = profiles.find((p) => p.pageId === candidate.sourcePageId);
+  1068→  1068→    const targetProfile = profiles.find((p) => p.pageId === candidate.targetPageId);
+  1069→  1069→
+  1070→  1070→    if (!sourceProfile || !targetProfile) continue;
+  1071→  1071→
+  1072→  1072→    if (
+  1073→  1073→      sourceProfile.primaryKeyword &&
+  1074→  1074→      targetProfile.primaryKeyword &&
+  1075→  1075→      sourceProfile.primaryKeyword.toLowerCase() === targetProfile.primaryKeyword.toLowerCase()
+  1076→  1076→    ) {
+  1077→  1077→      const sharedKeyword = sourceProfile.primaryKeyword;
+  1078→  1078→
+  1079→  1079→      // Check if we already have a warning for this pair
+  1080→  1080→      const existingWarning = warnings.find(
+  1081→  1081→        (w) =>
+  1082→  1082→          (w.pageId1 === sourceProfile.pageId && w.pageId2 === targetProfile.pageId) ||
+  1083→  1083→          (w.pageId1 === targetProfile.pageId && w.pageId2 === sourceProfile.pageId)
+  1084→  1084→      );
+  1085→  1085→
+  1086→  1086→      if (!existingWarning) {
+  1087→  1087→        const severity = determineCannibalizationSeverity(sourceProfile, targetProfile);
+  1088→  1088→
+  1089→  1089→        warnings.push({
+  1090→  1090→          pageUrl1: sourceProfile.url,
+  1091→  1091→          pageId1: sourceProfile.pageId,
+  1092→  1092→          pageUrl2: targetProfile.url,
+  1093→  1093→          pageId2: targetProfile.pageId,
+  1094→  1094→          sharedKeyword,
+  1095→  1095→          warning: `De pagina's "${sourceProfile.title ?? sourceProfile.url}" en "${targetProfile.title ?? targetProfile.url}" richten zich beide op het keyword "${sharedKeyword}". Een interne link tussen deze pagina's kan zoekmachines in de war brengen over welke pagina het meest relevant is.`,
+  1096→  1096→          severity,
+  1097→  1097→          suggestedAction: severity === 'high'
+  1098→  1098→            ? 'Overweeg om één pagina te canonicaliseren naar de andere, of de content te herschrijven zodat elke pagina een unieke zoekintent bedient.'
+  1099→  1099→            : severity === 'medium'
+  1100→  1100→              ? 'Zorg dat de ankertekst duidelijk het onderscheid tussen beide pagina\'s maakt, of overweeg de link niet te plaatsen.'
+  1101→  1101→              : 'De link kan geplaatst worden, maar monitor de rangposities van beide pagina\'s na plaatsing.',
+  1102→  1102→        });
+  1103→  1103→      }
+  1104→  1104→    }
+  1105→  1105→  }
+  1106→  1106→
+  1107→  1107→  return warnings;
+  1108→  1108→}
+  1109→  1109→
+  1110→  1110→/**
+  1111→  1111→ * Determine the severity of a cannibalization warning.
+  1112→  1112→ */
+  1113→  1113→function determineCannibalizationSeverity(
+  1114→  1114→  page1: PageLinkProfile,
+  1115→  1115→  page2: PageLinkProfile
+  1116→  1116→): 'low' | 'medium' | 'high' {
+  1117→  1117→  // High severity if both pages are well-established (both have incoming links)
+  1118→  1118→  if (!page1.isOrphan && !page2.isOrphan && page1.incomingLinks > 0 && page2.incomingLinks > 0) {
+  1119→  1119→    return 'high';
+  1120→  1120→  }
+  1121→  1121→
+  1122→  1122→  // Medium severity if one page is established and the other is not
+  1123→  1123→  if (!page1.isOrphan || !page2.isOrphan) {
+  1124→  1124→    return 'medium';
+  1125→  1125→  }
+  1126→  1126→
+  1127→  1127→  return 'low';
+  1128→  1128→}
+  1129→  1129→
+  1130→  1130→/**
+  1131→  1131→ * Adjust confidence scores for candidates that are affected by cannibalization warnings.
+  1132→  1132→ * Reduces confidence for candidates linking pages that target the same keyword.
+  1133→  1133→ */
+  1134→  1134→function adjustConfidenceForCannibalization(
+  1135→  1135→  candidates: LinkCandidate[],
+  1136→  1136→  warnings: CannibalizationWarning[]
+  1137→  1137→): LinkCandidate[] {
+  1138→  1138→  if (warnings.length === 0) return candidates;
+  1139→  1139→
+  1140→  1140→  // Build a set of page pairs that have cannibalization warnings
+  1141→  1141→  const warningPairs = new Set<string>();
+  1142→  1142→  for (const w of warnings) {
+  1143→  1143→    warningPairs.add(`${w.pageId1}→${w.pageId2}`);
+  1144→  1144→    warningPairs.add(`${w.pageId2}→${w.pageId1}`);
+  1145→  1145→  }
+  1146→  1146→
+  1147→  1147→  return candidates.map((c) => {
+  1148→  1148→    const pairKey = `${c.sourcePageId}→${c.targetPageId}`;
+  1149→  1149→    if (warningPairs.has(pairKey)) {
+  1150→  1150→      const warning = warnings.find(
+  1151→  1151→        (w) =>
+  1152→  1152→          (w.pageId1 === c.sourcePageId && w.pageId2 === c.targetPageId) ||
+  1153→  1153→          (w.pageId1 === c.targetPageId && w.pageId2 === c.sourcePageId)
+  1154→  1154→      );
+  1155→  1155→      const penalty = warning?.severity === 'high' ? 0.3 : warning?.severity === 'medium' ? 0.2 : 0.1;
+  1156→  1156→      return {
+  1157→  1157→        ...c,
+  1158→  1158→        confidence: Math.max(0.1, c.confidence - penalty),
+  1159→  1159→      };
+  1160→  1160→    }
+  1161→  1161→    return c;
+  1162→  1162→  });
+  1163→  1163→}
+  1164→  1164→
+  1165→  1165→// ============================================================================
+  1166→  1166→// Deduplication & Persistence
+  1167→  1167→// ============================================================================
+  1168→  1168→
+  1169→  1169→/**
+  1170→  1170→ * Deduplicate candidates by source-target URL pair.
+  1171→  1171→ * When duplicates exist, keep the one with the highest confidence.
+  1172→  1172→ */
+  1173→  1173→function deduplicateCandidates(candidates: LinkCandidate[]): LinkCandidate[] {
+  1174→  1174→  const bestByPair = new Map<string, LinkCandidate>();
+  1175→  1175→
+  1176→  1176→  for (const c of candidates) {
+  1177→  1177→    const key = `${c.sourceUrl}→${c.targetUrl}`;
+  1178→  1178→    const existing = bestByPair.get(key);
+  1179→  1179→    if (!existing || c.confidence > existing.confidence) {
+  1180→  1180→      bestByPair.set(key, c);
+  1181→  1181→    }
+  1182→  1182→  }
+  1183→  1183→
+  1184→  1184→  return Array.from(bestByPair.values());
+  1185→  1185→}
+  1186→  1186→
+  1187→  1187→/**
+  1188→  1188→ * Save link candidates to the InternalLink table in the database.
+  1189→  1189→ * Sets the projectId from the first candidate or derives it from the profiles.
+  1190→  1190→ */
+  1191→  1191→async function saveCandidatesToDatabase(
+  1192→  1192→  candidates: LinkCandidate[]
+  1193→  1193→): Promise<LinkCandidate[]> {
+  1194→  1194→  if (candidates.length === 0) return [];
+  1195→  1195→
+  1196→  1196→  // Get the projectId from the first candidate that has one
+  1197→  1197→  // For candidates where projectId was not set, we need to resolve it
+  1198→  1198→  const projectIds = new Set(candidates.map((c) => c.projectId).filter((id) => id.length > 0));
+  1199→  1199→
+  1200→  1200→  // If projectIds are missing, try to resolve from page data
+  1201→  1201→  const candidatesWithProjectId: LinkCandidate[] = [];
+  1202→  1202→  for (const c of candidates) {
+  1203→  1203→    if (c.projectId && c.projectId.length > 0) {
+  1204→  1204→      candidatesWithProjectId.push(c);
+  1205→  1205→    } else {
+  1206→  1206→      // Try to resolve projectId from sourcePageId
+  1207→  1207→      const page = await db.page.findUnique({
+  1208→  1208→        where: { id: c.sourcePageId ?? '' },
+  1209→  1209→        select: { projectId: true },
+  1210→  1210→      });
+  1211→  1211→      if (page) {
+  1212→  1212→        candidatesWithProjectId.push({ ...c, projectId: page.projectId });
+  1213→  1213→      }
+  1214→  1214→    }
+  1215→  1215→  }
+  1216→  1216→
+  1217→  1217→  // Batch create candidates in the database
+  1218→  1218→  const saved: LinkCandidate[] = [];
+  1219→  1219→
+  1220→  1220→  for (const candidate of candidatesWithProjectId) {
+  1221→  1221→    try {
+  1222→  1222→      // Generate anchor variations for this candidate
+  1223→  1223→      const sourcePage = await db.page.findUnique({
+  1224→  1224→        where: { id: candidate.sourcePageId ?? '' },
+  1225→  1225→        select: { mainContent: true },
+  1226→  1226→      });
+  1227→  1227→
+  1228→  1228→      const anchorVariations = generateAnchorVariations(
+  1229→  1229→        candidate.targetUrl, // fallback title
+  1230→  1230→        candidate.anchorText, // use the generated anchor as keyword
+  1231→  1231→        sourcePage?.mainContent ?? candidate.surroundingText ?? ''
+  1232→  1232→      );
+  1233→  1233→
+  1234→  1234→      // Pick the best anchor variation
+  1235→  1235→      const bestAnchor = anchorVariations[0]?.anchorText ?? candidate.anchorText;
+  1236→  1236→
+  1237→  1237→      const record = await db.internalLink.create({
+  1238→  1238→        data: {
+  1239→  1239→          projectId: candidate.projectId,
+  1240→  1240→          sourcePageId: candidate.sourcePageId,
+  1241→  1241→          targetPageId: candidate.targetPageId,
+  1242→  1242→          sourceUrl: candidate.sourceUrl,
+  1243→  1243→          targetUrl: candidate.targetUrl,
+  1244→  1244→          anchorText: bestAnchor,
+  1245→  1245→          surroundingText: candidate.surroundingText,
+  1246→  1246→          strategy: candidate.strategy,
+  1247→  1247→          status: 'PENDING',
+  1248→  1248→          confidence: candidate.confidence,
+  1249→  1249→          isExisting: candidate.isExisting,
+  1250→  1250→          isBroken: candidate.isBroken,
+  1251→  1251→          replacesLinkId: candidate.replacesLinkId,
+  1252→  1252→        },
+  1253→  1253→      });
+  1254→  1254→
+  1255→  1255→      saved.push({
+  1256→  1256→        id: record.id,
+  1257→  1257→        projectId: record.projectId,
+  1258→  1258→        sourcePageId: record.sourcePageId,
+  1259→  1259→        targetPageId: record.targetPageId,
+  1260→  1260→        sourceUrl: record.sourceUrl,
+  1261→  1261→        targetUrl: record.targetUrl,
+  1262→  1262→        anchorText: record.anchorText,
+  1263→  1263→        surroundingText: record.surroundingText,
+  1264→  1264→        strategy: record.strategy as LinkStrategy,
+  1265→  1265→        confidence: record.confidence,
+  1266→  1266→        isExisting: record.isExisting,
+  1267→  1267→        isBroken: record.isBroken,
+  1268→  1268→        replacesLinkId: record.replacesLinkId,
+  1269→  1269→      });
+  1270→  1270→    } catch (error) {
+  1271→  1271→      const msg = error instanceof Error ? error.message : String(error);
+  1272→  1272→      console.error(`[LinkCandidateGenerator] Fout bij opslaan kandidaat ${candidate.sourceUrl}→${candidate.targetUrl}: ${msg}`);
+  1273→  1273→    }
+  1274→  1274→  }
+  1275→  1275→
+  1276→  1276→  return saved;
+  1277→  1277→}
+  1278→  1278→
+  1279→  1279→// ============================================================================
+  1280→  1280→// Utility Functions
+  1281→  1281→// ============================================================================
+  1282→  1282→
+  1283→  1283→/**
+  1284→  1284→ * Parse a JSON array from a potentially stringified field.
+  1285→  1285→ */
+  1286→  1286→function parseJsonArray(value: string | null): string[] {
+  1287→  1287→  if (!value) return [];
+  1288→  1288→  try {
+  1289→  1289→    const parsed = JSON.parse(value) as unknown;
+  1290→  1290→    if (Array.isArray(parsed)) {
+  1291→  1291→      return parsed.filter((u): u is string => typeof u === 'string');
+  1292→  1292→    }
+  1293→  1293→    return [];
+  1294→  1294→  } catch {
+  1295→  1295→    return [];
+  1296→  1296→  }
+  1297→  1297→}
+  1298→  1298→
+  1299→  1299→/**
+  1300→  1300→ * Parse AI response content into structured suggestions.
+  1301→  1301→ * Handles both raw JSON and markdown-wrapped JSON.
+  1302→  1302→ */
+  1303→  1303→function parseAIResponse(content: string): Array<Record<string, unknown>> {
+  1304→  1304→  // Try to extract JSON from the response
+  1305→  1305→  let jsonStr = content.trim();
+  1306→  1306→
+  1307→  1307→  // Remove markdown code fences if present
+  1308→  1308→  const jsonMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
+  1309→  1309→  if (jsonMatch) {
+  1310→  1310→    jsonStr = jsonMatch[1].trim();
+  1311→  1311→  }
+  1312→  1312→
+  1313→  1313→  // Try to find a JSON array in the content
+  1314→  1314→  const arrayMatch = jsonStr.match(/\[[\s\S]*\]/);
+  1315→  1315→  if (arrayMatch) {
+  1316→  1316→    jsonStr = arrayMatch[0];
+  1317→  1317→  }
+  1318→  1318→
+  1319→  1319→  try {
+  1320→  1320→    const parsed = JSON.parse(jsonStr) as unknown;
+  1321→  1321→    if (Array.isArray(parsed)) {
+  1322→  1322→      return parsed.filter((item): item is Record<string, unknown> =>
+  1323→  1323→        typeof item === 'object' && item !== null
+  1324→  1324→      );
+  1325→  1325→    }
+  1326→  1326→    return [];
+  1327→  1327→  } catch {
+  1328→  1328→    return [];
+  1329→  1329→  }
+  1330→  1330→}
+  1331→  1331→
+  1332→  1332→/**
+  1333→  1333→ * Extract the path portion from a URL.
+  1334→  1334→ */
+  1335→  1335→function extractPath(url: string): string {
+  1336→  1336→  try {
+  1337→  1337→    const parsed = new URL(url);
+  1338→  1338→    return parsed.pathname;
+  1339→  1339→  } catch {
+  1340→  1340→    // If URL parsing fails, try a simple split
+  1341→  1341→    const match = url.match(/https?:\/\/[^/]+(\/.*)?/);
+  1342→  1342→    return match?.[1] ?? '/';
+  1343→  1343→  }
+  1344→  1344→}
+  1345→  1345→

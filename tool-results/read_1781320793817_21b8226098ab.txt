@@ -1,0 +1,1296 @@
+     1→// ============================================================================
+     2→// Decay & Pruning Workflows — SEOCoach
+     3→// AI-Driven SEO Automation Platform (Dutch Market)
+     4→// ============================================================================
+     5→// User-facing workflows for content decay management. Extends the existing
+     6→// decay-detector module with actionable workflows for updating decayed pages,
+     7→// comparing content versions, approving revisions, and managing pruning actions.
+     8→// All user-facing strings are in Dutch. Destructive actions always require
+     9→// explicit approval.
+    10→// ============================================================================
+    11→
+    12→import { db } from '@/lib/db';
+    13→import { providerManager } from '@/lib/ai/provider-manager';
+    14→import { generateDraft } from './draft-generator';
+    15→import { checkClaimSupport } from './source-grounding';
+    16→import { hasBlockingFindings } from './quality-controls';
+    17→import { recordChange } from './change-history';
+    18→import type { PruningActionType } from './types';
+    19→
+    20→// ============================================================================
+    21→// Types
+    22→// ============================================================================
+    23→
+    24→/**
+    25→ * Summary of a declining page for list views.
+    26→ */
+    27→export interface DecliningPageSummary {
+    28→  /** Decay record ID */
+    29→  id: string;
+    30→  /** Project ID */
+    31→  projectId: string;
+    32→  /** Page ID (if associated with a crawled page) */
+    33→  pageId: string | null;
+    34→  /** Page URL */
+    35→  url: string;
+    36→  /** Current search position */
+    37→  currentPage: number;
+    38→  /** Previous search position */
+    39→  previousPage: number | null;
+    40→  /** Current clicks */
+    41→  currentClicks: number | null;
+    42→  /** Previous clicks */
+    43→  previousClicks: number | null;
+    44→  /** Current impressions */
+    45→  currentImpressions: number | null;
+    46→  /** Previous impressions */
+    47→  previousImpressions: number | null;
+    48→  /** Decay percentage (negative = decline) */
+    49→  decayPercentage: number;
+    50→  /** Recommended pruning action */
+    51→  pruningAction: string;
+    52→  /** Whether metrics data is available */
+    53→  dataAvailable: boolean;
+    54→  /** Note about data availability in Dutch */
+    55→  dataNote: string | null;
+    56→  /** When the decay was detected */
+    57→  detectedAt: Date;
+    58→}
+    59→
+    60→/**
+    61→ * Result of comparing old content with proposed new content.
+    62→ */
+    63→export interface ContentComparisonResult {
+    64→  /** The content version ID that was compared */
+    65→  versionId: string;
+    66→  /** Diff of changes */
+    67→  diff: {
+    68→    /** Lines removed from old content */
+    69→    removed: string[];
+    70→    /** Lines added in new content */
+    71→    added: string[];
+    72→    /** Unified diff format */
+    73→    unified: string;
+    74→    /** Statistics */
+    75→    stats: {
+    76→      linesAdded: number;
+    77→      linesRemoved: number;
+    78→      linesUnchanged: number;
+    79→    };
+    80→  };
+    81→  /** Key changes highlighted in Dutch */
+    82→  keyChanges: string[];
+    83→  /** What improved in Dutch */
+    84→  improvements: string[];
+    85→  /** What might be risky in Dutch */
+    86→  risks: string[];
+    87→  /** Overall assessment in Dutch */
+    88→  summary: string;
+    89→}
+    90→
+    91→/**
+    92→ * Enhanced pruning recommendation with detailed evidence.
+    93→ */
+    94→export interface EnhancedPruningRecommendation {
+    95→  /** Decay record ID */
+    96→  decayId: string;
+    97→  /** Page URL */
+    98→  url: string;
+    99→  /** Recommended action */
+   100→  action: PruningActionType;
+   101→  /** Evidence for the recommendation in Dutch */
+   102→  evidence: {
+   103→    /** Traffic data summary in Dutch */
+   104→    traffic: string;
+   105→    /** Internal links that would be affected */
+   106→    internalLinksAffected: number;
+   107→    /** Internal link details in Dutch */
+   108→    internalLinkDetails: string;
+   109→  };
+   110→  /** Risk assessment in Dutch */
+   111→  riskAssessment: {
+   112→    /** Backlink risk in Dutch */
+   113→    backlinks: string;
+   114→    /** Authority risk in Dutch */
+   115→    authority: string;
+   116→    /** Overall risk level */
+   117→    overallRisk: 'low' | 'medium' | 'high' | 'critical';
+   118→  };
+   119→  /** Search performance summary in Dutch */
+   120→  searchPerformance: string;
+   121→  /** Conversion performance summary in Dutch */
+   122→  conversionPerformance: string;
+   123→  /** Proposed redirect target (if REDIRECT recommended) */
+   124→  redirectTarget: string | null;
+   125→  /** Overall recommendation summary in Dutch */
+   126→  summary: string;
+   127→}
+   128→
+   129→/**
+   130→ * Result of approving a pruning action.
+   131→ */
+   132→export interface PruningApprovalResult {
+   133→  /** The ContentChange ID recording this approval */
+   134→  changeId: string;
+   135→  /** The action that was approved */
+   136→  action: PruningActionType;
+   137→  /** Dutch confirmation message */
+   138→  message: string;
+   139→  /** Rollback guidance in Dutch */
+   140→  rollbackGuidance: string;
+   141→  /** Whether a redirect target was set */
+   142→  redirectTarget: string | null;
+   143→}
+   144→
+   145→// ============================================================================
+   146→// Public API
+   147→// ============================================================================
+   148→
+   149→/**
+   150→ * List pages with decay detection results, sorted by decay percentage.
+   151→ *
+   152→ * Returns all decay records for a project, ordered from most decayed
+   153→ * to least decayed. Includes metrics data for each page.
+   154→ *
+   155→ * @param projectId - The project to list declining pages for
+   156→ * @returns Array of declining page summaries
+   157→ */
+   158→export async function viewDecliningPages(
+   159→  projectId: string
+   160→): Promise<DecliningPageSummary[]> {
+   161→  const decayRecords = await db.contentDecay.findMany({
+   162→    where: { projectId },
+   163→    orderBy: { decayPercentage: 'desc' },
+   164→  });
+   165→
+   166→  return decayRecords.map((record) => ({
+   167→    id: record.id,
+   168→    projectId: record.projectId,
+   169→    pageId: record.pageId,
+   170→    url: record.url,
+   171→    currentPage: record.currentPage,
+   172→    previousPage: record.previousPage,
+   173→    currentClicks: record.currentClicks,
+   174→    previousClicks: record.previousClicks,
+   175→    currentImpressions: record.currentImpressions,
+   176→    previousImpressions: record.previousImpressions,
+   177→    decayPercentage: record.decayPercentage,
+   178→    pruningAction: record.pruningAction,
+   179→    dataAvailable: record.dataAvailable,
+   180→    dataNote: record.dataNote,
+   181→    detectedAt: record.detectedAt,
+   182→  }));
+   183→}
+   184→
+   185→/**
+   186→ * Generate a content brief for updating a decayed page.
+   187→ *
+   188→ * Loads the decay record and page content, then uses AI to suggest
+   189→ * improvements. Creates a ContentBrief with type=CONTENT_UPDATE that
+   190→ * can be used in the standard content workflow.
+   191→ *
+   192→ * @param decayId - The decay record ID
+   193→ * @returns The brief ID for the update workflow
+   194→ * @throws Error if the decay record is not found
+   195→ */
+   196→export async function generateUpdateBrief(
+   197→  decayId: string
+   198→): Promise<string> {
+   199→  const decay = await db.contentDecay.findUnique({
+   200→    where: { id: decayId },
+   201→  });
+   202→
+   203→  if (!decay) {
+   204→    throw new Error(`Vervalrecord "${decayId}" niet gevonden`);
+   205→  }
+   206→
+   207→  // Load the page content if available
+   208→  let pageContent = '';
+   209→  let pageTitle = decay.url;
+   210→
+   211→  if (decay.pageId) {
+   212→    const page = await db.page.findUnique({
+   213→      where: { id: decay.pageId },
+   214→    });
+   215→    if (page) {
+   216→      pageContent = page.mainContent ?? page.description ?? '';
+   217→      pageTitle = page.title ?? page.h1 ?? decay.url;
+   218→    }
+   219→  }
+   220→
+   221→  // Use AI to suggest improvements
+   222→  let improvementSuggestions = 'Geen specifieke suggesties beschikbaar.';
+   223→  let suggestedOutline = '';
+   224→
+   225→  try {
+   226→    const prompt = `Analyseer de volgende pagina die tekenen van verval vertoont en stel verbeteringen voor.
+   227→
+   228→**Pagina:** ${pageTitle}
+   229→**URL:** ${decay.url}
+   230→**Vervalpercentage:** ${decay.decayPercentage}%
+   231→**Huidige positie:** ${decay.currentPage}
+   232→**Huidige klikken:** ${decay.currentClicks ?? 'Onbekend'}
+   233→**Huidige impressies:** ${decay.currentImpressions ?? 'Onbekend'}
+   234→
+   235→${pageContent ? `**Huidige content (eerste 3000 tekens):**\n${pageContent.substring(0, 3000)}` : 'Geen content beschikbaar voor analyse.'}
+   236→
+   237→Geef het volgende:
+   238→1. **Suggesties voor verbetering:** Wat moet er veranderen om de prestaties te herstellen?
+   239→2. **Nieuwe outline:** Voorgestelde structuur voor de vernieuwde content
+   240→
+   241→Gebruik het volgende formaat voor de outline:
+   242→## [H2-kop]
+   243→- Kernpunt 1
+   244→### [H3-kop]
+   245→- Kernpunt 1
+   246→
+   247→Schrijf alles in het Nederlands.`;
+   248→
+   249→    const response = await providerManager.fallbackGenerate(
+   250→      decay.projectId,
+   251→      {
+   252→        messages: [
+   253→          {
+   254→            role: 'system',
+   255→            content:
+   256→              'Je bent een SEO-expert die content-verval analyseert en gerichte verbetervoorstellen doet voor de Nederlandse markt.',
+   257→          },
+   258→          { role: 'user', content: prompt },
+   259→        ],
+   260→        purpose: 'decay-update-brief',
+   261→        maxTokens: 3000,
+   262→        temperature: 0.6,
+   263→      }
+   264→    );
+   265→
+   266→    if (response.success && response.content.trim()) {
+   267→      const aiContent = response.content.trim();
+   268→
+   269→      // Split suggestions and outline
+   270→      const outlineMatch = aiContent.match(
+   271→        /(?:Nieuwe outline|Voorgestelde structuur)[:\s]*\n([\s\S]*)/i
+   272→      );
+   273→      if (outlineMatch) {
+   274→        suggestedOutline = outlineMatch[1].trim();
+   275→        improvementSuggestions = aiContent
+   276→          .substring(0, aiContent.indexOf(outlineMatch[0]))
+   277→          .trim();
+   278→      } else {
+   279→        improvementSuggestions = aiContent;
+   280→      }
+   281→    }
+   282→  } catch {
+   283→    // AI failed, use default suggestions
+   284→  }
+   285→
+   286→  // Build the brief data
+   287→  const title = `Content-update: ${pageTitle}`;
+   288→
+   289→  // Parse outline from AI suggestions
+   290→  let outline: unknown[] = [];
+   291→  if (suggestedOutline) {
+   292→    outline = parseOutlineFromText(suggestedOutline);
+   293→  }
+   294→
+   295→  // Create the ContentBrief
+   296→  const brief = await db.contentBrief.create({
+   297→    data: {
+   298→      projectId: decay.projectId,
+   299→      title,
+   300→      targetKeyword: pageTitle,
+   301→      searchIntent: 'INFORMATIONAL',
+   302→      funnelStage: 'AWARENESS',
+   303→      outline: outline.length > 0 ? JSON.stringify(outline) : null,
+   304→      sources: JSON.stringify({
+   305→        contentType: 'CONTENT_UPDATE',
+   306→        decayId,
+   307→        decayPercentage: decay.decayPercentage,
+   308→        originalUrl: decay.url,
+   309→        improvementSuggestions,
+   310→      }),
+   311→      approvalStatus: 'DRAFT',
+   312→    },
+   313→  });
+   314→
+   315→  // Record the creation
+   316→  await recordChange({
+   317→    projectId: decay.projectId,
+   318→    briefId: brief.id,
+   319→    pageId: decay.pageId ?? undefined,
+   320→    changeType: 'CREATE',
+   321→    summary: `Update-brief gegenereerd voor vervallen pagina: "${pageTitle}" (${decay.decayPercentage}% verval)`,
+   322→  });
+   323→
+   324→  return brief.id;
+   325→}
+   326→
+   327→/**
+   328→ * Compare old content with proposed new content.
+   329→ *
+   330→ * Generates a diff between the current and proposed content, highlights
+   331→ * key changes, and identifies improvements and risks. All feedback is
+   332→ * provided in Dutch.
+   333→ *
+   334→ * @param versionId - The content version ID of the current content
+   335→ * @param proposedContent - The proposed new content
+   336→ * @returns Detailed comparison result
+   337→ * @throws Error if the version is not found
+   338→ */
+   339→export async function compareContent(
+   340→  versionId: string,
+   341→  proposedContent: string
+   342→): Promise<ContentComparisonResult> {
+   343→  const version = await db.contentVersion.findUnique({
+   344→    where: { id: versionId },
+   345→  });
+   346→
+   347→  if (!version) {
+   348→    throw new Error(`Contentversie "${versionId}" niet gevonden`);
+   349→  }
+   350→
+   351→  const oldContent = version.content;
+   352→  const newContent = proposedContent;
+   353→
+   354→  // Compute diff
+   355→  const diff = computeDiff(oldContent, newContent);
+   356→
+   357→  // Use AI to analyze the changes
+   358→  let keyChanges: string[] = [];
+   359→  let improvements: string[] = [];
+   360→  let risks: string[] = [];
+   361→  let summary = 'Contentvergelijking voltooid.';
+   362→
+   363→  try {
+   364→    const brief = await db.contentBrief.findUnique({
+   365→      where: { id: version.briefId },
+   366→    });
+   367→
+   368→    const projectId = brief?.projectId ?? '';
+   369→
+   370→    const prompt = `Analyseer de volgende contentwijziging en geef een beoordeling in het Nederlands.
+   371→
+   372→**Verwijderde regels:**
+   373→${diff.removed.slice(0, 50).join('\n')}
+   374→
+   375→**Toegevoegde regels:**
+   376→${diff.added.slice(0, 50).join('\n')}
+   377→
+   378→**Statistieken:** ${diff.stats.linesAdded} regels toegevoegd, ${diff.stats.linesRemoved} regels verwijderd, ${diff.stats.linesUnchanged} regels ongewijzigd.
+   379→
+   380→Geef de volgende informatie:
+   381→1. **Belangrijkste wijzigingen:** 3-5 belangrijkste verschillen (één per regel, begin met "- ")
+   382→2. **Verbeteringen:** Wat is verbeterd? (één per regel, begin met "- ")
+   383→3. **Risico's:** Wat kan problematisch zijn? (één per regel, begin met "- ")
+   384→4. **Samenvatting:** Eén samenvattende zin`;
+   385→
+   386→    const response = await providerManager.fallbackGenerate(projectId, {
+   387→      messages: [
+   388→        {
+   389→          role: 'system',
+   390→          content:
+   391→            'Je bent een contentredacteur die wijzigingen beoordeelt voor kwaliteit en risico\'s. Je antwoordt in het Nederlands.',
+   392→        },
+   393→        { role: 'user', content: prompt },
+   394→      ],
+   395→      purpose: 'content-comparison',
+   396→      maxTokens: 1500,
+   397→      temperature: 0.3,
+   398→    });
+   399→
+   400→    if (response.success && response.content.trim()) {
+   401→      const aiContent = response.content.trim();
+   402→      const parsed = parseComparisonResult(aiContent);
+   403→      keyChanges = parsed.keyChanges;
+   404→      improvements = parsed.improvements;
+   405→      risks = parsed.risks;
+   406→      summary = parsed.summary;
+   407→    }
+   408→  } catch {
+   409→    // AI analysis failed, provide basic assessment
+   410→    keyChanges = [
+   411→      diff.stats.linesAdded > 0
+   412→        ? `${diff.stats.linesAdded} regel(s) toegevoegd`
+   413→        : 'Geen regels toegevoegd',
+   414→      diff.stats.linesRemoved > 0
+   415→        ? `${diff.stats.linesRemoved} regel(s) verwijderd`
+   416→        : 'Geen regels verwijderd',
+   417→    ];
+   418→    improvements = [
+   419→      'Content is bijgewerkt met nieuwe informatie',
+   420→    ];
+   421→    risks = [
+   422→      'Controleer of belangrijke informatie niet per ongeluk is verwijderd',
+   423→    ];
+   424→    summary = `Contentvergelijking: ${diff.stats.linesAdded} toevoegingen, ${diff.stats.linesRemoved} verwijderingen. Handmatige beoordeling aanbevolen.`;
+   425→  }
+   426→
+   427→  return {
+   428→    versionId,
+   429→    diff,
+   430→    keyChanges,
+   431→    improvements,
+   432→    risks,
+   433→    summary,
+   434→  };
+   435→}
+   436→
+   437→/**
+   438→ * Approve a content revision for a decay update.
+   439→ *
+   440→ * Verifies that there are no blocking quality findings, then updates
+   441→ * the brief's approval status and records the change. Content must
+   442→ * pass quality checks before approval.
+   443→ *
+   444→ * @param briefId - The brief ID of the update
+   445→ * @param userId - The user approving the revision
+   446→ * @throws Error if blocking findings exist or the brief is not found
+   447→ */
+   448→export async function approveRevision(
+   449→  briefId: string,
+   450→  userId: string
+   451→): Promise<void> {
+   452→  const brief = await db.contentBrief.findUnique({
+   453→    where: { id: briefId },
+   454→  });
+   455→
+   456→  if (!brief) {
+   457→    throw new Error(`Content brief "${briefId}" niet gevonden`);
+   458→  }
+   459→
+   460→  // Get the latest version
+   461→  const latestVersion = await db.contentVersion.findFirst({
+   462→    where: { briefId },
+   463→    orderBy: { version: 'desc' },
+   464→  });
+   465→
+   466→  if (!latestVersion) {
+   467→    throw new Error(
+   468→      'Geen draft beschikbaar. Genereer eerst een draft voordat je goedkeurt.'
+   469→    );
+   470→  }
+   471→
+   472→  // Check for blocking findings
+   473→  if (latestVersion.id) {
+   474→    const hasBlocking = await hasBlockingFindings(latestVersion.id);
+   475→    if (hasBlocking) {
+   476→      throw new Error(
+   477→        'De revisie kan niet worden goedgekeurd: er zijn blokkerende kwaliteitsbevindingen die eerst moeten worden opgelost.'
+   478→      );
+   479→    }
+   480→  }
+   481→
+   482→  // Update approval status
+   483→  await db.contentBrief.update({
+   484→    where: { id: briefId },
+   485→    data: {
+   486→      approvalStatus: 'APPROVED',
+   487→      approvedBy: userId,
+   488→      approvedAt: new Date(),
+   489→    },
+   490→  });
+   491→
+   492→  // Record the approval in ContentChange
+   493→  await recordChange({
+   494→    projectId: brief.projectId,
+   495→    briefId,
+   496→    versionId: latestVersion.id,
+   497→    changeType: 'APPROVE',
+   498→    userId,
+   499→    summary: `Revisie goedgekeurd voor content-update: "${brief.title}"`,
+   500→  });
+   501→}
+   502→
+   503→/**
+   504→ * Publish a content update to CMS.
+   505→ *
+   506→ * Publishes the approved content revision, updating the brief status
+   507→ * to PUBLISHED and recording the change. Requires prior approval.
+   508→ *
+   509→ * @param briefId - The brief ID of the update
+   510→ * @param cmsConnectionId - Optional CMS connection to publish through
+   511→ * @throws Error if the brief is not approved or not found
+   512→ */
+   513→export async function publishUpdate(
+   514→  briefId: string,
+   515→  cmsConnectionId?: string
+   516→): Promise<{
+   517→  message: string;
+   518→  publishedAt: Date;
+   519→}> {
+   520→  const brief = await db.contentBrief.findUnique({
+   521→    where: { id: briefId },
+   522→  });
+   523→
+   524→  if (!brief) {
+   525→    throw new Error(`Content brief "${briefId}" niet gevonden`);
+   526→  }
+   527→
+   528→  if (brief.approvalStatus !== 'APPROVED') {
+   529→    throw new Error(
+   530→      'De revisie moet zijn goedgekeurd voordat deze kan worden gepubliceerd.'
+   531→    );
+   532→  }
+   533→
+   534→  // Get the latest version
+   535→  const latestVersion = await db.contentVersion.findFirst({
+   536→    where: { briefId },
+   537→    orderBy: { version: 'desc' },
+   538→  });
+   539→
+   540→  if (!latestVersion) {
+   541→    throw new Error('Geen draft beschikbaar om te publiceren');
+   542→  }
+   543→
+   544→  // Update brief status
+   545→  const publishedAt = new Date();
+   546→  await db.contentBrief.update({
+   547→    where: { id: briefId },
+   548→    data: {
+   549→      approvalStatus: 'PUBLISHED',
+   550→    },
+   551→  });
+   552→
+   553→  // Record the publication
+   554→  await recordChange({
+   555→    projectId: brief.projectId,
+   556→    briefId,
+   557→    versionId: latestVersion.id,
+   558→    changeType: 'PUBLISH',
+   559→    summary: `Content-update gepubliceerd: "${brief.title}"`,
+   560→    cmsResult: cmsConnectionId
+   561→      ? JSON.stringify({
+   562→          cmsConnectionId,
+   563→          publishedAt: publishedAt.toISOString(),
+   564→        })
+   565→      : undefined,
+   566→  });
+   567→
+   568→  // Update the decay record to reflect the update
+   569→  const sourcesData = brief.sources
+   570→    ? (() => {
+   571→        try {
+   572→          return JSON.parse(brief.sources) as Record<string, unknown>;
+   573→        } catch {
+   574→          return {};
+   575→        }
+   576→      })()
+   577→    : {};
+   578→
+   579→  const decayId = sourcesData.decayId as string | undefined;
+   580→  if (decayId) {
+   581→    await db.contentDecay.update({
+   582→      where: { id: decayId },
+   583→      data: {
+   584→        pruningAction: 'KEEP', // Reset to KEEP since it's been updated
+   585→        recommendations: JSON.stringify([
+   586→          'Content is vernieuwd en gepubliceerd. Monitor de prestaties over de komende weken.',
+   587→        ]),
+   588→      },
+   589→    });
+   590→  }
+   591→
+   592→  return {
+   593→    message: `Content-update succesvol gepubliceerd: "${brief.title}". Monitor de prestaties over de komende weken om het effect te meten.`,
+   594→    publishedAt,
+   595→  };
+   596→}
+   597→
+   598→/**
+   599→ * Check metrics after a content update.
+   600→ *
+   601→ * This is a placeholder implementation that returns a note about
+   602→ * future metric tracking. In production, this would compare metrics
+   603→ * before and after the update.
+   604→ *
+   605→ * @param decayId - The decay record ID
+   606→ * @returns Monitoring note in Dutch
+   607→ */
+   608→export async function monitorPostUpdateMetrics(
+   609→  decayId: string
+   610→): Promise<{
+   611→  decayId: string;
+   612→  monitoringStatus: string;
+   613→  note: string;
+   614→  nextCheckDate: Date;
+   615→  metrics: {
+   616→    preUpdate: {
+   617→      clicks: number | null;
+   618→      impressions: number | null;
+   619→      position: number | null;
+   620→    };
+   621→    postUpdate: {
+   622→      clicks: number | null;
+   623→      impressions: number | null;
+   624→      position: number | null;
+   625→    };
+   626→  };
+   627→}> {
+   628→  const decay = await db.contentDecay.findUnique({
+   629→    where: { id: decayId },
+   630→  });
+   631→
+   632→  if (!decay) {
+   633→    throw new Error(`Vervalrecord "${decayId}" niet gevonden`);
+   634→  }
+   635→
+   636→  // Calculate next check date (2 weeks from now)
+   637→  const nextCheckDate = new Date();
+   638→  nextCheckDate.setDate(nextCheckDate.getDate() + 14);
+   639→
+   640→  return {
+   641→    decayId,
+   642→    monitoringStatus: 'MONITORING',
+   643→    note: `De prestaties van de vernieuwde pagina worden bijgehouden. De eerste resultaten worden verwacht na ${nextCheckDate.toLocaleDateString('nl-NL')}. Controleer op dat moment de zoekpositie, klikken en impressies om het effect van de update te beoordelen.`,
+   644→    nextCheckDate,
+   645→    metrics: {
+   646→      preUpdate: {
+   647→        clicks: decay.currentClicks,
+   648→        impressions: decay.currentImpressions,
+   649→        position: decay.currentPage,
+   650→      },
+   651→      postUpdate: {
+   652→        clicks: null,
+   653→        impressions: null,
+   654→        position: null,
+   655→      },
+   656→    },
+   657→  };
+   658→}
+   659→
+   660→/**
+   661→ * Enhanced pruning recommendation with detailed evidence and risk assessment.
+   662→ *
+   663→ * Provides comprehensive information to support the pruning decision,
+   664→ * including traffic data, internal link impact, backlink risk, authority
+   665→ * risk, search performance, conversion performance, and proposed redirect
+   666→ * target. All information is in Dutch.
+   667→ *
+   668→ * @param decayId - The decay record ID
+   669→ * @returns Enhanced pruning recommendation
+   670→ * @throws Error if the decay record is not found
+   671→ */
+   672→export async function recommendPruningAction(
+   673→  decayId: string
+   674→): Promise<EnhancedPruningRecommendation> {
+   675→  const decay = await db.contentDecay.findUnique({
+   676→    where: { id: decayId },
+   677→  });
+   678→
+   679→  if (!decay) {
+   680→    throw new Error(`Vervalrecord "${decayId}" niet gevonden`);
+   681→  }
+   682→
+   683→  const action = decay.pruningAction as PruningActionType;
+   684→
+   685→  // Gather evidence from page data
+   686→  let internalLinksAffected = 0;
+   687→  let internalLinkDetails = 'Geen interne linkgegevens beschikbaar.';
+   688→  let backlinkRisk = 'Onbekend — geen backlinkgegevens beschikbaar.';
+   689→  let authorityRisk = 'Onbekend — geen autoriteitsgegevens beschikbaar.';
+   690→  let redirectTarget: string | null = null;
+   691→
+   692→  if (decay.pageId) {
+   693→    const page = await db.page.findUnique({
+   694→      where: { id: decay.pageId },
+   695→    });
+   696→
+   697→    if (page) {
+   698→      // Count internal links pointing to this page
+   699→      const linksToPage = await db.page.findMany({
+   700→        where: {
+   701→          projectId: decay.projectId,
+   702→          status: 'OK',
+   703→        },
+   704→        select: {
+   705→          id: true,
+   706→          url: true,
+   707→          internalLinks: true,
+   708→        },
+   709→        take: 100,
+   710→      });
+   711→
+   712→      let linksCount = 0;
+   713→      const linkingUrls: string[] = [];
+   714→      for (const p of linksToPage) {
+   715→        if (p.internalLinks) {
+   716→          try {
+   717→            const links = JSON.parse(p.internalLinks) as string[];
+   718→            if (links.includes(decay.url) || links.some((l) => decay.url.includes(l))) {
+   719→              linksCount++;
+   720→              linkingUrls.push(p.url);
+   721→            }
+   722→          } catch {
+   723→            // Skip invalid JSON
+   724→          }
+   725→        }
+   726→      }
+   727→
+   728→      internalLinksAffected = linksCount;
+   729→      internalLinkDetails =
+   730→        linksCount > 0
+   731→          ? `${linksCount} interne pagina('s) linken naar deze pagina: ${linkingUrls.slice(0, 5).join(', ')}${linkingUrls.length > 5 ? ` en ${linkingUrls.length - 5} meer` : ''}. Deze links moeten worden bijgewerkt als de pagina wordt verwijderd of verplaatst.`
+   732→          : 'Geen interne links gevonden die naar deze pagina verwijzen.';
+   733→
+   734→      // Assess backlink risk
+   735→      if (page.externalLinkCount > 0) {
+   736→        backlinkRisk = `Deze pagina heeft ${page.externalLinkCount} externe link(s). Verwijdering kan leiden tot verlies van doorverwezen linkwaarde. Overweeg een redirect om linkwaarde te behouden.`;
+   737→      } else {
+   738→        backlinkRisk = 'Geen bekende externe links naar deze pagina. Het risico op linkwaardeverlies is laag.';
+   739→      }
+   740→
+   741→      // Assess authority risk based on position
+   742→      if (decay.currentPage <= 10) {
+   743→        authorityRisk = `Deze pagina staat nog op positie ${decay.currentPage} in de zoekresultaten. De autoriteit die deze positie vertegenwoordigt gaat verloren bij verwijdering. Vernieuwing heeft de voorkeur boven verwijdering.`;
+   744→      } else if (decay.currentPage <= 20) {
+   745→        authorityRisk = `Deze pagina staat op positie ${decay.currentPage}. Er is nog enige autoriteit aanwezig, maar het effect van verwijdering is beperkt.`;
+   746→      } else {
+   747→        authorityRisk = 'Deze pagina staat buiten de top 20. Het autoriteitsverlies bij verwijdering is minimaal.';
+   748→      }
+   749→
+   750→      // Suggest redirect target if REDIRECT is recommended
+   751→      if (action === 'REDIRECT') {
+   752→        // Find a similar page in the same project
+   753→        const similarPages = await db.page.findMany({
+   754→          where: {
+   755→            projectId: decay.projectId,
+   756→            status: 'OK',
+   757→            wordCount: { gt: 200 },
+   758→            id: { not: decay.pageId },
+   759→          },
+   760→          select: { url: true, title: true },
+   761→          take: 10,
+   762→        });
+   763→
+   764→        if (similarPages.length > 0) {
+   765→          redirectTarget = similarPages[0].url;
+   766→        }
+   767→      }
+   768→    }
+   769→  }
+   770→
+   771→  // Build traffic evidence
+   772→  const trafficEvidence = buildTrafficEvidence(decay);
+   773→
+   774→  // Build search performance summary
+   775→  const searchPerformance = buildSearchPerformanceSummary(decay);
+   776→
+   777→  // Build conversion performance summary
+   778→  const conversionPerformance = buildConversionPerformanceSummary(decay);
+   779→
+   780→  // Determine overall risk level
+   781→  const overallRisk = determineOverallRisk(action, decay, internalLinksAffected);
+   782→
+   783→  // Build overall summary
+   784→  const summary = buildPruningSummary(action, decay, overallRisk, internalLinksAffected);
+   785→
+   786→  return {
+   787→    decayId,
+   788→    url: decay.url,
+   789→    action,
+   790→    evidence: {
+   791→      traffic: trafficEvidence,
+   792→      internalLinksAffected,
+   793→      internalLinkDetails,
+   794→    },
+   795→    riskAssessment: {
+   796→      backlinks: backlinkRisk,
+   797→      authority: authorityRisk,
+   798→      overallRisk,
+   799→    },
+   800→    searchPerformance,
+   801→    conversionPerformance,
+   802→    redirectTarget,
+   803→    summary,
+   804→  };
+   805→}
+   806→
+   807→/**
+   808→ * Approve a pruning action for a decayed page.
+   809→ *
+   810→ * Requires explicit approval for destructive actions (REMOVE, REDIRECT, NOINDEX).
+   811→ * Creates a ContentChange record and returns rollback guidance.
+   812→ * Non-destructive actions (KEEP, IMPROVE, MERGE) are also recorded.
+   813→ *
+   814→ * @param decayId - The decay record ID
+   815→ * @param userId - The user approving the action
+   816→ * @param action - The pruning action being approved
+   817→ * @param redirectTarget - Required if action is REDIRECT
+   818→ * @throws Error if the decay record is not found or action requires redirect target
+   819→ */
+   820→export async function approvePruning(
+   821→  decayId: string,
+   822→  userId: string,
+   823→  action: PruningActionType,
+   824→  redirectTarget?: string
+   825→): Promise<PruningApprovalResult> {
+   826→  const decay = await db.contentDecay.findUnique({
+   827→    where: { id: decayId },
+   828→  });
+   829→
+   830→  if (!decay) {
+   831→    throw new Error(`Vervalrecord "${decayId}" niet gevonden`);
+   832→  }
+   833→
+   834→  // Validate destructive actions require explicit confirmation
+   835→  const destructiveActions: PruningActionType[] = ['REMOVE', 'REDIRECT', 'NOINDEX'];
+   836→  if (destructiveActions.includes(action)) {
+   837→    // REDIRECT requires a redirect target
+   838→    if (action === 'REDIRECT' && !redirectTarget) {
+   839→      throw new Error(
+   840→        'Een redirect-doel is vereist bij het goedkeuren van een REDIRECT-actie. Geef een URL op waarnaar moet worden doorverwezen.'
+   841→      );
+   842→    }
+   843→  }
+   844→
+   845→  // Determine the action label in Dutch
+   846→  const actionLabels: Record<PruningActionType, string> = {
+   847→    KEEP: 'Behouden',
+   848→    IMPROVE: 'Verbeteren',
+   849→    MERGE: 'Samenvoegen',
+   850→    REDIRECT: 'Doorverwijzen',
+   851→    NOINDEX: 'Noindex instellen',
+   852→    REMOVE: 'Verwijderen',
+   853→  };
+   854→
+   855→  // Create ContentChange record
+   856→  const change = await recordChange({
+   857→    projectId: decay.projectId,
+   858→    pageId: decay.pageId ?? undefined,
+   859→    changeType: action === 'REMOVE' ? 'DELETE' : 'UPDATE',
+   860→    userId,
+   861→    summary: `Snoeiactie goedgekeurd: ${actionLabels[action]} voor "${decay.url}"`,
+   862→    rollbackData: JSON.stringify({
+   863→      decayId,
+   864→      previousAction: decay.pruningAction,
+   865→      approvedAction: action,
+   866→      redirectTarget: redirectTarget ?? null,
+   867→      approvedAt: new Date().toISOString(),
+   868→      approvedBy: userId,
+   869→    }),
+   870→  });
+   871→
+   872→  // Update the decay record
+   873→  await db.contentDecay.update({
+   874→    where: { id: decayId },
+   875→    data: {
+   876→      pruningAction: action,
+   877→      recommendations: JSON.stringify({
+   878→        approvedAction: action,
+   879→        approvedBy: userId,
+   880→        approvedAt: new Date().toISOString(),
+   881→        redirectTarget: redirectTarget ?? null,
+   882→      }),
+   883→    },
+   884→  });
+   885→
+   886→  // Build rollback guidance
+   887→  const rollbackGuidance = buildRollbackGuidance(action, decay.url, redirectTarget ?? null);
+   888→
+   889→  return {
+   890→    changeId: change.id,
+   891→    action,
+   892→    message: `Snoeiactie "${actionLabels[action]}" goedgekeurd voor "${decay.url}". ${destructiveActions.includes(action) ? 'Deze actie is destructief — zorg dat je de rollback-instructies hebt gelezen.' : ''}`,
+   893→    rollbackGuidance,
+   894→    redirectTarget: redirectTarget ?? null,
+   895→  };
+   896→}
+   897→
+   898→// ============================================================================
+   899→// Internal Helpers
+   900→// ============================================================================
+   901→
+   902→/**
+   903→ * Compute a line-based diff between two strings.
+   904→ */
+   905→function computeDiff(
+   906→  previous: string,
+   907→  current: string
+   908→): {
+   909→  removed: string[];
+   910→  added: string[];
+   911→  unified: string;
+   912→  stats: { linesAdded: number; linesRemoved: number; linesUnchanged: number };
+   913→} {
+   914→  const prevLines = previous.split('\n');
+   915→  const currLines = current.split('\n');
+   916→
+   917→  const prevSet = new Set(prevLines);
+   918→  const currSet = new Set(currLines);
+   919→
+   920→  const removed = prevLines.filter((l) => !currSet.has(l));
+   921→  const added = currLines.filter((l) => !prevSet.has(l));
+   922→  const unchanged = prevLines.filter((l) => currSet.has(l));
+   923→
+   924→  const unifiedLines: string[] = [];
+   925→
+   926→  for (const line of removed) {
+   927→    unifiedLines.push(`- ${line}`);
+   928→  }
+   929→  for (const line of added) {
+   930→    unifiedLines.push(`+ ${line}`);
+   931→  }
+   932→
+   933→  return {
+   934→    removed,
+   935→    added,
+   936→    unified: unifiedLines.join('\n'),
+   937→    stats: {
+   938→      linesAdded: added.length,
+   939→      linesRemoved: removed.length,
+   940→      linesUnchanged: unchanged.length,
+   941→    },
+   942→  };
+   943→}
+   944→
+   945→/**
+   946→ * Parse AI-generated comparison result into structured data.
+   947→ */
+   948→function parseComparisonResult(aiContent: string): {
+   949→  keyChanges: string[];
+   950→  improvements: string[];
+   951→  risks: string[];
+   952→  summary: string;
+   953→} {
+   954→  const lines = aiContent.split('\n');
+   955→  const keyChanges: string[] = [];
+   956→  const improvements: string[] = [];
+   957→  const risks: string[] = [];
+   958→  let summary = 'Vergelijking voltooid.';
+   959→
+   960→  let currentSection: 'changes' | 'improvements' | 'risks' | 'summary' | null = null;
+   961→
+   962→  for (const line of lines) {
+   963→    const trimmed = line.trim();
+   964→
+   965→    if (trimmed.match(/belangrijkste wijzigingen/i)) {
+   966→      currentSection = 'changes';
+   967→      continue;
+   968→    }
+   969→    if (trimmed.match(/verbeteringen/i)) {
+   970→      currentSection = 'improvements';
+   971→      continue;
+   972→    }
+   973→    if (trimmed.match(/risico/i)) {
+   974→      currentSection = 'risks';
+   975→      continue;
+   976→    }
+   977→    if (trimmed.match(/samenvatting/i)) {
+   978→      currentSection = 'summary';
+   979→      continue;
+   980→    }
+   981→
+   982→    if (trimmed.startsWith('- ')) {
+   983→      const item = trimmed.substring(2).trim();
+   984→      switch (currentSection) {
+   985→        case 'changes':
+   986→          keyChanges.push(item);
+   987→          break;
+   988→        case 'improvements':
+   989→          improvements.push(item);
+   990→          break;
+   991→        case 'risks':
+   992→          risks.push(item);
+   993→          break;
+   994→      }
+   995→    } else if (currentSection === 'summary' && trimmed.length > 0) {
+   996→      summary = trimmed;
+   997→    }
+   998→  }
+   999→
+  1000→  return { keyChanges, improvements, risks, summary };
+  1001→}
+  1002→
+  1003→/**
+  1004→ * Parse a text-based outline into structured OutlineItem array.
+  1005→ */
+  1006→function parseOutlineFromText(text: string): Array<{
+  1007→  id: string;
+  1008→  heading: string;
+  1009→  level: number;
+  1010→  keyPoints: string[];
+  1011→  children: Array<{
+  1012→    id: string;
+  1013→    heading: string;
+  1014→    level: number;
+  1015→    keyPoints: string[];
+  1016→    sortOrder: number;
+  1017→  }>;
+  1018→  sortOrder: number;
+  1019→}> {
+  1020→  const items: Array<{
+  1021→    id: string;
+  1022→    heading: string;
+  1023→    level: number;
+  1024→    keyPoints: string[];
+  1025→    children: Array<{
+  1026→      id: string;
+  1027→      heading: string;
+  1028→      level: number;
+  1029→      keyPoints: string[];
+  1030→      sortOrder: number;
+  1031→    }>;
+  1032→    sortOrder: number;
+  1033→  }> = [];
+  1034→
+  1035→  let currentH2: (typeof items)[0] | null = null;
+  1036→  let sortOrder = 0;
+  1037→
+  1038→  for (const line of text.split('\n')) {
+  1039→    const trimmed = line.trim();
+  1040→
+  1041→    if (trimmed.startsWith('## ')) {
+  1042→      currentH2 = {
+  1043→        id: `h2-${sortOrder}`,
+  1044→        heading: trimmed.replace(/^##\s+/, ''),
+  1045→        level: 2,
+  1046→        keyPoints: [],
+  1047→        children: [],
+  1048→        sortOrder,
+  1049→      };
+  1050→      items.push(currentH2);
+  1051→      sortOrder++;
+  1052→    } else if (trimmed.startsWith('### ') && currentH2) {
+  1053→      currentH2.children.push({
+  1054→        id: `h3-${sortOrder}`,
+  1055→        heading: trimmed.replace(/^###\s+/, ''),
+  1056→        level: 3,
+  1057→        keyPoints: [],
+  1058→        sortOrder,
+  1059→      });
+  1060→      sortOrder++;
+  1061→    } else if ((trimmed.startsWith('- ') || trimmed.startsWith('* '))) {
+  1062→      const point = trimmed.replace(/^[-*]\s+/, '');
+  1063→      if (currentH2 && currentH2.children.length > 0) {
+  1064→        const lastChild = currentH2.children[currentH2.children.length - 1];
+  1065→        lastChild.keyPoints.push(point);
+  1066→      } else if (currentH2) {
+  1067→        currentH2.keyPoints.push(point);
+  1068→      }
+  1069→    }
+  1070→  }
+  1071→
+  1072→  return items;
+  1073→}
+  1074→
+  1075→/**
+  1076→ * Build a Dutch-language traffic evidence string from decay data.
+  1077→ */
+  1078→function buildTrafficEvidence(decay: {
+  1079→  currentClicks: number | null;
+  1080→  previousClicks: number | null;
+  1081→  currentImpressions: number | null;
+  1082→  previousImpressions: number | null;
+  1083→  decayPercentage: number;
+  1084→  dataAvailable: boolean;
+  1085→  dataNote: string | null;
+  1086→}): string {
+  1087→  if (!decay.dataAvailable) {
+  1088→    return decay.dataNote ?? 'Geen verkeersgegevens beschikbaar voor deze pagina.';
+  1089→  }
+  1090→
+  1091→  const parts: string[] = [];
+  1092→
+  1093→  if (decay.currentClicks !== null && decay.previousClicks !== null) {
+  1094→    const clickChange = decay.previousClicks - decay.currentClicks;
+  1095→    const clickPct =
+  1096→      decay.previousClicks > 0
+  1097→        ? Math.round((clickChange / decay.previousClicks) * 100)
+  1098→        : 0;
+  1099→    parts.push(
+  1100→      `Klikken: ${decay.currentClicks} (was ${decay.previousClicks}, ${clickPct > 0 ? '-' : '+'}${Math.abs(clickPct)}%)`
+  1101→    );
+  1102→  } else if (decay.currentClicks !== null) {
+  1103→    parts.push(`Klikken: ${decay.currentClicks} (geen vergelijkingsgegevens)`);
+  1104→  }
+  1105→
+  1106→  if (decay.currentImpressions !== null && decay.previousImpressions !== null) {
+  1107→    const impChange = decay.previousImpressions - decay.currentImpressions;
+  1108→    const impPct =
+  1109→      decay.previousImpressions > 0
+  1110→        ? Math.round((impChange / decay.previousImpressions) * 100)
+  1111→        : 0;
+  1112→    parts.push(
+  1113→      `Impressies: ${decay.currentImpressions} (was ${decay.previousImpressions}, ${impPct > 0 ? '-' : '+'}${Math.abs(impPct)}%)`
+  1114→    );
+  1115→  } else if (decay.currentImpressions !== null) {
+  1116→    parts.push(`Impressies: ${decay.currentImpressions} (geen vergelijkingsgegevens)`);
+  1117→  }
+  1118→
+  1119→  parts.push(`Vervalpercentage: ${decay.decayPercentage}%`);
+  1120→
+  1121→  return parts.length > 0
+  1122→    ? parts.join('. ') + '.'
+  1123→    : 'Geen verkeersgegevens beschikbaar.';
+  1124→}
+  1125→
+  1126→/**
+  1127→ * Build a Dutch-language search performance summary from decay data.
+  1128→ */
+  1129→function buildSearchPerformanceSummary(decay: {
+  1130→  currentPage: number;
+  1131→  previousPage: number | null;
+  1132→  currentImpressions: number | null;
+  1133→  currentClicks: number | null;
+  1134→}): string {
+  1135→  const parts: string[] = [];
+  1136→
+  1137→  if (decay.currentPage) {
+  1138→    parts.push(`Huidige zoekpositie: positie ${decay.currentPage}`);
+  1139→  }
+  1140→
+  1141→  if (decay.previousPage) {
+  1142→    const positionChange = decay.currentPage - decay.previousPage;
+  1143→    parts.push(
+  1144→      `Positieverandering: ${positionChange > 0 ? '+' : ''}${positionChange} (van positie ${decay.previousPage} naar ${decay.currentPage})`
+  1145→    );
+  1146→  }
+  1147→
+  1148→  if (decay.currentImpressions !== null) {
+  1149→    parts.push(`${decay.currentImpressions} impressies in de meetperiode`);
+  1150→  }
+  1151→
+  1152→  if (decay.currentClicks !== null) {
+  1153→    const ctr =
+  1154→      decay.currentImpressions && decay.currentImpressions > 0
+  1155→        ? ((decay.currentClicks / decay.currentImpressions) * 100).toFixed(1)
+  1156→        : '0.0';
+  1157→    parts.push(`${decay.currentClicks} klikken (CTR: ${ctr}%)`);
+  1158→  }
+  1159→
+  1160→  return parts.length > 0
+  1161→    ? parts.join('. ') + '.'
+  1162→    : 'Geen zoekprestatiegegevens beschikbaar.';
+  1163→}
+  1164→
+  1165→/**
+  1166→ * Build a Dutch-language conversion performance summary from decay data.
+  1167→ */
+  1168→function buildConversionPerformanceSummary(decay: {
+  1169→  currentClicks: number | null;
+  1170→  currentImpressions: number | null;
+  1171→}): string {
+  1172→  const parts: string[] = [];
+  1173→
+  1174→  if (decay.currentClicks !== null && decay.currentImpressions !== null && decay.currentImpressions > 0) {
+  1175→    const ctr = ((decay.currentClicks / decay.currentImpressions) * 100).toFixed(1);
+  1176→    parts.push(`Click-through rate (CTR): ${ctr}%`);
+  1177→
+  1178→    if (decay.currentClicks > 50) {
+  1179→      parts.push('De pagina genereert nog voldoende klikken voor conversiepotentieel');
+  1180→    } else if (decay.currentClicks > 10) {
+  1181→      parts.push('De pagina genereert beperkte klikken — conversiepotentieel is matig');
+  1182→    } else {
+  1183→      parts.push('De pagina genereert weinig klikken — conversiepotentieel is laag');
+  1184→    }
+  1185→  } else {
+  1186→    parts.push('Geen conversiegegevens beschikbaar. Stel conversie-tracking in om de prestaties te meten.');
+  1187→  }
+  1188→
+  1189→  return parts.join('. ') + '.';
+  1190→}
+  1191→
+  1192→/**
+  1193→ * Determine overall risk level for a pruning action.
+  1194→ */
+  1195→function determineOverallRisk(
+  1196→  action: PruningActionType,
+  1197→  decay: { currentClicks: number | null; currentPage: number; decayPercentage: number },
+  1198→  internalLinksAffected: number
+  1199→): 'low' | 'medium' | 'high' | 'critical' {
+  1200→  const clicks = decay.currentClicks ?? 0;
+  1201→
+  1202→  // Non-destructive actions are low risk
+  1203→  if (action === 'KEEP' || action === 'IMPROVE') {
+  1204→    return 'low';
+  1205→  }
+  1206→
+  1207→  // MERGE has medium risk
+  1208→  if (action === 'MERGE') {
+  1209→    return clicks > 10 || internalLinksAffected > 3 ? 'medium' : 'low';
+  1210→  }
+  1211→
+  1212→  // Destructive actions need careful assessment
+  1213→  let riskScore = 0;
+  1214→
+  1215→  if (clicks > 50) riskScore += 3;
+  1216→  else if (clicks > 10) riskScore += 2;
+  1217→  else if (clicks > 0) riskScore += 1;
+  1218→
+  1219→  if (decay.currentPage <= 10) riskScore += 3;
+  1220→  else if (decay.currentPage <= 20) riskScore += 2;
+  1221→
+  1222→  if (internalLinksAffected > 5) riskScore += 2;
+  1223→  else if (internalLinksAffected > 0) riskScore += 1;
+  1224→
+  1225→  if (riskScore >= 6) return 'critical';
+  1226→  if (riskScore >= 4) return 'high';
+  1227→  if (riskScore >= 2) return 'medium';
+  1228→  return 'low';
+  1229→}
+  1230→
+  1231→/**
+  1232→ * Build a Dutch-language pruning summary.
+  1233→ */
+  1234→function buildPruningSummary(
+  1235→  action: PruningActionType,
+  1236→  decay: { url: string; decayPercentage: number; currentPage: number; currentClicks: number | null },
+  1237→  overallRisk: 'low' | 'medium' | 'high' | 'critical',
+  1238→  internalLinksAffected: number
+  1239→): string {
+  1240→  const actionLabels: Record<PruningActionType, string> = {
+  1241→    KEEP: 'Behouden',
+  1242→    IMPROVE: 'Verbeteren',
+  1243→    MERGE: 'Samenvoegen',
+  1244→    REDIRECT: 'Doorverwijzen',
+  1245→    NOINDEX: 'Noindex instellen',
+  1246→    REMOVE: 'Verwijderen',
+  1247→  };
+  1248→
+  1249→  const riskLabels: Record<string, string> = {
+  1250→    low: 'laag',
+  1251→    medium: 'gemiddeld',
+  1252→    high: 'hoog',
+  1253→    critical: 'kritiek',
+  1254→  };
+  1255→
+  1256→  let summary = `Aanbevolen actie: ${actionLabels[action]} voor "${decay.url}". `;
+  1257→  summary += `Verval: ${decay.decayPercentage}%, Positie: ${decay.currentPage}. `;
+  1258→  summary += `Risiconiveau: ${riskLabels[overallRisk]}.`;
+  1259→
+  1260→  if (internalLinksAffected > 0) {
+  1261→    summary += ` ${internalLinksAffected} interne link(s) zijn betrokken.`;
+  1262→  }
+  1263→
+  1264→  if (action === 'REMOVE' || action === 'REDIRECT') {
+  1265→    summary += ' ⚠️ Expliciete goedkeuring vereist voor deze destructieve actie.';
+  1266→  }
+  1267→
+  1268→  return summary;
+  1269→}
+  1270→
+  1271→/**
+  1272→ * Build rollback guidance in Dutch for a pruning action.
+  1273→ */
+  1274→function buildRollbackGuidance(
+  1275→  action: PruningActionType,
+  1276→  url: string,
+  1277→  redirectTarget: string | null
+  1278→): string {
+  1279→  switch (action) {
+  1280→    case 'KEEP':
+  1281→      return 'Geen actie vereist. De pagina wordt behouden in de huidige staat.';
+  1282→    case 'IMPROVE':
+  1283→      return `Als de verbeteringen niet het gewenste effect hebben, kan de originele content worden hersteld via de wijzigingsgeschiedenis. Zorg dat je een back-up hebt van de originele content voordat je wijzigingen aanbrengt.`;
+  1284→    case 'MERGE':
+  1285→      return `Als het samenvoegen niet goed uitpakt, kunnen de oorspronkelijke pagina's worden hersteld via de wijzigingsgeschiedenis. Houd de URL-structuur bij voor eventuele redirects terug.`;
+  1286→    case 'REDIRECT':
+  1287→      return `Om de redirect ongedaan te maken: verwijder de redirect-regel voor "${url}" en herstel de originele pagina. Zorg dat je de originele content beschikbaar hebt in de wijzigingsgeschiedenis. Houd er rekening mee dat zoekmachines enige tijd nodig hebben om de redirect te verwerken — hoe sneller je het ongedaan maakt, hoe beter.${redirectTarget ? ` De huidige redirect verwijst naar "${redirectTarget}".` : ''}`;
+  1288→    case 'NOINDEX':
+  1289→      return `Om de noindex op te heffen: verwijder de noindex-tag uit de pagina en dien de pagina opnieuw in bij Google via Google Search Console. De pagina kan enige tijd nodig hebben om opnieuw te worden geïndexeerd.`;
+  1290→    case 'REMOVE':
+  1291→      return `Om de verwijdering ongedaan te maken: herstel de pagina met de originele content uit de wijzigingsgeschiedenis en dien de URL opnieuw in bij Google via Google Search Console. Houd er rekening mee dat zoekmachines autoriteit en rangpositie mogelijk niet volledig herstellen na verwijdering.`;
+  1292→    default:
+  1293→      return 'Geen specifieke rollback-instructies beschikbaar voor deze actie.';
+  1294→  }
+  1295→}
+  1296→

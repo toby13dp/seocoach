@@ -1,0 +1,822 @@
+     1→// ============================================================================
+     2→// Programmatic SEO Quality Gates — SEOCoach
+     3→// AI-Driven SEO Automation Platform (Dutch Market)
+     4→// ============================================================================
+     5→// Runs 8 quality gate checks on generated programmatic content to prevent
+     6→// thin/doorway pages, duplicate content, brand violations, and other quality
+     7→// issues. All gate names, messages, and rejection reasons are in Dutch.
+     8→//
+     9→// Blocking gates (failure = page rejected):
+    10→//   - Duplicaatcontrole (duplicate check)
+    11→//   - Sjabloonvolledigheid (template completeness)
+    12→//   - Merkcontrole (brand check)
+    13→//
+    14→// Non-blocking gates (failure = warning only):
+    15→//   - Unieke gegevens (unique data requirement)
+    16→//   - Minimale waardedrempel (minimum value threshold)
+    17→//   - Kannibalisatiecontrole (cannibalisation check)
+    18→//   - Claimcontrole (claim check)
+    19→//   - Interne linkcontrole (internal link check)
+    20→// ============================================================================
+    21→
+    22→import { db } from '@/lib/db';
+    23→import type { QualityGateResult, QualityGatesConfig } from './types';
+    24→
+    25→// ============================================================================
+    26→// Quality Gate Identifiers
+    27→// ============================================================================
+    28→
+    29→/**
+    30→ * All quality gate identifiers with their Dutch names and blocking status.
+    31→ */
+    32→const QUALITY_GATES = {
+    33→  UNIQUE_DATA: { id: 'UNIQUE_DATA', name: 'Unieke gegevens vereist', blocking: false },
+    34→  MIN_VALUE: { id: 'MIN_VALUE', name: 'Minimale waardedrempel', blocking: false },
+    35→  DUPLICATE: { id: 'DUPLICATE', name: 'Duplicaatcontrole', blocking: true },
+    36→  CANNIBALISATION: { id: 'CANNIBALISATION', name: 'Kannibalisatiecontrole', blocking: false },
+    37→  TEMPLATE_COMPLETENESS: { id: 'TEMPLATE_COMPLETENESS', name: 'Sjabloonvolledigheid', blocking: true },
+    38→  BRAND_CHECK: { id: 'BRAND_CHECK', name: 'Merkcontrole', blocking: true },
+    39→  CLAIM_CHECK: { id: 'CLAIM_CHECK', name: 'Claimcontrole', blocking: false },
+    40→  INTERNAL_LINK: { id: 'INTERNAL_LINK', name: 'Interne linkcontrole', blocking: false },
+    41→} as const;
+    42→
+    43→// ============================================================================
+    44→// Helper: Text Similarity
+    45→// ============================================================================
+    46→
+    47→/**
+    48→ * Calculate a simple n-gram similarity score between two strings.
+    49→ * Uses word-level trigrams for comparison. Returns a value between 0 and 1.
+    50→ *
+    51→ * @param textA - First text
+    52→ * @param textB - Second text
+    53→ * @returns Similarity score (0 = completely different, 1 = identical)
+    54→ */
+    55→function calculateSimilarity(textA: string, textB: string): number {
+    56→  const normalize = (text: string) =>
+    57→    text
+    58→      .toLowerCase()
+    59→      .replace(/[^\w\s]/g, '')
+    60→      .split(/\s+/)
+    61→      .filter((w) => w.length > 2);
+    62→
+    63→  const wordsA = normalize(textA);
+    64→  const wordsB = normalize(textB);
+    65→
+    66→  if (wordsA.length === 0 || wordsB.length === 0) return 0;
+    67→  if (wordsA.join(' ') === wordsB.join(' ')) return 1;
+    68→
+    69→  // Generate trigrams
+    70→  const getTrigrams = (words: string[]): Set<string> => {
+    71→    const trigrams = new Set<string>();
+    72→    for (let i = 0; i < words.length - 2; i++) {
+    73→      trigrams.add(`${words[i]} ${words[i + 1]} ${words[i + 2]}`);
+    74→    }
+    75→    return trigrams;
+    76→  };
+    77→
+    78→  const trigramsA = getTrigrams(wordsA);
+    79→  const trigramsB = getTrigrams(wordsB);
+    80→
+    81→  if (trigramsA.size === 0 || trigramsB.size === 0) {
+    82→    // Fall back to unigram Jaccard similarity
+    83→    const setA = new Set(wordsA);
+    84→    const setB = new Set(wordsB);
+    85→    const intersection = new Set([...setA].filter((w) => setB.has(w)));
+    86→    const union = new Set([...setA, ...setB]);
+    87→    return union.size > 0 ? intersection.size / union.size : 0;
+    88→  }
+    89→
+    90→  const intersection = new Set([...trigramsA].filter((t) => trigramsB.has(t)));
+    91→  const union = new Set([...trigramsA, ...trigramsB]);
+    92→  return union.size > 0 ? intersection.size / union.size : 0;
+    93→}
+    94→
+    95→/**
+    96→ * Count words in a text string.
+    97→ * @param text - The text to count words in
+    98→ * @returns Number of words
+    99→ */
+   100→function countWords(text: string): number {
+   101→  return text
+   102→    .replace(/[#*_\[\]()]/g, ' ')
+   103→    .split(/\s+/)
+   104→    .filter((w) => w.length > 0).length;
+   105→}
+   106→
+   107→// ============================================================================
+   108→// Quality Gate Implementations
+   109→// ============================================================================
+   110→
+   111→/**
+   112→ * Gate 1: Unique Data Requirement
+   113→ *
+   114→ * Each generated page must use distinct data values. Checks that key
+   115→ * variables differ between pages by comparing the current row data
+   116→ * against previously generated pages for this template.
+   117→ */
+   118→async function checkUniqueData(
+   119→  templateId: string,
+   120→  rowData: Record<string, unknown>,
+   121→  keyVariables: string[]
+   122→): Promise<QualityGateResult> {
+   123→  // Get existing pages for this template to compare data
+   124→  const existingPages = await db.programmaticPage.findMany({
+   125→    where: {
+   126→      templateId,
+   127→      deletedAt: null,
+   128→      status: { in: ['APPROVED', 'PENDING', 'QUALITY_CHECK'] },
+   129→    },
+   130→    select: { rowData: true },
+   131→  });
+   132→
+   133→  if (existingPages.length === 0) {
+   134→    return {
+   135→      gateName: QUALITY_GATES.UNIQUE_DATA.name,
+   136→      passed: true,
+   137→      score: 100,
+   138→      message: 'Eerste pagina voor dit sjabloon — geen vergelijking nodig.',
+   139→    };
+   140→  }
+   141→
+   142→  const rowValues = keyVariables.map((v) => String(rowData[v] ?? '')).filter((v) => v.length > 0);
+   143→
+   144→  if (rowValues.length === 0) {
+   145→    return {
+   146→      gateName: QUALITY_GATES.UNIQUE_DATA.name,
+   147→      passed: false,
+   148→      score: 0,
+   149→      message: 'Geen sleutelwaarden gevonden in de gegevens om uniciteit te controleren.',
+   150→    };
+   151→  }
+   152→
+   153→  let duplicateCount = 0;
+   154→  for (const page of existingPages) {
+   155→    try {
+   156→      const existingData: Record<string, unknown> = JSON.parse(page.rowData);
+   157→      const existingValues = keyVariables.map((v) => String(existingData[v] ?? '')).filter((v) => v.length > 0);
+   158→      // Check if all key variable values are the same
+   159→      if (rowValues.length === existingValues.length && rowValues.every((v, i) => v === existingValues[i])) {
+   160→        duplicateCount++;
+   161→      }
+   162→    } catch {
+   163→      // Skip pages with invalid JSON data
+   164→    }
+   165→  }
+   166→
+   167→  if (duplicateCount > 0) {
+   168→    return {
+   169→      gateName: QUALITY_GATES.UNIQUE_DATA.name,
+   170→      passed: false,
+   171→      score: 0,
+   172→      message: `De gegevens van deze pagina komen exact overeen met ${duplicateCount} bestaande pagina('s). Elke pagina moet unieke gegevens bevatten.`,
+   173→      details: { duplicateCount, keyVariables },
+   174→    };
+   175→  }
+   176→
+   177→  // Partial uniqueness score — check how many key variables have at least some variation
+   178→  let variationScore = 100;
+   179→  for (const page of existingPages) {
+   180→    try {
+   181→      const existingData: Record<string, unknown> = JSON.parse(page.rowData);
+   182→      const similarity = keyVariables.filter(
+   183→        (v) => String(rowData[v] ?? '') === String(existingData[v] ?? '')
+   184→      ).length / keyVariables.length;
+   185→      // Reduce score for partial matches
+   186→      variationScore = Math.min(variationScore, Math.round((1 - similarity) * 100));
+   187→    } catch {
+   188→      // Skip invalid data
+   189→    }
+   190→  }
+   191→
+   192→  return {
+   193→    gateName: QUALITY_GATES.UNIQUE_DATA.name,
+   194→    passed: variationScore >= 50,
+   195→    score: variationScore,
+   196→    message: variationScore >= 50
+   197→      ? 'Gegevens zijn voldoende uniek ten opzichte van bestaande pagina\'s.'
+   198→      : 'Waarschuwing: gegevens lijken sterk op bestaande pagina\'s. Overweeg meer variatie toe te voegen.',
+   199→    details: { keyVariables, variationScore },
+   200→  };
+   201→}
+   202→
+   203→/**
+   204→ * Gate 2: Minimum Value Threshold
+   205→ *
+   206→ * Page must have at least 300 words, a title, and at least 3 unique data points.
+   207→ */
+   208→function checkMinValueThreshold(
+   209→  generatedContent: string,
+   210→  rowData: Record<string, unknown>,
+   211→  config: QualityGatesConfig
+   212→): QualityGateResult {
+   213→  const minWordCount = config.minWordCount ?? 300;
+   214→  const minUniquePoints = config.minUniqueDataPoints ?? 3;
+   215→
+   216→  const wordCount = countWords(generatedContent);
+   217→  const hasTitle = /^#\s+.+/m.test(generatedContent);
+   218→  const uniqueDataPoints = Object.values(rowData).filter(
+   219→    (v) => v !== undefined && v !== null && String(v).trim().length > 0
+   220→  ).length;
+   221→
+   222→  const wordScore = Math.min(100, Math.round((wordCount / minWordCount) * 100));
+   223→  const titleScore = hasTitle ? 100 : 0;
+   224→  const dataPointsScore = Math.min(100, Math.round((uniqueDataPoints / minUniquePoints) * 100));
+   225→
+   226→  const overallScore = Math.round((wordScore + titleScore + dataPointsScore) / 3);
+   227→  const passed = wordCount >= minWordCount && hasTitle && uniqueDataPoints >= minUniquePoints;
+   228→
+   229→  const issues: string[] = [];
+   230→  if (wordCount < minWordCount) {
+   231→    issues.push(`Woordenaantal (${wordCount}) is onder het minimum van ${minWordCount}.`);
+   232→  }
+   233→  if (!hasTitle) {
+   234→    issues.push('De pagina heeft geen titel (H1-kop).');
+   235→  }
+   236→  if (uniqueDataPoints < minUniquePoints) {
+   237→    issues.push(`Aantal unieke gegevenspunten (${uniqueDataPoints}) is onder het minimum van ${minUniquePoints}.`);
+   238→  }
+   239→
+   240→  return {
+   241→    gateName: QUALITY_GATES.MIN_VALUE.name,
+   242→    passed,
+   243→    score: overallScore,
+   244→    message: passed
+   245→      ? `Pagina voldoet aan de minimale waardedrempel: ${wordCount} woorden, ${uniqueDataPoints} gegevenspunten.`
+   246→      : `Pagina voldoet niet aan de minimale waardedrempel: ${issues.join(' ')}`,
+   247→    details: { wordCount, minWordCount, hasTitle, uniqueDataPoints, minUniquePoints, wordScore, titleScore, dataPointsScore },
+   248→  };
+   249→}
+   250→
+   251→/**
+   252→ * Gate 3: Duplicate Check (BLOCKING)
+   253→ *
+   254→ * Compare generated content against existing pages in the project.
+   255→ * Reject if >80% similar.
+   256→ */
+   257→async function checkDuplicate(
+   258→  projectId: string,
+   259→  generatedContent: string,
+   260→  config: QualityGatesConfig
+   261→): Promise<QualityGateResult> {
+   262→  const maxSimilarity = config.maxSimilarityThreshold ?? 0.8;
+   263→
+   264→  // Get existing crawled pages from the project
+   265→  const existingPages = await db.page.findMany({
+   266→    where: {
+   267→      projectId,
+   268→      deletedAt: null,
+   269→      mainContent: { not: null },
+   270→    },
+   271→    select: {
+   272→      url: true,
+   273→      title: true,
+   274→      mainContent: true,
+   275→      similarityScore: true,
+   276→    },
+   277→    take: 500, // Limit for performance
+   278→  });
+   279→
+   280→  if (existingPages.length === 0) {
+   281→    return {
+   282→      gateName: QUALITY_GATES.DUPLICATE.name,
+   283→      passed: true,
+   284→      score: 100,
+   285→      message: 'Geen bestaande pagina\'s gevonden om mee te vergelijken.',
+   286→    };
+   287→  }
+   288→
+   289→  let maxFoundSimilarity = 0;
+   290→  let mostSimilarUrl = '';
+   291→
+   292→  for (const page of existingPages) {
+   293→    if (!page.mainContent) continue;
+   294→    const similarity = calculateSimilarity(generatedContent, page.mainContent);
+   295→    if (similarity > maxFoundSimilarity) {
+   296→      maxFoundSimilarity = similarity;
+   297→      mostSimilarUrl = page.url;
+   298→    }
+   299→  }
+   300→
+   301→  // Also check against other programmatic pages in the project
+   302→  const existingProgrammaticPages = await db.programmaticPage.findMany({
+   303→    where: {
+   304→      projectId,
+   305→      deletedAt: null,
+   306→      generatedContent: { not: null },
+   307→      status: { in: ['APPROVED', 'PUBLISHED'] },
+   308→    },
+   309→    select: {
+   310→      id: true,
+   311→      generatedContent: true,
+   312→    },
+   313→    take: 500,
+   314→  });
+   315→
+   316→  for (const page of existingProgrammaticPages) {
+   317→    if (!page.generatedContent) continue;
+   318→    const similarity = calculateSimilarity(generatedContent, page.generatedContent);
+   319→    if (similarity > maxFoundSimilarity) {
+   320→      maxFoundSimilarity = similarity;
+   321→      mostSimilarUrl = `programmatic://${page.id}`;
+   322→    }
+   323→  }
+   324→
+   325→  const score = Math.round((1 - maxFoundSimilarity) * 100);
+   326→  const passed = maxFoundSimilarity < maxSimilarity;
+   327→
+   328→  return {
+   329→    gateName: QUALITY_GATES.DUPLICATE.name,
+   330→    passed,
+   331→    score,
+   332→    message: passed
+   333→      ? `Inhoud is voldoende uniek (max gelijkenis: ${Math.round(maxFoundSimilarity * 100)}%).`
+   334→      : `Inhoud is te vergelijkbaar met een bestaande pagina (${Math.round(maxFoundSimilarity * 100)}% gelijkenis). Drempel: ${Math.round(maxSimilarity * 100)}%.`,
+   335→    details: { maxSimilarity: maxFoundSimilarity, threshold: maxSimilarity, mostSimilarUrl },
+   336→  };
+   337→}
+   338→
+   339→/**
+   340→ * Gate 4: Cannibalisation Check
+   341→ *
+   342→ * Check if the generated page targets the same keyword as an existing page.
+   343→ * Warn if overlap is detected.
+   344→ */
+   345→async function checkCannibalisation(
+   346→  projectId: string,
+   347→  targetKeyword: string
+   348→): Promise<QualityGateResult> {
+   349→  if (!targetKeyword || targetKeyword.trim().length === 0) {
+   350→    return {
+   351→      gateName: QUALITY_GATES.CANNIBALISATION.name,
+   352→      passed: true,
+   353→      score: 100,
+   354→      message: 'Geen trefwoord opgegeven om kannibalisatie te controleren.',
+   355→    };
+   356→  }
+   357→
+   358→  const normalizedKeyword = targetKeyword.toLowerCase().trim();
+   359→
+   360→  // Check against keywords in the project
+   361→  const existingKeywords = await db.keyword.findMany({
+   362→    where: {
+   363→      projectId,
+   364→      deletedAt: null,
+   365→    },
+   366→    select: {
+   367→      keyword: true,
+   368→      currentUrl: true,
+   369→    },
+   370→  });
+   371→
+   372→  const overlappingKeywords = existingKeywords.filter((k) => {
+   373→    const existingNorm = k.keyword.toLowerCase().trim();
+   374→    return (
+   375→      existingNorm === normalizedKeyword ||
+   376→      existingNorm.includes(normalizedKeyword) ||
+   377→      normalizedKeyword.includes(existingNorm)
+   378→    );
+   379→  });
+   380→
+   381→  if (overlappingKeywords.length === 0) {
+   382→    return {
+   383→      gateName: QUALITY_GATES.CANNIBALISATION.name,
+   384→      passed: true,
+   385→      score: 100,
+   386→      message: `Geen kannibalisatie gedetecteerd voor trefwoord "${targetKeyword}".`,
+   387→    };
+   388→  }
+   389→
+   390→  // Partial overlap scores lower
+   391→  const exactMatches = overlappingKeywords.filter(
+   392→    (k) => k.keyword.toLowerCase().trim() === normalizedKeyword
+   393→  );
+   394→
+   395→  const score = exactMatches.length > 0 ? 20 : Math.max(50, 100 - overlappingKeywords.length * 15);
+   396→  const passed = exactMatches.length === 0;
+   397→
+   398→  return {
+   399→    gateName: QUALITY_GATES.CANNIBALISATION.name,
+   400→    passed,
+   401→    score,
+   402→    message: passed
+   403→      ? `Waarschuwing: ${overlappingKeywords.length} overlappende trefwoorden gevonden, maar geen exacte match voor "${targetKeyword}".`
+   404→      : `Kannibalisatierisico: exacte trefwoordmatch "${targetKeyword}" komt al voor op ${overlappingKeywords.length} pagina('s).`,
+   405→    details: {
+   406→      targetKeyword,
+   407→      overlappingKeywords: overlappingKeywords.map((k) => k.keyword),
+   408→      exactMatches: exactMatches.length,
+   409→      competingUrls: overlappingKeywords.map((k) => k.currentUrl).filter(Boolean),
+   410→    },
+   411→  };
+   412→}
+   413→
+   414→/**
+   415→ * Gate 5: Template Completeness (BLOCKING)
+   416→ *
+   417→ * All {{variable}} placeholders must be filled. No empty sections.
+   418→ */
+   419→function checkTemplateCompleteness(
+   420→  generatedContent: string,
+   421→  rowData: Record<string, unknown>
+   422→): QualityGateResult {
+   423→  // Check for unfilled placeholders
+   424→  const placeholderRegex = /\{\{(\w+)\}\}/g;
+   425→  const unfilledPlaceholders: string[] = [];
+   426→  let match: RegExpExecArray | null;
+   427→
+   428→  while ((match = placeholderRegex.exec(generatedContent)) !== null) {
+   429→    unfilledPlaceholders.push(match[1]);
+   430→  }
+   431→
+   432→  // Check for empty sections (## heading followed by no content or only whitespace)
+   433→  const emptySectionRegex = /^##\s+.+\n\s*(?=\n#|$)/gm;
+   434→  const emptySections: string[] = [];
+   435→  const sectionMatches = generatedContent.matchAll(/^##\s+(.+)$/gm);
+   436→  for (const sectionMatch of sectionMatches) {
+   437→    const sectionName = sectionMatch[1];
+   438→    const startPos = sectionMatch.index! + sectionMatch[0].length;
+   439→    const nextHeading = generatedContent.indexOf('\n#', startPos);
+   440→    const sectionContent = generatedContent.slice(
+   441→      startPos,
+   442→      nextHeading === -1 ? undefined : nextHeading
+   443→    ).trim();
+   444→
+   445→    if (sectionContent.length === 0) {
+   446→      emptySections.push(sectionName);
+   447→    }
+   448→  }
+   449→
+   450→  // Check for empty data values
+   451→  const emptyDataKeys = Object.entries(rowData)
+   452→    .filter(([, v]) => v === undefined || v === null || String(v).trim().length === 0)
+   453→    .map(([k]) => k);
+   454→
+   455→  const totalIssues = unfilledPlaceholders.length + emptySections.length + emptyDataKeys.length;
+   456→  const passed = unfilledPlaceholders.length === 0 && emptySections.length === 0;
+   457→
+   458→  let score = 100;
+   459→  if (unfilledPlaceholders.length > 0) score -= unfilledPlaceholders.length * 25;
+   460→  if (emptySections.length > 0) score -= emptySections.length * 15;
+   461→  if (emptyDataKeys.length > 0) score -= emptyDataKeys.length * 5;
+   462→  score = Math.max(0, score);
+   463→
+   464→  const issues: string[] = [];
+   465→  if (unfilledPlaceholders.length > 0) {
+   466→    issues.push(`Niet-ingevulde plaatsaanduidingen: ${unfilledPlaceholders.join(', ')}.`);
+   467→  }
+   468→  if (emptySections.length > 0) {
+   469→    issues.push(`Lege secties: ${emptySections.join(', ')}.`);
+   470→  }
+   471→  if (emptyDataKeys.length > 0) {
+   472→    issues.push(`Lege gegevenswaarden: ${emptyDataKeys.join(', ')}.`);
+   473→  }
+   474→
+   475→  return {
+   476→    gateName: QUALITY_GATES.TEMPLATE_COMPLETENESS.name,
+   477→    passed,
+   478→    score,
+   479→    message: passed
+   480→      ? 'Sjabloon is volledig ingevuld — geen lege secties of ontbrekende waarden.'
+   481→      : `Sjabloon is niet volledig: ${issues.join(' ')}`,
+   482→    details: { unfilledPlaceholders, emptySections, emptyDataKeys },
+   483→  };
+   484→}
+   485→
+   486→/**
+   487→ * Gate 6: Brand Check (BLOCKING)
+   488→ *
+   489→ * Content must not violate brand profile prohibited terms/claims.
+   490→ */
+   491→async function checkBrandCompliance(
+   492→  projectId: string,
+   493→  generatedContent: string
+   494→): Promise<QualityGateResult> {
+   495→  const brandProfile = await db.brandProfile.findUnique({
+   496→    where: { projectId },
+   497→  });
+   498→
+   499→  if (!brandProfile) {
+   500→    return {
+   501→      gateName: QUALITY_GATES.BRAND_CHECK.name,
+   502→      passed: true,
+   503→      score: 100,
+   504→      message: 'Geen merkprofiel gevonden — merkbewaking overgeslagen.',
+   505→    };
+   506→  }
+   507→
+   508→  const prohibitedTerms: string[] = brandProfile.prohibitedTerminology
+   509→    ? JSON.parse(brandProfile.prohibitedTerminology)
+   510→    : [];
+   511→  const prohibitedClaims: string[] = brandProfile.prohibitedClaims
+   512→    ? JSON.parse(brandProfile.prohibitedClaims)
+   513→    : [];
+   514→
+   515→  const contentLower = generatedContent.toLowerCase();
+   516→
+   517→  const foundProhibitedTerms: string[] = [];
+   518→  for (const term of prohibitedTerms) {
+   519→    if (contentLower.includes(term.toLowerCase())) {
+   520→      foundProhibitedTerms.push(term);
+   521→    }
+   522→  }
+   523→
+   524→  const foundProhibitedClaims: string[] = [];
+   525→  for (const claim of prohibitedClaims) {
+   526→    if (contentLower.includes(claim.toLowerCase())) {
+   527→      foundProhibitedClaims.push(claim);
+   528→    }
+   529→  }
+   530→
+   531→  const totalViolations = foundProhibitedTerms.length + foundProhibitedClaims.length;
+   532→  const passed = totalViolations === 0;
+   533→
+   534→  let score = 100;
+   535→  if (foundProhibitedTerms.length > 0) score -= foundProhibitedTerms.length * 20;
+   536→  if (foundProhibitedClaims.length > 0) score -= foundProhibitedClaims.length * 30;
+   537→  score = Math.max(0, score);
+   538→
+   539→  const issues: string[] = [];
+   540→  if (foundProhibitedTerms.length > 0) {
+   541→    issues.push(`Verboden terminologie gevonden: ${foundProhibitedTerms.join(', ')}.`);
+   542→  }
+   543→  if (foundProhibitedClaims.length > 0) {
+   544→    issues.push(`Verboden claims gevonden: ${foundProhibitedClaims.join(', ')}.`);
+   545→  }
+   546→
+   547→  return {
+   548→    gateName: QUALITY_GATES.BRAND_CHECK.name,
+   549→    passed,
+   550→    score,
+   551→    message: passed
+   552→      ? 'Inhoud voldoet aan de merkrichtlijnen.'
+   553→      : `Inhoud schendt merkrichtlijnen: ${issues.join(' ')}`,
+   554→    details: { foundProhibitedTerms, foundProhibitedClaims },
+   555→  };
+   556→}
+   557→
+   558→/**
+   559→ * Gate 7: Claim Check
+   560→ *
+   561→ * Mark unsupported claims using claim markers from Phase 3.
+   562→ * Checks for superlative claims, unsubstantiated statistics, and
+   563→ * absolute statements that lack supporting evidence.
+   564→ */
+   565→function checkClaims(generatedContent: string): QualityGateResult {
+   566→  // Patterns that often indicate unsubstantiated claims
+   567→  const claimPatterns = [
+   568→    { pattern: /de beste/i, label: 'Superlatief: "de beste"' },
+   569→    { pattern: /nummer\s*1/i, label: 'Absolute bewering: "nummer 1"' },
+   570→    { pattern: /100%/g, label: 'Absoluut percentage: "100%"' },
+   571→    { pattern: /altijd/gi, label: 'Absolute bewering: "altijd"' },
+   572→    { pattern: /nooit/gi, label: 'Absolute bewering: "nooit"' },
+   573→    { pattern: /iedereen/gi, label: 'Algemene bewering: "iedereen"' },
+   574→    { pattern: / gegarandeerd/gi, label: 'Garantieclaim: "gegarandeerd"' },
+   575→    { pattern: /bewezen/gi, label: 'Bewijsclaim: "bewezen" zonder bron' },
+   576→    { pattern: /wetenschappelijk\s+bewezen/gi, label: 'Wetenschappelijke claim zonder bron' },
+   577→    { pattern: /enige\s+(oplossing|optie|keuze)/gi, label: 'Exclusiviteitsclaim' },
+   578→    { pattern: /onovertroffen/gi, label: 'Superlatief: "onovertroffen"' },
+   579→    { pattern: /uniek\s+in\s+de\s+wereld/gi, label: 'Exclusiviteitsclaim: "uniek in de wereld"' },
+   580→  ];
+   581→
+   582→  const foundClaims: Array<{ label: string; count: number }> = [];
+   583→
+   584→  for (const { pattern, label } of claimPatterns) {
+   585→    const matches = generatedContent.match(pattern);
+   586→    if (matches && matches.length > 0) {
+   587→      foundClaims.push({ label, count: matches.length });
+   588→    }
+   589→  }
+   590→
+   591→  const totalClaims = foundClaims.reduce((sum, c) => sum + c.count, 0);
+   592→  const passed = totalClaims === 0;
+   593→
+   594→  // Score based on number of claims found
+   595→  let score = 100;
+   596→  if (totalClaims > 0) score = Math.max(0, 100 - totalClaims * 15);
+   597→
+   598→  return {
+   599→    gateName: QUALITY_GATES.CLAIM_CHECK.name,
+   600→    passed,
+   601→    score,
+   602→    message: passed
+   603→      ? 'Geen onderbouwde claims gedetecteerd in de inhoud.'
+   604→      : `${totalClaims} potentiële ononderbouwde claim(s) gevonden: ${foundClaims.map((c) => c.label).join(', ')}.`,
+   605→    details: { foundClaims, totalClaims },
+   606→  };
+   607→}
+   608→
+   609→/**
+   610→ * Gate 8: Internal Link Check
+   611→ *
+   612→ * Content should include at least one internal link suggestion.
+   613→ */
+   614→async function checkInternalLinks(
+   615→  projectId: string,
+   616→  generatedContent: string
+   617→): Promise<QualityGateResult> {
+   618→  // Check for Markdown links [text](/path) or HTML links <a href="/...">
+   619→  const markdownLinks = generatedContent.match(/\[([^\]]+)\]\((\/[^)]+)\)/g) || [];
+   620→  const htmlLinks = generatedContent.match(/<a\s+href="\/[^"]*"/gi) || [];
+   621→  const totalInternalLinks = markdownLinks.length + htmlLinks.length;
+   622→
+   623→  // Also check if there are existing pages in the project that could be linked to
+   624→  const existingPages = await db.page.findMany({
+   625→    where: {
+   626→      projectId,
+   627→      deletedAt: null,
+   628→      status: 'OK',
+   629→    },
+   630→    select: { url: true, title: true },
+   631→    take: 20,
+   632→  });
+   633→
+   634→  const hasInternalLinks = totalInternalLinks > 0;
+   635→  const linkSuggestionAvailable = existingPages.length > 0;
+   636→
+   637→  let score = 0;
+   638→  if (hasInternalLinks) {
+   639→    score = Math.min(100, 50 + totalInternalLinks * 25);
+   640→  } else if (linkSuggestionAvailable) {
+   641→    score = 30;
+   642→  } else {
+   643→    score = 80; // No pages to link to, so not penalized heavily
+   644→  }
+   645→
+   646→  const passed = hasInternalLinks || !linkSuggestionAvailable;
+   647→
+   648→  // Build suggestion details
+   649→  const suggestions = existingPages.slice(0, 5).map((p) => ({
+   650→    url: p.url,
+   651→    title: p.title ?? 'Zonder titel',
+   652→  }));
+   653→
+   654→  return {
+   655→    gateName: QUALITY_GATES.INTERNAL_LINK.name,
+   656→    passed,
+   657→    score,
+   658→    message: hasInternalLinks
+   659→      ? `${totalInternalLinks} interne link(s) gevonden in de inhoud.`
+   660→      : linkSuggestionAvailable
+   661→        ? 'Geen interne links gevonden. Overweeg links toe te voegen naar bestaande pagina\'s.'
+   662→        : 'Geen bestaande pagina\'s beschikbaar om naar te linken.',
+   663→    details: { totalInternalLinks, suggestions },
+   664→  };
+   665→}
+   666→
+   667→// ============================================================================
+   668→// Main Quality Gate Runner
+   669→// ============================================================================
+   670→
+   671→/**
+   672→ * Result of running all quality gates on a piece of generated content.
+   673→ */
+   674→export interface QualityGateRunResult {
+   675→  /** Individual results for each gate */
+   676→  results: QualityGateResult[];
+   677→  /** Average score across all gates (0-100) */
+   678→  overallScore: number;
+   679→  /** Whether the page passes ALL blocking gates */
+   680→  approved: boolean;
+   681→  /** List of rejection reasons (Dutch) for blocking gate failures */
+   682→  rejectionReasons: string[];
+   683→  /** List of warnings (Dutch) for non-blocking gate failures */
+   684→  warnings: string[];
+   685→}
+   686→
+   687→/**
+   688→ * Run all quality gates on generated content.
+   689→ *
+   690→ * The overall quality score is the average of all gate scores.
+   691→ * Pages that fail ANY blocking gate (duplicate, template completeness, brand check)
+   692→ * are rejected. Pages that fail non-blocking gates get warnings.
+   693→ *
+   694→ * @param projectId - The project context
+   695→ * @param templateId - The template being used
+   696→ * @param generatedContent - The generated content to check
+   697→ * @param rowData - The data row used to generate this content
+   698→ * @param config - Optional quality gate configuration overrides
+   699→ * @returns Comprehensive quality gate results
+   700→ */
+   701→export async function runQualityGates(
+   702→  projectId: string,
+   703→  templateId: string,
+   704→  generatedContent: string,
+   705→  rowData: Record<string, unknown>,
+   706→  config?: QualityGatesConfig
+   707→): Promise<QualityGateRunResult> {
+   708→  const qualityConfig: QualityGatesConfig = config ?? {
+   709→    minWordCount: 300,
+   710→    minUniqueDataPoints: 3,
+   711→    maxSimilarityThreshold: 0.8,
+   712→    checkCannibalisation: true,
+   713→    checkBrandCompliance: true,
+   714→    checkClaims: true,
+   715→    requireInternalLinks: true,
+   716→  };
+   717→
+   718→  // Get the template to determine key variables
+   719→  const template = await db.programmaticTemplate.findUnique({
+   720→    where: { id: templateId },
+   721→  });
+   722→
+   723→  const variables: Array<{ name: string; required: boolean }> = template?.variables
+   724→    ? JSON.parse(template.variables)
+   725→    : [];
+   726→
+   727→  const keyVariables = variables.filter((v) => v.required).map((v) => v.name);
+   728→
+   729→  // Determine the target keyword from the rendered content or row data
+   730→  const targetKeyword = extractTargetKeyword(rowData, template?.targetKeyword);
+   731→
+   732→  // Run all quality gates
+   733→  const results: QualityGateResult[] = [];
+   734→
+   735→  // Gate 1: Unique Data Requirement
+   736→  results.push(await checkUniqueData(templateId, rowData, keyVariables));
+   737→
+   738→  // Gate 2: Minimum Value Threshold
+   739→  results.push(checkMinValueThreshold(generatedContent, rowData, qualityConfig));
+   740→
+   741→  // Gate 3: Duplicate Check (BLOCKING)
+   742→  results.push(await checkDuplicate(projectId, generatedContent, qualityConfig));
+   743→
+   744→  // Gate 4: Cannibalisation Check
+   745→  if (qualityConfig.checkCannibalisation !== false) {
+   746→    results.push(await checkCannibalisation(projectId, targetKeyword));
+   747→  }
+   748→
+   749→  // Gate 5: Template Completeness (BLOCKING)
+   750→  results.push(checkTemplateCompleteness(generatedContent, rowData));
+   751→
+   752→  // Gate 6: Brand Check (BLOCKING)
+   753→  if (qualityConfig.checkBrandCompliance !== false) {
+   754→    results.push(await checkBrandCompliance(projectId, generatedContent));
+   755→  }
+   756→
+   757→  // Gate 7: Claim Check
+   758→  if (qualityConfig.checkClaims !== false) {
+   759→    results.push(checkClaims(generatedContent));
+   760→  }
+   761→
+   762→  // Gate 8: Internal Link Check
+   763→  if (qualityConfig.requireInternalLinks !== false) {
+   764→    results.push(await checkInternalLinks(projectId, generatedContent));
+   765→  }
+   766→
+   767→  // Calculate overall score
+   768→  const overallScore =
+   769→    results.length > 0
+   770→      ? Math.round(results.reduce((sum, r) => sum + r.score, 0) / results.length)
+   771→      : 0;
+   772→
+   773→  // Determine blocking gate failures
+   774→  const blockingGateIds = new Set([
+   775→    QUALITY_GATES.DUPLICATE.id,
+   776→    QUALITY_GATES.TEMPLATE_COMPLETENESS.id,
+   777→    QUALITY_GATES.BRAND_CHECK.id,
+   778→  ]);
+   779→
+   780→  const rejectionReasons: string[] = [];
+   781→  const warnings: string[] = [];
+   782→
+   783→  for (const result of results) {
+   784→    if (!result.passed) {
+   785→      // Check if this is a blocking gate by matching the gate name
+   786→      const gateEntry = Object.values(QUALITY_GATES).find((g) => g.name === result.gateName);
+   787→      if (gateEntry && gateEntry.blocking) {
+   788→        rejectionReasons.push(result.message);
+   789→      } else {
+   790→        warnings.push(result.message);
+   791→      }
+   792→    }
+   793→  }
+   794→
+   795→  const approved = rejectionReasons.length === 0;
+   796→
+   797→  return {
+   798→    results,
+   799→    overallScore,
+   800→    approved,
+   801→    rejectionReasons,
+   802→    warnings,
+   803→  };
+   804→}
+   805→
+   806→/**
+   807→ * Extract the target keyword from row data by rendering the keyword pattern.
+   808→ */
+   809→function extractTargetKeyword(
+   810→  rowData: Record<string, unknown>,
+   811→  keywordPattern?: string | null
+   812→): string {
+   813→  if (!keywordPattern) return '';
+   814→
+   815→  let keyword = keywordPattern;
+   816→  for (const [key, value] of Object.entries(rowData)) {
+   817→    const placeholder = new RegExp(`\\{\\{${key}\\}\\}`, 'g');
+   818→    keyword = keyword.replace(placeholder, String(value));
+   819→  }
+   820→  return keyword;
+   821→}
+   822→

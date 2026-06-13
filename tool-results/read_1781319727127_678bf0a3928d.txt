@@ -1,0 +1,825 @@
+     1→"use client";
+     2→
+     3→import { useState, useEffect, use, useCallback } from "react";
+     4→import { useRouter } from "@/i18n/routing";
+     5→import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+     6→import { Button } from "@/components/ui/button";
+     7→import { Badge } from "@/components/ui/badge";
+     8→import { Input } from "@/components/ui/input";
+     9→import { Label } from "@/components/ui/label";
+    10→import { Switch } from "@/components/ui/switch";
+    11→import { Separator } from "@/components/ui/separator";
+    12→import {
+    13→  Dialog,
+    14→  DialogContent,
+    15→  DialogDescription,
+    16→  DialogFooter,
+    17→  DialogHeader,
+    18→  DialogTitle,
+    19→} from "@/components/ui/dialog";
+    20→import {
+    21→  Select,
+    22→  SelectContent,
+    23→  SelectItem,
+    24→  SelectTrigger,
+    25→  SelectValue,
+    26→} from "@/components/ui/select";
+    27→import {
+    28→  Table,
+    29→  TableBody,
+    30→  TableCell,
+    31→  TableHead,
+    32→  TableHeader,
+    33→  TableRow,
+    34→} from "@/components/ui/table";
+    35→import {
+    36→  AlertDialog,
+    37→  AlertDialogAction,
+    38→  AlertDialogCancel,
+    39→  AlertDialogContent,
+    40→  AlertDialogDescription,
+    41→  AlertDialogFooter,
+    42→  AlertDialogHeader,
+    43→  AlertDialogTitle,
+    44→} from "@/components/ui/alert-dialog";
+    45→import { motion } from "framer-motion";
+    46→import {
+    47→  ArrowLeft,
+    48→  Plus,
+    49→  Loader2,
+    50→  Cpu,
+    51→  Zap,
+    52→  CheckCircle2,
+    53→  XCircle,
+    54→  Trash2,
+    55→  TestTube2,
+    56→  Shield,
+    57→} from "lucide-react";
+    58→import { toast } from "sonner";
+    59→
+    60→interface AIProvider {
+    61→  id: string;
+    62→  name: string;
+    63→  type: string;
+    64→  baseUrl: string;
+    65→  defaultModel: string | null;
+    66→  isActive: boolean;
+    67→  isDefault: boolean;
+    68→  maxTokens: number;
+    69→  temperature: number;
+    70→  timeout: number;
+    71→  retryAttempts: number;
+    72→  costPerToken: number;
+    73→  privacySettings: string | null;
+    74→  createdAt: string;
+    75→  updatedAt: string;
+    76→  _count?: {
+    77→    callLogs: number;
+    78→    promptTemplates: number;
+    79→  };
+    80→}
+    81→
+    82→interface TokenUsage {
+    83→  totalInputTokens: number;
+    84→  totalOutputTokens: number;
+    85→  totalCost: number;
+    86→  totalCalls: number;
+    87→}
+    88→
+    89→export default function AIProvidersPage({
+    90→  params,
+    91→}: {
+    92→  params: Promise<{ id: string }>;
+    93→}) {
+    94→  const { id: projectId } = use(params);
+    95→  const router = useRouter();
+    96→
+    97→  const [providers, setProviders] = useState<AIProvider[]>([]);
+    98→  const [tokenUsage, setTokenUsage] = useState<TokenUsage>({
+    99→    totalInputTokens: 0,
+   100→    totalOutputTokens: 0,
+   101→    totalCost: 0,
+   102→    totalCalls: 0,
+   103→  });
+   104→  const [isLoading, setIsLoading] = useState(true);
+   105→
+   106→  // Create dialog
+   107→  const [showCreateDialog, setShowCreateDialog] = useState(false);
+   108→  const [isCreating, setIsCreating] = useState(false);
+   109→  const [newProvider, setNewProvider] = useState({
+   110→    name: "",
+   111→    type: "OLLAMA",
+   112→    baseUrl: "http://localhost:11434",
+   113→    apiKey: "",
+   114→    defaultModel: "",
+   115→    maxTokens: 4096,
+   116→    temperature: 0.7,
+   117→    timeout: 60000,
+   118→    costPerToken: 0,
+   119→    allowExternal: false,
+   120→  });
+   121→
+   122→  // Test connection state
+   123→  const [testingProviderId, setTestingProviderId] = useState<string | null>(null);
+   124→  const [testResult, setTestResult] = useState<{
+   125→    providerId: string;
+   126→    success: boolean;
+   127→    message: string;
+   128→    duration?: number;
+   129→  } | null>(null);
+   130→
+   131→  // Delete dialog
+   132→  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+   133→  const [deleteProviderId, setDeleteProviderId] = useState<string | null>(null);
+   134→  const [isDeleting, setIsDeleting] = useState(false);
+   135→
+   136→  const fetchProviders = useCallback(async () => {
+   137→    setIsLoading(true);
+   138→    try {
+   139→      const res = await fetch(`/api/projects/${projectId}/ai-providers`);
+   140→      if (res.ok) {
+   141→        const data = await res.json();
+   142→        setProviders(data.data || []);
+   143→      }
+   144→    } catch {
+   145→      // silently fail
+   146→    } finally {
+   147→      setIsLoading(false);
+   148→    }
+   149→  }, [projectId]);
+   150→
+   151→  const fetchTokenUsage = useCallback(async () => {
+   152→    try {
+   153→      // Use the providers data to compute token usage from call logs
+   154→      const res = await fetch(`/api/projects/${projectId}/ai-providers`);
+   155→      if (res.ok) {
+   156→        const data = await res.json();
+   157→        const providersData = data.data || [];
+   158→        let totalInput = 0;
+   159→        let totalOutput = 0;
+   160→        let totalCost = 0;
+   161→        let totalCalls = 0;
+   162→        for (const p of providersData) {
+   163→          totalCalls += p._count?.callLogs || 0;
+   164→        }
+   165→        setTokenUsage({
+   166→          totalInputTokens: totalInput,
+   167→          totalOutputTokens: totalOutput,
+   168→          totalCost: totalCost,
+   169→          totalCalls: totalCalls,
+   170→        });
+   171→      }
+   172→    } catch {
+   173→      // silently fail
+   174→    }
+   175→  }, [projectId]);
+   176→
+   177→  useEffect(() => {
+   178→    fetchProviders().then(() => fetchTokenUsage());
+   179→  }, [fetchProviders, fetchTokenUsage]);
+   180→
+   181→  async function handleCreateProvider() {
+   182→    if (!newProvider.name.trim()) {
+   183→      toast.error("Naam is verplicht");
+   184→      return;
+   185→    }
+   186→    if (!newProvider.baseUrl.trim()) {
+   187→      toast.error("Basis-URL is verplicht");
+   188→      return;
+   189→    }
+   190→    setIsCreating(true);
+   191→    try {
+   192→      const res = await fetch(`/api/projects/${projectId}/ai-providers`, {
+   193→        method: "POST",
+   194→        headers: { "Content-Type": "application/json" },
+   195→        body: JSON.stringify({
+   196→          name: newProvider.name,
+   197→          type: newProvider.type,
+   198→          baseUrl: newProvider.baseUrl,
+   199→          apiKey: newProvider.apiKey || undefined,
+   200→          defaultModel: newProvider.defaultModel || undefined,
+   201→          maxTokens: newProvider.maxTokens,
+   202→          temperature: newProvider.temperature,
+   203→          timeout: newProvider.timeout,
+   204→          costPerToken: newProvider.costPerToken,
+   205→          privacySettings: {
+   206→            allowExternal: newProvider.allowExternal,
+   207→          },
+   208→        }),
+   209→      });
+   210→      if (res.ok) {
+   211→        toast.success("Provider toegevoegd");
+   212→        setShowCreateDialog(false);
+   213→        setNewProvider({
+   214→          name: "",
+   215→          type: "OLLAMA",
+   216→          baseUrl: "http://localhost:11434",
+   217→          apiKey: "",
+   218→          defaultModel: "",
+   219→          maxTokens: 4096,
+   220→          temperature: 0.7,
+   221→          timeout: 60000,
+   222→          costPerToken: 0,
+   223→          allowExternal: false,
+   224→        });
+   225→        fetchProviders();
+   226→      } else {
+   227→        const errorData = await res.json();
+   228→        toast.error(errorData.error || "Fout bij toevoegen provider");
+   229→      }
+   230→    } catch {
+   231→      toast.error("Fout bij toevoegen provider");
+   232→    } finally {
+   233→      setIsCreating(false);
+   234→    }
+   235→  }
+   236→
+   237→  async function handleTestConnection(providerId: string) {
+   238→    setTestingProviderId(providerId);
+   239→    setTestResult(null);
+   240→    try {
+   241→      const res = await fetch(
+   242→        `/api/projects/${projectId}/ai-providers/${providerId}/test`,
+   243→        {
+   244→          method: "POST",
+   245→          headers: { "Content-Type": "application/json" },
+   246→        }
+   247→      );
+   248→      const data = await res.json();
+   249→      if (res.ok && data.data?.success) {
+   250→        setTestResult({
+   251→          providerId,
+   252→          success: true,
+   253→          message: `Verbinding succesvol (${data.data.duration}ms, ${data.data.tokens || 0} tokens)`,
+   254→          duration: data.data.duration,
+   255→        });
+   256→        toast.success("Verbinding succesvol");
+   257→      } else {
+   258→        setTestResult({
+   259→          providerId,
+   260→          success: false,
+   261→          message: data.data?.error || data.error || "Verbinding mislukt",
+   262→        });
+   263→        toast.error("Verbinding mislukt");
+   264→      }
+   265→    } catch {
+   266→      setTestResult({
+   267→        providerId,
+   268→        success: false,
+   269→        message: "Kan geen verbinding maken",
+   270→      });
+   271→      toast.error("Verbinding mislukt");
+   272→    } finally {
+   273→      setTestingProviderId(null);
+   274→    }
+   275→  }
+   276→
+   277→  async function handleToggleActive(provider: AIProvider) {
+   278→    try {
+   279→      const res = await fetch(
+   280→        `/api/projects/${projectId}/ai-providers/${provider.id}`,
+   281→        {
+   282→          method: "PATCH",
+   283→          headers: { "Content-Type": "application/json" },
+   284→          body: JSON.stringify({ isActive: !provider.isActive }),
+   285→        }
+   286→      );
+   287→      if (res.ok) {
+   288→        toast.success(
+   289→          provider.isActive ? "Provider gedeactiveerd" : "Provider geactiveerd"
+   290→        );
+   291→        fetchProviders();
+   292→      } else {
+   293→        toast.error("Fout bij bijwerken provider");
+   294→      }
+   295→    } catch {
+   296→      toast.error("Fout bij bijwerken provider");
+   297→    }
+   298→  }
+   299→
+   300→  async function handleSetDefault(provider: AIProvider) {
+   301→    try {
+   302→      const res = await fetch(
+   303→        `/api/projects/${projectId}/ai-providers/${provider.id}`,
+   304→        {
+   305→          method: "PATCH",
+   306→          headers: { "Content-Type": "application/json" },
+   307→          body: JSON.stringify({ isDefault: true }),
+   308→        }
+   309→      );
+   310→      if (res.ok) {
+   311→        toast.success("Standaardprovider ingesteld");
+   312→        fetchProviders();
+   313→      } else {
+   314→        toast.error("Fout bij instellen standaardprovider");
+   315→      }
+   316→    } catch {
+   317→      toast.error("Fout bij instellen standaardprovider");
+   318→    }
+   319→  }
+   320→
+   321→  async function handleDelete() {
+   322→    if (!deleteProviderId) return;
+   323→    setIsDeleting(true);
+   324→    try {
+   325→      const res = await fetch(
+   326→        `/api/projects/${projectId}/ai-providers/${deleteProviderId}`,
+   327→        {
+   328→          method: "DELETE",
+   329→        }
+   330→      );
+   331→      if (res.ok) {
+   332→        toast.success("Provider verwijderd");
+   333→        fetchProviders();
+   334→      } else {
+   335→        toast.error("Fout bij verwijderen provider");
+   336→      }
+   337→    } catch {
+   338→      toast.error("Fout bij verwijderen provider");
+   339→    } finally {
+   340→      setIsDeleting(false);
+   341→      setShowDeleteDialog(false);
+   342→      setDeleteProviderId(null);
+   343→    }
+   344→  }
+   345→
+   346→  const typeLabel = (type: string) => {
+   347→    switch (type) {
+   348→      case "OLLAMA":
+   349→        return "Ollama";
+   350→      case "OPENAI_COMPATIBLE":
+   351→        return "OpenAI-compatibel";
+   352→      case "CUSTOM":
+   353→        return "Aangepast";
+   354→      default:
+   355→        return type;
+   356→    }
+   357→  };
+   358→
+   359→  const typeBadgeClass = (type: string) => {
+   360→    switch (type) {
+   361→      case "OLLAMA":
+   362→        return "bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400 dark:border-emerald-800";
+   363→      case "OPENAI_COMPATIBLE":
+   364→        return "bg-blue-100 text-blue-800 border-blue-200 dark:bg-blue-900/30 dark:text-blue-400 dark:border-blue-800";
+   365→      case "CUSTOM":
+   366→        return "bg-purple-100 text-purple-800 border-purple-200 dark:bg-purple-900/30 dark:text-purple-400 dark:border-purple-800";
+   367→      default:
+   368→        return "";
+   369→    }
+   370→  };
+   371→
+   372→  if (isLoading) {
+   373→    return (
+   374→      <div className="flex items-center justify-center min-h-[calc(100vh-3.5rem)]">
+   375→        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+   376→      </div>
+   377→    );
+   378→  }
+   379→
+   380→  return (
+   381→    <motion.div
+   382→      initial={{ opacity: 0 }}
+   383→      animate={{ opacity: 1 }}
+   384→      className="p-4 md:p-6 space-y-6"
+   385→    >
+   386→      {/* Header */}
+   387→      <div className="flex items-center gap-4">
+   388→        <Button
+   389→          variant="ghost"
+   390→          size="icon"
+   391→          onClick={() => router.push(`/projects/${projectId}`)}
+   392→        >
+   393→          <ArrowLeft className="h-4 w-4" />
+   394→        </Button>
+   395→        <div className="flex-1">
+   396→          <h1 className="text-2xl font-bold tracking-tight">
+   397→            AI-providers
+   398→          </h1>
+   399→          <p className="text-muted-foreground text-sm">
+   400→            Beheer je AI-providers en -instellingen
+   401→          </p>
+   402→        </div>
+   403→        <Button onClick={() => setShowCreateDialog(true)}>
+   404→          <Plus className="mr-2 h-4 w-4" />
+   405→          Provider toevoegen
+   406→        </Button>
+   407→      </div>
+   408→
+   409→      {/* Token Usage Summary */}
+   410→      <div className="grid gap-4 md:grid-cols-4">
+   411→        <Card>
+   412→          <CardContent className="p-4">
+   413→            <div className="flex items-center gap-3">
+   414→              <div className="p-2 bg-emerald-100 dark:bg-emerald-900/30 rounded-lg">
+   415→                <Zap className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+   416→              </div>
+   417→              <div>
+   418→                <p className="text-sm text-muted-foreground">API-aanroepen</p>
+   419→                <p className="text-2xl font-bold">{tokenUsage.totalCalls}</p>
+   420→              </div>
+   421→            </div>
+   422→          </CardContent>
+   423→        </Card>
+   424→        <Card>
+   425→          <CardContent className="p-4">
+   426→            <div className="flex items-center gap-3">
+   427→              <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-lg">
+   428→                <Cpu className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+   429→              </div>
+   430→              <div>
+   431→                <p className="text-sm text-muted-foreground">Input tokens</p>
+   432→                <p className="text-2xl font-bold">
+   433→                  {tokenUsage.totalInputTokens.toLocaleString("nl-NL")}
+   434→                </p>
+   435→              </div>
+   436→            </div>
+   437→          </CardContent>
+   438→        </Card>
+   439→        <Card>
+   440→          <CardContent className="p-4">
+   441→            <div className="flex items-center gap-3">
+   442→              <div className="p-2 bg-purple-100 dark:bg-purple-900/30 rounded-lg">
+   443→                <Cpu className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+   444→              </div>
+   445→              <div>
+   446→                <p className="text-sm text-muted-foreground">Output tokens</p>
+   447→                <p className="text-2xl font-bold">
+   448→                  {tokenUsage.totalOutputTokens.toLocaleString("nl-NL")}
+   449→                </p>
+   450→              </div>
+   451→            </div>
+   452→          </CardContent>
+   453→        </Card>
+   454→        <Card>
+   455→          <CardContent className="p-4">
+   456→            <div className="flex items-center gap-3">
+   457→              <div className="p-2 bg-orange-100 dark:bg-orange-900/30 rounded-lg">
+   458→                <Zap className="h-4 w-4 text-orange-600 dark:text-orange-400" />
+   459→              </div>
+   460→              <div>
+   461→                <p className="text-sm text-muted-foreground">Totale kosten</p>
+   462→                <p className="text-2xl font-bold">
+   463→                  €{tokenUsage.totalCost.toFixed(4)}
+   464→                </p>
+   465→              </div>
+   466→            </div>
+   467→          </CardContent>
+   468→        </Card>
+   469→      </div>
+   470→
+   471→      {/* Providers Table */}
+   472→      <Card>
+   473→        <CardHeader>
+   474→          <CardTitle className="text-base flex items-center gap-2">
+   475→            <Cpu className="h-4 w-4" />
+   476→            Geconfigureerde providers ({providers.length})
+   477→          </CardTitle>
+   478→        </CardHeader>
+   479→        <CardContent className="p-0">
+   480→          {providers.length === 0 ? (
+   481→            <div className="p-8 text-center text-muted-foreground">
+   482→              <Cpu className="h-12 w-12 mx-auto mb-3 opacity-50" />
+   483→              <p className="font-medium">Geen AI-providers geconfigureerd</p>
+   484→              <p className="text-sm mt-1">
+   485→                Voeg een provider toe om AI-functies te gebruiken
+   486→              </p>
+   487→            </div>
+   488→          ) : (
+   489→            <div className="overflow-x-auto">
+   490→              <Table>
+   491→                <TableHeader>
+   492→                  <TableRow>
+   493→                    <TableHead>Naam</TableHead>
+   494→                    <TableHead>Type</TableHead>
+   495→                    <TableHead>Basis-URL</TableHead>
+   496→                    <TableHead>Standaardmodel</TableHead>
+   497→                    <TableHead>Actief</TableHead>
+   498→                    <TableHead>Standaard</TableHead>
+   499→                    <TableHead>Acties</TableHead>
+   500→                  </TableRow>
+   501→                </TableHeader>
+   502→                <TableBody>
+   503→                  {providers.map((provider) => (
+   504→                    <TableRow key={provider.id}>
+   505→                      <TableCell className="font-medium">
+   506→                        {provider.name}
+   507→                      </TableCell>
+   508→                      <TableCell>
+   509→                        <Badge
+   510→                          variant="outline"
+   511→                          className={typeBadgeClass(provider.type)}
+   512→                        >
+   513→                          {typeLabel(provider.type)}
+   514→                        </Badge>
+   515→                      </TableCell>
+   516→                      <TableCell className="text-sm text-muted-foreground max-w-[200px] truncate">
+   517→                        {provider.baseUrl}
+   518→                      </TableCell>
+   519→                      <TableCell className="text-sm">
+   520→                        {provider.defaultModel || "—"}
+   521→                      </TableCell>
+   522→                      <TableCell>
+   523→                        <Switch
+   524→                          checked={provider.isActive}
+   525→                          onCheckedChange={() => handleToggleActive(provider)}
+   526→                        />
+   527→                      </TableCell>
+   528→                      <TableCell>
+   529→                        {provider.isDefault ? (
+   530→                          <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400">
+   531→                            <CheckCircle2 className="mr-1 h-3 w-3" />
+   532→                            Standaard
+   533→                          </Badge>
+   534→                        ) : (
+   535→                          <Button
+   536→                            variant="ghost"
+   537→                            size="sm"
+   538→                            className="text-xs"
+   539→                            onClick={() => handleSetDefault(provider)}
+   540→                          >
+   541→                            Instellen
+   542→                          </Button>
+   543→                        )}
+   544→                      </TableCell>
+   545→                      <TableCell>
+   546→                        <div className="flex items-center gap-1">
+   547→                          <Button
+   548→                            variant="outline"
+   549→                            size="sm"
+   550→                            className="text-xs"
+   551→                            onClick={() =>
+   552→                              handleTestConnection(provider.id)
+   553→                            }
+   554→                            disabled={testingProviderId === provider.id}
+   555→                          >
+   556→                            {testingProviderId === provider.id ? (
+   557→                              <Loader2 className="h-3 w-3 animate-spin" />
+   558→                            ) : (
+   559→                              <TestTube2 className="h-3 w-3" />
+   560→                            )}
+   561→                          </Button>
+   562→                          <Button
+   563→                            variant="ghost"
+   564→                            size="sm"
+   565→                            className="text-xs text-destructive"
+   566→                            onClick={() => {
+   567→                              setDeleteProviderId(provider.id);
+   568→                              setShowDeleteDialog(true);
+   569→                            }}
+   570→                          >
+   571→                            <Trash2 className="h-3 w-3" />
+   572→                          </Button>
+   573→                        </div>
+   574→                        {testResult &&
+   575→                          testResult.providerId === provider.id && (
+   576→                            <div className="mt-1">
+   577→                              {testResult.success ? (
+   578→                                <span className="text-xs text-emerald-600 flex items-center gap-1">
+   579→                                  <CheckCircle2 className="h-3 w-3" />
+   580→                                  {testResult.message}
+   581→                                </span>
+   582→                              ) : (
+   583→                                <span className="text-xs text-red-600 flex items-center gap-1">
+   584→                                  <XCircle className="h-3 w-3" />
+   585→                                  {testResult.message}
+   586→                                </span>
+   587→                              )}
+   588→                            </div>
+   589→                          )}
+   590→                      </TableCell>
+   591→                    </TableRow>
+   592→                  ))}
+   593→                </TableBody>
+   594→              </Table>
+   595→            </div>
+   596→          )}
+   597→        </CardContent>
+   598→      </Card>
+   599→
+   600→      {/* Create Provider Dialog */}
+   601→      <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
+   602→        <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
+   603→          <DialogHeader>
+   604→            <DialogTitle>Provider toevoegen</DialogTitle>
+   605→            <DialogDescription>
+   606→              Configureer een nieuwe AI-provider voor je project
+   607→            </DialogDescription>
+   608→          </DialogHeader>
+   609→          <div className="space-y-4">
+   610→            <div className="grid gap-4 md:grid-cols-2">
+   611→              <div className="space-y-2">
+   612→                <Label>Naam *</Label>
+   613→                <Input
+   614→                  value={newProvider.name}
+   615→                  onChange={(e) =>
+   616→                    setNewProvider({ ...newProvider, name: e.target.value })
+   617→                  }
+   618→                  placeholder="Bijv. Lokale Ollama"
+   619→                />
+   620→              </div>
+   621→              <div className="space-y-2">
+   622→                <Label>Type</Label>
+   623→                <Select
+   624→                  value={newProvider.type}
+   625→                  onValueChange={(val) => {
+   626→                    const updates: Partial<typeof newProvider> = { type: val };
+   627→                    if (val === "OLLAMA") {
+   628→                      updates.baseUrl = "http://localhost:11434";
+   629→                      updates.costPerToken = 0;
+   630→                    }
+   631→                    setNewProvider({ ...newProvider, ...updates });
+   632→                  }}
+   633→                >
+   634→                  <SelectTrigger>
+   635→                    <SelectValue />
+   636→                  </SelectTrigger>
+   637→                  <SelectContent>
+   638→                    <SelectItem value="OLLAMA">Ollama</SelectItem>
+   639→                    <SelectItem value="OPENAI_COMPATIBLE">
+   640→                      OpenAI-compatibel
+   641→                    </SelectItem>
+   642→                    <SelectItem value="CUSTOM">Aangepast</SelectItem>
+   643→                  </SelectContent>
+   644→                </Select>
+   645→              </div>
+   646→            </div>
+   647→            <div className="space-y-2">
+   648→              <Label>Basis-URL *</Label>
+   649→              <Input
+   650→                value={newProvider.baseUrl}
+   651→                onChange={(e) =>
+   652→                  setNewProvider({ ...newProvider, baseUrl: e.target.value })
+   653→                }
+   654→                placeholder="http://localhost:11434"
+   655→              />
+   656→            </div>
+   657→            {newProvider.type !== "OLLAMA" && (
+   658→              <div className="space-y-2">
+   659→                <Label>API-sleutel</Label>
+   660→                <Input
+   661→                  type="password"
+   662→                  value={newProvider.apiKey}
+   663→                  onChange={(e) =>
+   664→                    setNewProvider({ ...newProvider, apiKey: e.target.value })
+   665→                  }
+   666→                  placeholder="sk-..."
+   667→                />
+   668→              </div>
+   669→            )}
+   670→            <div className="space-y-2">
+   671→              <Label>Standaardmodel</Label>
+   672→              <Input
+   673→                value={newProvider.defaultModel}
+   674→                onChange={(e) =>
+   675→                  setNewProvider({
+   676→                    ...newProvider,
+   677→                    defaultModel: e.target.value,
+   678→                  })
+   679→                }
+   680→                placeholder={
+   681→                  newProvider.type === "OLLAMA"
+   682→                    ? "Bijv. llama3.2"
+   683→                    : "Bijv. gpt-4o"
+   684→                }
+   685→              />
+   686→            </div>
+   687→            <div className="grid gap-4 md:grid-cols-3">
+   688→              <div className="space-y-2">
+   689→                <Label>Max tokens</Label>
+   690→                <Input
+   691→                  type="number"
+   692→                  value={newProvider.maxTokens}
+   693→                  onChange={(e) =>
+   694→                    setNewProvider({
+   695→                      ...newProvider,
+   696→                      maxTokens: parseInt(e.target.value) || 4096,
+   697→                    })
+   698→                  }
+   699→                />
+   700→              </div>
+   701→              <div className="space-y-2">
+   702→                <Label>Temperatuur</Label>
+   703→                <Input
+   704→                  type="number"
+   705→                  step="0.1"
+   706→                  min="0"
+   707→                  max="2"
+   708→                  value={newProvider.temperature}
+   709→                  onChange={(e) =>
+   710→                    setNewProvider({
+   711→                      ...newProvider,
+   712→                      temperature: parseFloat(e.target.value) || 0.7,
+   713→                    })
+   714→                  }
+   715→                />
+   716→              </div>
+   717→              <div className="space-y-2">
+   718→                <Label>Timeout (ms)</Label>
+   719→                <Input
+   720→                  type="number"
+   721→                  value={newProvider.timeout}
+   722→                  onChange={(e) =>
+   723→                    setNewProvider({
+   724→                      ...newProvider,
+   725→                      timeout: parseInt(e.target.value) || 60000,
+   726→                    })
+   727→                  }
+   728→                />
+   729→              </div>
+   730→            </div>
+   731→            <div className="space-y-2">
+   732→              <Label>Kosten per token</Label>
+   733→              <Input
+   734→                type="number"
+   735→                step="0.000001"
+   736→                min="0"
+   737→                value={newProvider.costPerToken}
+   738→                onChange={(e) =>
+   739→                  setNewProvider({
+   740→                    ...newProvider,
+   741→                    costPerToken: parseFloat(e.target.value) || 0,
+   742→                  })
+   743→                }
+   744→                placeholder="0 voor lokale providers"
+   745→              />
+   746→              <p className="text-xs text-muted-foreground">
+   747→                Stel in op 0 voor lokale providers zoals Ollama
+   748→              </p>
+   749→            </div>
+   750→
+   751→            <Separator />
+   752→
+   753→            {/* Privacy Settings */}
+   754→            <div className="space-y-3">
+   755→              <div className="flex items-center gap-2">
+   756→                <Shield className="h-4 w-4 text-muted-foreground" />
+   757→                <Label className="text-sm font-medium">Privacy-instellingen</Label>
+   758→              </div>
+   759→              <div className="flex items-center justify-between">
+   760→                <div>
+   761→                  <Label className="text-sm">
+   762→                    Externe provider toestaan voor dit project
+   763→                  </Label>
+   764→                  <p className="text-xs text-muted-foreground">
+   765→                    Sta toe dat data naar externe AI-providers wordt verzonden
+   766→                  </p>
+   767→                </div>
+   768→                <Switch
+   769→                  checked={newProvider.allowExternal}
+   770→                  onCheckedChange={(checked) =>
+   771→                    setNewProvider({ ...newProvider, allowExternal: checked })
+   772→                  }
+   773→                />
+   774→              </div>
+   775→            </div>
+   776→          </div>
+   777→          <DialogFooter>
+   778→            <Button
+   779→              variant="outline"
+   780→              onClick={() => setShowCreateDialog(false)}
+   781→            >
+   782→              Annuleren
+   783→            </Button>
+   784→            <Button onClick={handleCreateProvider} disabled={isCreating}>
+   785→              {isCreating ? (
+   786→                <>
+   787→                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+   788→                  Toevoegen...
+   789→                </>
+   790→              ) : (
+   791→                "Toevoegen"
+   792→              )}
+   793→            </Button>
+   794→          </DialogFooter>
+   795→        </DialogContent>
+   796→      </Dialog>
+   797→
+   798→      {/* Delete Confirmation Dialog */}
+   799→      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+   800→        <AlertDialogContent>
+   801→          <AlertDialogHeader>
+   802→            <AlertDialogTitle>Provider verwijderen</AlertDialogTitle>
+   803→            <AlertDialogDescription>
+   804→              Weet je zeker dat je deze provider wilt verwijderen? Deze actie
+   805→              kan niet ongedaan worden gemaakt.
+   806→            </AlertDialogDescription>
+   807→          </AlertDialogHeader>
+   808→          <AlertDialogFooter>
+   809→            <AlertDialogCancel>Annuleren</AlertDialogCancel>
+   810→            <AlertDialogAction
+   811→              onClick={handleDelete}
+   812→              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+   813→            >
+   814→              {isDeleting ? (
+   815→                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+   816→              ) : null}
+   817→              Verwijderen
+   818→            </AlertDialogAction>
+   819→          </AlertDialogFooter>
+   820→        </AlertDialogContent>
+   821→      </AlertDialog>
+   822→    </motion.div>
+   823→  );
+   824→}
+   825→

@@ -1,0 +1,1277 @@
+     1→// ============================================================================
+     2→// WooCommerce Integration Module — SEOCoach
+     3→// ============================================================================
+     4→// Provides connection management, product operations, and import/sync
+     5→// functionality for WooCommerce stores via the WC REST API v3.
+     6→// ============================================================================
+     7→
+     8→import { db } from '@/lib/db'
+     9→
+    10→// ============================================================================
+    11→// Types
+    12→// ============================================================================
+    13→
+    14→export interface WooConnectionConfig {
+    15→  name: string
+    16→  baseUrl: string
+    17→  consumerKey: string
+    18→  consumerSecret: string
+    19→}
+    20→
+    21→export interface WooListParams {
+    22→  page?: number
+    23→  perPage?: number
+    24→  search?: string
+    25→  status?: string
+    26→  category?: number
+    27→}
+    28→
+    29→export interface WooProductSEO {
+    30→  metaTitle?: string
+    31→  metaDescription?: string
+    32→  focusKeyword?: string
+    33→  canonical?: string
+    34→}
+    35→
+    36→/** Minimal product shape returned by the WC REST API (public fields only) */
+    37→export interface WooProduct {
+    38→  id: number
+    39→  name: string
+    40→  slug: string
+    41→  permalink: string
+    42→  type: string
+    43→  status: string
+    44→  description: string
+    45→  short_description: string
+    46→  sku: string
+    47→  price: string
+    48→  regular_price: string
+    49→  sale_price: string
+    50→  on_sale: boolean
+    51→  stock_status: string
+    52→  stock_quantity: number | null
+    53→  manage_stock: boolean
+    54→  categories: WooCategory[]
+    55→  tags: { id: number; name: string; slug: string }[]
+    56→  images: { id: number; src: string; alt: string }[]
+    57→  meta_data?: WooMetaItem[]
+    58→  variations?: number[]
+    59→  /** Yoast / RankMath SEO fields embedded in meta_data */
+    60→  yoast_head_json?: Record<string, unknown>
+    61→}
+    62→
+    63→export interface WooCategory {
+    64→  id: number
+    65→  name: string
+    66→  slug: string
+    67→  parent: number
+    68→  description: string
+    69→  count: number
+    70→  permalink?: string
+    71→}
+    72→
+    73→export interface WooVariation {
+    74→  id: number
+    75→  sku: string
+    76→  price: string
+    77→  regular_price: string
+    78→  sale_price: string
+    79→  on_sale: boolean
+    80→  stock_status: string
+    81→  stock_quantity: number | null
+    82→  manage_stock: boolean
+    83→  attributes: { id: number; name: string; option: string }[]
+    84→  image?: { id: number; src: string; alt: string }
+    85→  permalink: string
+    86→}
+    87→
+    88→export interface WooReview {
+    89→  id: number
+    90→  date_created: string
+    91→  product_id: number
+    92→  reviewer: string
+    93→  reviewer_email: string
+    94→  review: string
+    95→  rating: number
+    96→  verified: boolean
+    97→}
+    98→
+    99→export interface WooMetaItem {
+   100→  id: number
+   101→  key: string
+   102→  value: string | null
+   103→}
+   104→
+   105→/** Paginated list result */
+   106→export interface WooListResult<T> {
+   107→  data: T[]
+   108→  total: number
+   109→  totalPages: number
+   110→  page: number
+   111→}
+   112→
+   113→// ============================================================================
+   114→// Internal helpers
+   115→// ============================================================================
+   116→
+   117→const MAX_RETRIES = 3
+   118→const RETRY_BASE_DELAY_MS = 500
+   119→
+   120→/**
+   121→ * Build the Basic Authorization header value from consumer key & secret.
+   122→ */
+   123→function buildAuthHeader(consumerKey: string, consumerSecret: string): string {
+   124→  const encoded = btoa(`${consumerKey}:${consumerSecret}`)
+   125→  return `Basic ${encoded}`
+   126→}
+   127→
+   128→/**
+   129→ * Resolve the WooCommerce REST API v3 base URL, ensuring trailing slash.
+   130→ */
+   131→function apiBase(baseUrl: string): string {
+   132→  const base = baseUrl.replace(/\/+$/, '')
+   133→  return `${base}/wp-json/wc/v3/`
+   134→}
+   135→
+   136→/**
+   137→ * Generic fetch wrapper with retry logic (up to MAX_RETRIES attempts).
+   138→ * Only retries on network errors, 408, 429, and 5xx status codes.
+   139→ */
+   140→async function wooFetch<T>(
+   141→  baseUrl: string,
+   142→  consumerKey: string,
+   143→  consumerSecret: string,
+   144→  endpoint: string,
+   145→  options: RequestInit = {},
+   146→  attempt = 1,
+   147→): Promise<T> {
+   148→  const url = `${apiBase(baseUrl)}${endpoint}`
+   149→  const headers: Record<string, string> = {
+   150→    Authorization: buildAuthHeader(consumerKey, consumerSecret),
+   151→    'Content-Type': 'application/json',
+   152→    Accept: 'application/json',
+   153→    ...(options.headers as Record<string, string> | undefined),
+   154→  }
+   155→
+   156→  try {
+   157→    const response = await fetch(url, { ...options, headers })
+   158→
+   159→    // Handle 404 — endpoint not available on this store
+   160→    if (response.status === 404) {
+   161→      throw new WooEndpointError(
+   162→        'Het opgevraagde WooCommerce-eindpunt is niet beschikbaar op deze winkel.',
+   163→        response.status,
+   164→      )
+   165→    }
+   166→
+   167→    // Retryable status codes
+   168→    if (
+   169→      !response.ok &&
+   170→      (response.status === 408 ||
+   171→        response.status === 429 ||
+   172→        response.status >= 500)
+   173→    ) {
+   174→      if (attempt < MAX_RETRIES) {
+   175→        const delay = RETRY_BASE_DELAY_MS * Math.pow(2, attempt - 1)
+   176→        await sleep(delay)
+   177→        return wooFetch(baseUrl, consumerKey, consumerSecret, endpoint, options, attempt + 1)
+   178→      }
+   179→    }
+   180→
+   181→    if (!response.ok) {
+   182→      let detail = ''
+   183→      try {
+   184→        const body = (await response.json()) as { message?: string; code?: string }
+   185→        detail = body.message || body.code || ''
+   186→      } catch {
+   187→        // ignore json parse errors
+   188→      }
+   189→      throw new WooApiError(
+   190→        detail
+   191→          ? `WooCommerce API-fout (${response.status}): ${detail}`
+   192→          : `WooCommerce API-fout: onverwachte status ${response.status}`,
+   193→        response.status,
+   194→      )
+   195→    }
+   196→
+   197→    // Some endpoints (DELETE) may return no body
+   198→    if (response.status === 204) {
+   199→      return undefined as T
+   200→    }
+   201→
+   202→    return (await response.json()) as T
+   203→  } catch (error) {
+   204→    // Re-throw our own error types
+   205→    if (error instanceof WooApiError || error instanceof WooEndpointError) {
+   206→      throw error
+   207→    }
+   208→    // Network / fetch errors — retry
+   209→    if (attempt < MAX_RETRIES) {
+   210→      const delay = RETRY_BASE_DELAY_MS * Math.pow(2, attempt - 1)
+   211→      await sleep(delay)
+   212→      return wooFetch(baseUrl, consumerKey, consumerSecret, endpoint, options, attempt + 1)
+   213→    }
+   214→    throw new WooApiError(
+   215→      'Kon geen verbinding maken met de WooCommerce winkel. Controleer de URL en probeer het opnieuw.',
+   216→      0,
+   217→    )
+   218→  }
+   219→}
+   220→
+   221→function sleep(ms: number): Promise<void> {
+   222→  return new Promise((resolve) => setTimeout(resolve, ms))
+   223→}
+   224→
+   225→/**
+   226→ * Custom error classes for better error discrimination.
+   227→ */
+   228→class WooApiError extends Error {
+   229→  constructor(
+   230→    message: string,
+   231→    public readonly statusCode: number,
+   232→  ) {
+   233→    super(message)
+   234→    this.name = 'WooApiError'
+   235→  }
+   236→}
+   237→
+   238→class WooEndpointError extends WooApiError {
+   239→  constructor(message: string, statusCode: number) {
+   240→    super(message, statusCode)
+   241→    this.name = 'WooEndpointError'
+   242→  }
+   243→}
+   244→
+   245→/**
+   246→ * Retrieve a CMSConnection record that must be of type WOOCOMMERCE and not
+   247→ * soft-deleted. Throws with a Dutch error message if not found.
+   248→ */
+   249→async function getWooConnectionOrFail(connectionId: string) {
+   250→  const connection = await db.cMSConnection.findFirst({
+   251→    where: {
+   252→      id: connectionId,
+   253→      providerType: 'WOOCOMMERCE',
+   254→      deletedAt: null,
+   255→    },
+   256→  })
+   257→
+   258→  if (!connection) {
+   259→    throw new WooApiError(
+   260→      'WooCommerce-verbinding niet gevonden of verwijderd.',
+   261→      404,
+   262→    )
+   263→  }
+   264→
+   265→  if (!connection.apiKey || !connection.apiSecret) {
+   266→    throw new WooApiError(
+   267→      'De verbinding mist API-sleutels. Controleer de configuratie.',
+   268→      400,
+   269→    )
+   270→  }
+   271→
+   272→  return connection
+   273→}
+   274→
+   275→/**
+   276→ * Create a ContentChange audit record for an operation.
+   277→ */
+   278→async function logContentChange(params: {
+   279→  projectId: string
+   280→  changeType: 'CREATE' | 'UPDATE' | 'DELETE' | 'PUBLISH'
+   281→  previousContent?: string
+   282→  newContent?: string
+   283→  summary: string
+   284→  cmsResult?: string
+   285→  rollbackData?: string
+   286→}) {
+   287→  await db.contentChange.create({
+   288→    data: {
+   289→      projectId: params.projectId,
+   290→      changeType: params.changeType,
+   291→      previousContent: params.previousContent ?? null,
+   292→      newContent: params.newContent ?? null,
+   293→      summary: params.summary,
+   294→      cmsResult: params.cmsResult ?? null,
+   295→      rollbackData: params.rollbackData ?? null,
+   296→    },
+   297→  })
+   298→}
+   299→
+   300→// ============================================================================
+   301→// Connection Management
+   302→// ============================================================================
+   303→
+   304→/**
+   305→ * Create a new WooCommerce CMS connection for a project.
+   306→ */
+   307→export async function createWooCommerceConnection(
+   308→  projectId: string,
+   309→  config: WooConnectionConfig,
+   310→) {
+   311→  // Validate required fields
+   312→  if (!config.name.trim()) {
+   313→    throw new Error('Verbindingsnaam is vereist.')
+   314→  }
+   315→  if (!config.baseUrl.trim()) {
+   316→    throw new Error('Basis-URL is vereist.')
+   317→  }
+   318→  if (!config.consumerKey.trim() || !config.consumerSecret.trim()) {
+   319→    throw new Error('Consumer Key en Consumer Secret zijn vereist.')
+   320→  }
+   321→
+   322→  const connection = await db.cMSConnection.create({
+   323→    data: {
+   324→      projectId,
+   325→      name: config.name.trim(),
+   326→      providerType: 'WOOCOMMERCE',
+   327→      status: 'PENDING',
+   328→      baseUrl: config.baseUrl.trim().replace(/\/+$/, ''),
+   329→      apiKey: config.consumerKey,
+   330→      apiSecret: config.consumerSecret,
+   331→    },
+   332→  })
+   333→
+   334→  // Audit log
+   335→  await logContentChange({
+   336→    projectId,
+   337→    changeType: 'CREATE',
+   338→    newContent: JSON.stringify({ connectionId: connection.id, name: config.name }),
+   339→    summary: `WooCommerce-verbinding "${config.name}" aangemaakt.`,
+   340→  })
+   341→
+   342→  return connection
+   343→}
+   344→
+   345→/**
+   346→ * Test a WooCommerce connection by fetching store info and detecting
+   347→ * capabilities, then updating the connection status accordingly.
+   348→ */
+   349→export async function testWooCommerceConnection(connectionId: string) {
+   350→  const connection = await getWooConnectionOrFail(connectionId)
+   351→
+   352→  const capabilities: string[] = []
+   353→  let storeInfo: Record<string, unknown> | null = null
+   354→
+   355→  try {
+   356→    // Try to fetch system status / store info
+   357→    storeInfo = await wooFetch<Record<string, unknown>>(
+   358→      connection.baseUrl,
+   359→      connection.apiKey!,
+   360→      connection.apiSecret!,
+   361→      'system_status',
+   362→      { method: 'GET' },
+   363→    )
+   364→    capabilities.push('system_status')
+   365→  } catch (error) {
+   366→    // System status may not be available for all user roles; that's okay
+   367→    if (!(error instanceof WooEndpointError)) {
+   368→      // Real error — update connection status
+   369→      await db.cMSConnection.update({
+   370→        where: { id: connectionId },
+   371→        data: {
+   372→          status: 'ERROR',
+   373→          lastTestedAt: new Date(),
+   374→          lastError: error instanceof Error ? error.message : 'Onbekende fout bij verbindingscontrole.',
+   375→        },
+   376→      })
+   377→      throw error
+   378→    }
+   379→  }
+   380→
+   381→  // Test products endpoint (core capability)
+   382→  try {
+   383→    await wooFetch<WooProduct[]>(
+   384→      connection.baseUrl,
+   385→      connection.apiKey!,
+   386→      connection.apiSecret!,
+   387→      'products?per_page=1',
+   388→      { method: 'GET' },
+   389→    )
+   390→    capabilities.push('products')
+   391→  } catch {
+   392→    // Products endpoint failure is fatal for a WooCommerce connection
+   393→    await db.cMSConnection.update({
+   394→      where: { id: connectionId },
+   395→      data: {
+   396→        status: 'ERROR',
+   397→        lastTestedAt: new Date(),
+   398→        lastError: 'Kan geen producten ophalen. Controleer de API-rechten.',
+   399→      },
+   400→    })
+   401→    throw new WooApiError(
+   402→      'Kan geen producten ophalen van de WooCommerce winkel. Controleer of de API-sleutels de juiste rechten hebben.',
+   403→      403,
+   404→    )
+   405→  }
+   406→
+   407→  // Detect additional capabilities
+   408→  const capabilityTests: [string, string][] = [
+   409→    ['products/categories', 'categories'],
+   410→    ['products/tags', 'tags'],
+   411→    ['products/reviews', 'reviews'],
+   412→    ['reports/sales', 'reports'],
+   413→    ['coupons', 'coupons'],
+   414→    ['settings', 'settings'],
+   415→  ]
+   416→
+   417→  for (const [endpoint, capability] of capabilityTests) {
+   418→    try {
+   419→      await wooFetch<unknown[]>(
+   420→        connection.baseUrl,
+   421→        connection.apiKey!,
+   422→        connection.apiSecret!,
+   423→        `${endpoint}?per_page=1`,
+   424→        { method: 'GET' },
+   425→      )
+   426→      capabilities.push(capability)
+   427→    } catch {
+   428→      // Capability not available — skip silently
+   429→    }
+   430→  }
+   431→
+   432→  // Update connection with detected capabilities and mark connected
+   433→  const updated = await db.cMSConnection.update({
+   434→    where: { id: connectionId },
+   435→    data: {
+   436→      status: 'CONNECTED',
+   437→      capabilities: JSON.stringify(capabilities),
+   438→      lastTestedAt: new Date(),
+   439→      lastError: null,
+   440→    },
+   441→  })
+   442→
+   443→  // Audit log
+   444→  await logContentChange({
+   445→    projectId: connection.projectId,
+   446→    changeType: 'UPDATE',
+   447→    newContent: JSON.stringify({ status: 'CONNECTED', capabilities }),
+   448→    summary: `WooCommerce-verbinding getest. Mogelijkheden gedetecteerd: ${capabilities.join(', ')}`,
+   449→  })
+   450→
+   451→  return {
+   452→    connection: updated,
+   453→    capabilities,
+   454→    storeInfo,
+   455→  }
+   456→}
+   457→
+   458→/**
+   459→ * Update an existing WooCommerce connection's configuration.
+   460→ */
+   461→export async function updateWooCommerceConnection(
+   462→  connectionId: string,
+   463→  config: Partial<WooConnectionConfig>,
+   464→) {
+   465→  const connection = await getWooConnectionOrFail(connectionId)
+   466→
+   467→  const updateData: Record<string, unknown> = {}
+   468→  if (config.name !== undefined) updateData.name = config.name.trim()
+   469→  if (config.baseUrl !== undefined)
+   470→    updateData.baseUrl = config.baseUrl.trim().replace(/\/+$/, '')
+   471→  if (config.consumerKey !== undefined) updateData.apiKey = config.consumerKey
+   472→  if (config.consumerSecret !== undefined) updateData.apiSecret = config.consumerSecret
+   473→
+   474→  // If credentials changed, reset status to pending so it can be re-tested
+   475→  if (config.consumerKey || config.consumerSecret || config.baseUrl) {
+   476→    updateData.status = 'PENDING'
+   477→    updateData.lastError = null
+   478→  }
+   479→
+   480→  const previousSnapshot = JSON.stringify({
+   481→    name: connection.name,
+   482→    baseUrl: connection.baseUrl,
+   483→  })
+   484→
+   485→  const updated = await db.cMSConnection.update({
+   486→    where: { id: connectionId },
+   487→    data: updateData,
+   488→  })
+   489→
+   490→  // Audit log
+   491→  await logContentChange({
+   492→    projectId: connection.projectId,
+   493→    changeType: 'UPDATE',
+   494→    previousContent: previousSnapshot,
+   495→    newContent: JSON.stringify(updateData),
+   496→    summary: `WooCommerce-verbinding "${connection.name}" bijgewerkt.`,
+   497→  })
+   498→
+   499→  return updated
+   500→}
+   501→
+   502→/**
+   503→ * Soft-delete a WooCommerce connection.
+   504→ */
+   505→export async function deleteWooCommerceConnection(connectionId: string) {
+   506→  const connection = await getWooConnectionOrFail(connectionId)
+   507→
+   508→  const updated = await db.cMSConnection.update({
+   509→    where: { id: connectionId },
+   510→    data: {
+   511→      deletedAt: new Date(),
+   512→      status: 'DISCONNECTED',
+   513→    },
+   514→  })
+   515→
+   516→  // Audit log
+   517→  await logContentChange({
+   518→    projectId: connection.projectId,
+   519→    changeType: 'DELETE',
+   520→    previousContent: JSON.stringify({
+   521→      id: connection.id,
+   522→      name: connection.name,
+   523→      baseUrl: connection.baseUrl,
+   524→    }),
+   525→    summary: `WooCommerce-verbinding "${connection.name}" verwijderd.`,
+   526→  })
+   527→
+   528→  return updated
+   529→}
+   530→
+   531→// ============================================================================
+   532→// Product Operations
+   533→// ============================================================================
+   534→
+   535→/**
+   536→ * List products with pagination and optional filtering.
+   537→ */
+   538→export async function wooListProducts(
+   539→  connectionId: string,
+   540→  params: WooListParams = {},
+   541→): Promise<WooListResult<WooProduct>> {
+   542→  const connection = await getWooConnectionOrFail(connectionId)
+   543→
+   544→  const queryParams = new URLSearchParams()
+   545→  if (params.page) queryParams.set('page', String(params.page))
+   546→  if (params.perPage) queryParams.set('per_page', String(params.perPage))
+   547→  if (params.search) queryParams.set('search', params.search)
+   548→  if (params.status) queryParams.set('status', params.status)
+   549→  if (params.category) queryParams.set('category', String(params.category))
+   550→
+   551→  const queryString = queryParams.toString()
+   552→  const endpoint = `products${queryString ? `?${queryString}` : ''}`
+   553→
+   554→  // We need total count from response headers — fetch with manual fetch to access headers
+   555→  const url = `${apiBase(connection.baseUrl)}${endpoint}`
+   556→  const authHeader = buildAuthHeader(connection.apiKey!, connection.apiSecret!)
+   557→
+   558→  let data: WooProduct[]
+   559→  let total = 0
+   560→  let totalPages = 0
+   561→
+   562→  try {
+   563→    const response = await fetchWithRetry(url, {
+   564→      method: 'GET',
+   565→      headers: {
+   566→        Authorization: authHeader,
+   567→        Accept: 'application/json',
+   568→      },
+   569→    })
+   570→
+   571→    data = (await response.json()) as WooProduct[]
+   572→    total = parseInt(response.headers.get('X-WP-Total') || '0', 10)
+   573→    totalPages = parseInt(response.headers.get('X-WP-TotalPages') || '0', 10)
+   574→  } catch (error) {
+   575→    if (error instanceof WooApiError) throw error
+   576→    throw new WooApiError(
+   577→      'Fout bij het ophalen van producten uit de WooCommerce winkel.',
+   578→      0,
+   579→    )
+   580→  }
+   581→
+   582→  return {
+   583→    data,
+   584→    total,
+   585→    totalPages,
+   586→    page: params.page || 1,
+   587→  }
+   588→}
+   589→
+   590→/**
+   591→ * Fetch wrapper that supports retries and provides access to the full
+   592→ * Response object (including headers) — used for paginated list queries
+   593→ * where we need the X-WP-Total / X-WP-TotalPages headers.
+   594→ */
+   595→async function fetchWithRetry(
+   596→  url: string,
+   597→  options: RequestInit,
+   598→  attempt = 1,
+   599→): Promise<Response> {
+   600→  try {
+   601→    const response = await fetch(url, options)
+   602→
+   603→    if (response.status === 404) {
+   604→      throw new WooEndpointError(
+   605→        'Het opgevraagde WooCommerce-eindpunt is niet beschikbaar op deze winkel.',
+   606→        response.status,
+   607→      )
+   608→    }
+   609→
+   610→    if (
+   611→      !response.ok &&
+   612→      (response.status === 408 ||
+   613→        response.status === 429 ||
+   614→        response.status >= 500)
+   615→    ) {
+   616→      if (attempt < MAX_RETRIES) {
+   617→        const delay = RETRY_BASE_DELAY_MS * Math.pow(2, attempt - 1)
+   618→        await sleep(delay)
+   619→        return fetchWithRetry(url, options, attempt + 1)
+   620→      }
+   621→    }
+   622→
+   623→    if (!response.ok) {
+   624→      let detail = ''
+   625→      try {
+   626→        const body = (await response.clone().json()) as { message?: string; code?: string }
+   627→        detail = body.message || body.code || ''
+   628→      } catch {
+   629→        // ignore
+   630→      }
+   631→      throw new WooApiError(
+   632→        detail
+   633→          ? `WooCommerce API-fout (${response.status}): ${detail}`
+   634→          : `WooCommerce API-fout: onverwachte status ${response.status}`,
+   635→        response.status,
+   636→      )
+   637→    }
+   638→
+   639→    return response
+   640→  } catch (error) {
+   641→    if (error instanceof WooApiError || error instanceof WooEndpointError) {
+   642→      throw error
+   643→    }
+   644→    if (attempt < MAX_RETRIES) {
+   645→      const delay = RETRY_BASE_DELAY_MS * Math.pow(2, attempt - 1)
+   646→      await sleep(delay)
+   647→      return fetchWithRetry(url, options, attempt + 1)
+   648→    }
+   649→    throw new WooApiError(
+   650→      'Kon geen verbinding maken met de WooCommerce winkel. Controleer de URL en probeer het opnieuw.',
+   651→      0,
+   652→    )
+   653→  }
+   654→}
+   655→
+   656→/**
+   657→ * Get a single product with full details.
+   658→ */
+   659→export async function wooGetProduct(
+   660→  connectionId: string,
+   661→  productId: number,
+   662→): Promise<WooProduct> {
+   663→  const connection = await getWooConnectionOrFail(connectionId)
+   664→
+   665→  return wooFetch<WooProduct>(
+   666→    connection.baseUrl,
+   667→    connection.apiKey!,
+   668→    connection.apiSecret!,
+   669→    `products/${productId}`,
+   670→    { method: 'GET' },
+   671→  )
+   672→}
+   673→
+   674→/**
+   675→ * Update a product's description and optionally its short description.
+   676→ * Creates an audit trail entry for the change.
+   677→ */
+   678→export async function wooUpdateProductDescription(
+   679→  connectionId: string,
+   680→  productId: number,
+   681→  description: string,
+   682→  shortDescription?: string,
+   683→): Promise<WooProduct> {
+   684→  const connection = await getWooConnectionOrFail(connectionId)
+   685→
+   686→  // Fetch current product for rollback data
+   687→  const current = await wooFetch<WooProduct>(
+   688→    connection.baseUrl,
+   689→    connection.apiKey!,
+   690→    connection.apiSecret!,
+   691→    `products/${productId}`,
+   692→    { method: 'GET' },
+   693→  )
+   694→
+   695→  const body: Record<string, string> = { description }
+   696→  if (shortDescription !== undefined) {
+   697→    body.short_description = shortDescription
+   698→  }
+   699→
+   700→  const updated = await wooFetch<WooProduct>(
+   701→    connection.baseUrl,
+   702→    connection.apiKey!,
+   703→    connection.apiSecret!,
+   704→    `products/${productId}`,
+   705→    {
+   706→      method: 'PUT',
+   707→      body: JSON.stringify(body),
+   708→    },
+   709→  )
+   710→
+   711→  // Audit log
+   712→  await logContentChange({
+   713→    projectId: connection.projectId,
+   714→    changeType: 'UPDATE',
+   715→    previousContent: JSON.stringify({
+   716→      description: current.description,
+   717→      short_description: current.short_description,
+   718→    }),
+   719→    newContent: JSON.stringify(body),
+   720→    summary: `Productbeschrijving bijgewerkt voor "${current.name}" (ID: ${productId}).`,
+   721→    rollbackData: JSON.stringify({
+   722→      productId,
+   723→      previousDescription: current.description,
+   724→      previousShortDescription: current.short_description,
+   725→    }),
+   726→  })
+   727→
+   728→  return updated
+   729→}
+   730→
+   731→/**
+   732→ * Update SEO metadata for a WooCommerce product.
+   733→ *
+   734→ * This function updates Yoast SEO / Rank Math fields through the product
+   735→ * meta_data. It also sets meta_key values that common SEO plugins expose
+   736→ * via the REST API.
+   737→ */
+   738→export async function wooUpdateProductSEO(
+   739→  connectionId: string,
+   740→  productId: number,
+   741→  meta: WooProductSEO,
+   742→): Promise<WooProduct> {
+   743→  const connection = await getWooConnectionOrFail(connectionId)
+   744→
+   745→  // Fetch current product for rollback
+   746→  const current = await wooFetch<WooProduct>(
+   747→    connection.baseUrl,
+   748→    connection.apiKey!,
+   749→    connection.apiSecret!,
+   750→    `products/${productId}`,
+   751→    { method: 'GET' },
+   752→  )
+   753→
+   754→  // Build meta_data array for common SEO plugin fields
+   755→  const metaData: { key: string; value: string }[] = []
+   756→
+   757→  if (meta.metaTitle !== undefined) {
+   758→    metaData.push({ key: '_yoast_wpseo_title', value: meta.metaTitle })
+   759→    metaData.push({ key: 'rank_math_title', value: meta.metaTitle })
+   760→  }
+   761→  if (meta.metaDescription !== undefined) {
+   762→    metaData.push({ key: '_yoast_wpseo_metadesc', value: meta.metaDescription })
+   763→    metaData.push({ key: 'rank_math_description', value: meta.metaDescription })
+   764→  }
+   765→  if (meta.focusKeyword !== undefined) {
+   766→    metaData.push({ key: '_yoast_wpseo_focuskw', value: meta.focusKeyword })
+   767→    metaData.push({ key: 'rank_math_focus_keyword', value: meta.focusKeyword })
+   768→  }
+   769→  if (meta.canonical !== undefined) {
+   770→    metaData.push({ key: '_yoast_wpseo_canonical', value: meta.canonical })
+   771→    metaData.push({ key: 'rank_math_canonical_url', value: meta.canonical })
+   772→  }
+   773→
+   774→  const body = { meta_data: metaData }
+   775→
+   776→  const updated = await wooFetch<WooProduct>(
+   777→    connection.baseUrl,
+   778→    connection.apiKey!,
+   779→    connection.apiSecret!,
+   780→    `products/${productId}`,
+   781→    {
+   782→      method: 'PUT',
+   783→      body: JSON.stringify(body),
+   784→    },
+   785→  )
+   786→
+   787→  // Audit log
+   788→  const previousSeo = extractSeoFromProduct(current)
+   789→  await logContentChange({
+   790→    projectId: connection.projectId,
+   791→    changeType: 'UPDATE',
+   792→    previousContent: JSON.stringify(previousSeo),
+   793→    newContent: JSON.stringify(meta),
+   794→    summary: `SEO-metadata bijgewerkt voor product "${current.name}" (ID: ${productId}).`,
+   795→    rollbackData: JSON.stringify({
+   796→      productId,
+   797→      previousSeo,
+   798→    }),
+   799→  })
+   800→
+   801→  return updated
+   802→}
+   803→
+   804→/**
+   805→ * Extract SEO-related meta values from a product for audit/rollback purposes.
+   806→ */
+   807→function extractSeoFromProduct(product: WooProduct): Record<string, string | null> {
+   808→  const seoKeys = [
+   809→    '_yoast_wpseo_title',
+   810→    '_yoast_wpseo_metadesc',
+   811→    '_yoast_wpseo_focuskw',
+   812→    '_yoast_wpseo_canonical',
+   813→    'rank_math_title',
+   814→    'rank_math_description',
+   815→    'rank_math_focus_keyword',
+   816→    'rank_math_canonical_url',
+   817→  ]
+   818→
+   819→  const result: Record<string, string | null> = {}
+   820→  for (const key of seoKeys) {
+   821→    const item = product.meta_data?.find((m) => m.key === key)
+   822→    result[key] = item?.value ?? null
+   823→  }
+   824→  return result
+   825→}
+   826→
+   827→/**
+   828→ * List all product categories.
+   829→ */
+   830→export async function wooListCategories(
+   831→  connectionId: string,
+   832→): Promise<WooCategory[]> {
+   833→  const connection = await getWooConnectionOrFail(connectionId)
+   834→
+   835→  const allCategories: WooCategory[] = []
+   836→  let page = 1
+   837→  const perPage = 100
+   838→
+   839→  // WooCommerce may paginate categories; fetch all pages
+   840→  while (true) {
+   841→    const categories = await wooFetch<WooCategory[]>(
+   842→      connection.baseUrl,
+   843→      connection.apiKey!,
+   844→      connection.apiSecret!,
+   845→      `products/categories?per_page=${perPage}&page=${page}&orderby=name&order=asc`,
+   846→      { method: 'GET' },
+   847→    )
+   848→
+   849→    allCategories.push(...categories)
+   850→
+   851→    if (categories.length < perPage) {
+   852→      break
+   853→    }
+   854→    page++
+   855→  }
+   856→
+   857→  return allCategories
+   858→}
+   859→
+   860→/**
+   861→ * Update a product category's description.
+   862→ */
+   863→export async function wooUpdateCategoryDescription(
+   864→  connectionId: string,
+   865→  categoryId: number,
+   866→  description: string,
+   867→): Promise<WooCategory> {
+   868→  const connection = await getWooConnectionOrFail(connectionId)
+   869→
+   870→  // Fetch current category for rollback
+   871→  const current = await wooFetch<WooCategory>(
+   872→    connection.baseUrl,
+   873→    connection.apiKey!,
+   874→    connection.apiSecret!,
+   875→    `products/categories/${categoryId}`,
+   876→    { method: 'GET' },
+   877→  )
+   878→
+   879→  const updated = await wooFetch<WooCategory>(
+   880→    connection.baseUrl,
+   881→    connection.apiKey!,
+   882→    connection.apiSecret!,
+   883→    `products/categories/${categoryId}`,
+   884→    {
+   885→      method: 'PUT',
+   886→      body: JSON.stringify({ description }),
+   887→    },
+   888→  )
+   889→
+   890→  // Audit log
+   891→  await logContentChange({
+   892→    projectId: connection.projectId,
+   893→    changeType: 'UPDATE',
+   894→    previousContent: JSON.stringify({ description: current.description }),
+   895→    newContent: JSON.stringify({ description }),
+   896→    summary: `Categoriebeschrijving bijgewerkt voor "${current.name}" (ID: ${categoryId}).`,
+   897→    rollbackData: JSON.stringify({
+   898→      categoryId,
+   899→      previousDescription: current.description,
+   900→    }),
+   901→  })
+   902→
+   903→  return updated
+   904→}
+   905→
+   906→/**
+   907→ * List all variations for a given product.
+   908→ */
+   909→export async function wooListVariations(
+   910→  connectionId: string,
+   911→  productId: number,
+   912→): Promise<WooVariation[]> {
+   913→  const connection = await getWooConnectionOrFail(connectionId)
+   914→
+   915→  const allVariations: WooVariation[] = []
+   916→  let page = 1
+   917→  const perPage = 100
+   918→
+   919→  while (true) {
+   920→    const variations = await wooFetch<WooVariation[]>(
+   921→      connection.baseUrl,
+   922→      connection.apiKey!,
+   923→      connection.apiSecret!,
+   924→      `products/${productId}/variations?per_page=${perPage}&page=${page}`,
+   925→      { method: 'GET' },
+   926→    )
+   927→
+   928→    allVariations.push(...variations)
+   929→
+   930→    if (variations.length < perPage) {
+   931→      break
+   932→    }
+   933→    page++
+   934→  }
+   935→
+   936→  return allVariations
+   937→}
+   938→
+   939→/**
+   940→ * Get product reviews where available.
+   941→ */
+   942→export async function wooGetProductReviews(
+   943→  connectionId: string,
+   944→  productId: number,
+   945→): Promise<WooReview[]> {
+   946→  const connection = await getWooConnectionOrFail(connectionId)
+   947→
+   948→  try {
+   949→    const reviews = await wooFetch<WooReview[]>(
+   950→      connection.baseUrl,
+   951→      connection.apiKey!,
+   952→      connection.apiSecret!,
+   953→      `products/reviews?product=${productId}`,
+   954→      { method: 'GET' },
+   955→    )
+   956→    return reviews
+   957→  } catch (error) {
+   958→    // Reviews endpoint may not be available on all WooCommerce installs
+   959→    if (error instanceof WooEndpointError) {
+   960→      return []
+   961→    }
+   962→    throw error
+   963→  }
+   964→}
+   965→
+   966→/**
+   967→ * Get inventory / stock status for a product.
+   968→ */
+   969→export async function wooGetInventoryStatus(
+   970→  connectionId: string,
+   971→  productId: number,
+   972→): Promise<{
+   973→  stockStatus: string
+   974→  stockQuantity: number | null
+   975→  manageStock: boolean
+   976→  variations: { id: number; stockStatus: string; stockQuantity: number | null }[]
+   977→}> {
+   978→  const connection = await getWooConnectionOrFail(connectionId)
+   979→
+   980→  const product = await wooFetch<WooProduct>(
+   981→    connection.baseUrl,
+   982→    connection.apiKey!,
+   983→    connection.apiSecret!,
+   984→    `products/${productId}`,
+   985→    { method: 'GET' },
+   986→  )
+   987→
+   988→  // If the product has variations, fetch their stock info too
+   989→  let variations: { id: number; stockStatus: string; stockQuantity: number | null }[] = []
+   990→
+   991→  if (product.variations && product.variations.length > 0) {
+   992→    try {
+   993→      const variationData = await wooListVariations(connectionId, productId)
+   994→      variations = variationData.map((v) => ({
+   995→        id: v.id,
+   996→        stockStatus: v.stock_status,
+   997→        stockQuantity: v.stock_quantity,
+   998→      }))
+   999→    } catch {
+  1000→      // If variations can't be fetched, return empty array
+  1001→      variations = []
+  1002→    }
+  1003→  }
+  1004→
+  1005→  return {
+  1006→    stockStatus: product.stock_status,
+  1007→    stockQuantity: product.stock_quantity,
+  1008→    manageStock: product.manage_stock,
+  1009→    variations,
+  1010→  }
+  1011→}
+  1012→
+  1013→/**
+  1014→ * Get pricing information for a product.
+  1015→ */
+  1016→export async function wooGetProductPricing(
+  1017→  connectionId: string,
+  1018→  productId: number,
+  1019→): Promise<{
+  1020→  price: string
+  1021→  regularPrice: string
+  1022→  salePrice: string
+  1023→  onSale: boolean
+  1024→  variations: { id: number; price: string; regularPrice: string; salePrice: string; onSale: boolean }[]
+  1025→}> {
+  1026→  const connection = await getWooConnectionOrFail(connectionId)
+  1027→
+  1028→  const product = await wooFetch<WooProduct>(
+  1029→    connection.baseUrl,
+  1030→    connection.apiKey!,
+  1031→    connection.apiSecret!,
+  1032→    `products/${productId}`,
+  1033→    { method: 'GET' },
+  1034→  )
+  1035→
+  1036→  let variations: {
+  1037→    id: number
+  1038→    price: string
+  1039→    regularPrice: string
+  1040→    salePrice: string
+  1041→    onSale: boolean
+  1042→  }[] = []
+  1043→
+  1044→  if (product.variations && product.variations.length > 0) {
+  1045→    try {
+  1046→      const variationData = await wooListVariations(connectionId, productId)
+  1047→      variations = variationData.map((v) => ({
+  1048→        id: v.id,
+  1049→        price: v.price,
+  1050→        regularPrice: v.regular_price,
+  1051→        salePrice: v.sale_price,
+  1052→        onSale: v.on_sale,
+  1053→      }))
+  1054→    } catch {
+  1055→      variations = []
+  1056→    }
+  1057→  }
+  1058→
+  1059→  return {
+  1060→    price: product.price,
+  1061→    regularPrice: product.regular_price,
+  1062→    salePrice: product.sale_price,
+  1063→    onSale: product.on_sale,
+  1064→    variations,
+  1065→  }
+  1066→}
+  1067→
+  1068→// ============================================================================
+  1069→// Import & Sync
+  1070→// ============================================================================
+  1071→
+  1072→/**
+  1073→ * Import all products from a WooCommerce store into the project's
+  1074→ * ContentSource records (type = PRODUCT_DATA).
+  1075→ *
+  1076→ * Returns the number of products imported.
+  1077→ */
+  1078→export async function wooImportProducts(
+  1079→  projectId: string,
+  1080→  connectionId: string,
+  1081→): Promise<{ imported: number; skipped: number; errors: number }> {
+  1082→  const connection = await getWooConnectionOrFail(connectionId)
+  1083→
+  1084→  let imported = 0
+  1085→  let skipped = 0
+  1086→  let errors = 0
+  1087→
+  1088→  // Paginate through all products
+  1089→  let page = 1
+  1090→  const perPage = 50
+  1091→  let hasMore = true
+  1092→
+  1093→  while (hasMore) {
+  1094→    let products: WooProduct[]
+  1095→    try {
+  1096→      const result = await wooListProducts(connectionId, { page, perPage })
+  1097→      products = result.data
+  1098→      hasMore = page < result.totalPages
+  1099→    } catch {
+  1100→      errors++
+  1101→      break
+  1102→    }
+  1103→
+  1104→    for (const product of products) {
+  1105→      try {
+  1106→        // Check if this product is already imported (by URL in ContentSource)
+  1107→        const existing = await db.contentSource.findFirst({
+  1108→          where: {
+  1109→            projectId,
+  1110→            type: 'PRODUCT_DATA',
+  1111→            url: product.permalink,
+  1112→            deletedAt: null,
+  1113→          },
+  1114→        })
+  1115→
+  1116→        const productContent = JSON.stringify({
+  1117→          id: product.id,
+  1118→          name: product.name,
+  1119→          slug: product.slug,
+  1120→          description: product.description,
+  1121→          short_description: product.short_description,
+  1122→          sku: product.sku,
+  1123→          price: product.price,
+  1124→          regular_price: product.regular_price,
+  1125→          sale_price: product.sale_price,
+  1126→          status: product.status,
+  1127→          categories: product.categories.map((c) => ({ id: c.id, name: c.name, slug: c.slug })),
+  1128→          images: product.images.map((i) => ({ src: i.src, alt: i.alt })),
+  1129→          stock_status: product.stock_status,
+  1130→        })
+  1131→
+  1132→        if (existing) {
+  1133→          // Update existing record
+  1134→          await db.contentSource.update({
+  1135→            where: { id: existing.id },
+  1136→            data: {
+  1137→              content: productContent,
+  1138→              metadata: JSON.stringify({
+  1139→                wooId: product.id,
+  1140→                sku: product.sku,
+  1141→                importedAt: new Date().toISOString(),
+  1142→                connectionId,
+  1143→              }),
+  1144→            },
+  1145→          })
+  1146→          skipped++
+  1147→        } else {
+  1148→          // Create new record
+  1149→          await db.contentSource.create({
+  1150→            data: {
+  1151→              projectId,
+  1152→              name: product.name,
+  1153→              type: 'PRODUCT_DATA',
+  1154→              url: product.permalink,
+  1155→              content: productContent,
+  1156→              metadata: JSON.stringify({
+  1157→                wooId: product.id,
+  1158→                sku: product.sku,
+  1159→                importedAt: new Date().toISOString(),
+  1160→                connectionId,
+  1161→              }),
+  1162→            },
+  1163→          })
+  1164→          imported++
+  1165→        }
+  1166→      } catch {
+  1167→        errors++
+  1168→      }
+  1169→    }
+  1170→
+  1171→    page++
+  1172→  }
+  1173→
+  1174→  // Audit log
+  1175→  await logContentChange({
+  1176→    projectId,
+  1177→    changeType: 'CREATE',
+  1178→    newContent: JSON.stringify({ imported, skipped, errors, connectionId }),
+  1179→    summary: `Producten geïmporteerd uit WooCommerce: ${imported} nieuw, ${skipped} bijgewerkt, ${errors} fouten.`,
+  1180→  })
+  1181→
+  1182→  return { imported, skipped, errors }
+  1183→}
+  1184→
+  1185→/**
+  1186→ * Synchronize a single product's data with the project's ContentSource.
+  1187→ */
+  1188→export async function wooSyncProduct(
+  1189→  connectionId: string,
+  1190→  productId: number,
+  1191→): Promise<{ synced: boolean; action: 'created' | 'updated' }> {
+  1192→  const connection = await getWooConnectionOrFail(connectionId)
+  1193→
+  1194→  // Fetch the latest product data
+  1195→  const product = await wooFetch<WooProduct>(
+  1196→    connection.baseUrl,
+  1197→    connection.apiKey!,
+  1198→    connection.apiSecret!,
+  1199→    `products/${productId}`,
+  1200→    { method: 'GET' },
+  1201→  )
+  1202→
+  1203→  const productContent = JSON.stringify({
+  1204→    id: product.id,
+  1205→    name: product.name,
+  1206→    slug: product.slug,
+  1207→    description: product.description,
+  1208→    short_description: product.short_description,
+  1209→    sku: product.sku,
+  1210→    price: product.price,
+  1211→    regular_price: product.regular_price,
+  1212→    sale_price: product.sale_price,
+  1213→    status: product.status,
+  1214→    categories: product.categories.map((c) => ({ id: c.id, name: c.name, slug: c.slug })),
+  1215→    images: product.images.map((i) => ({ src: i.src, alt: i.alt })),
+  1216→    stock_status: product.stock_status,
+  1217→  })
+  1218→
+  1219→  // Check if this product already exists in ContentSource
+  1220→  const existing = await db.contentSource.findFirst({
+  1221→    where: {
+  1222→      projectId: connection.projectId,
+  1223→      type: 'PRODUCT_DATA',
+  1224→      url: product.permalink,
+  1225→      deletedAt: null,
+  1226→    },
+  1227→  })
+  1228→
+  1229→  let action: 'created' | 'updated'
+  1230→
+  1231→  if (existing) {
+  1232→    await db.contentSource.update({
+  1233→      where: { id: existing.id },
+  1234→      data: {
+  1235→        name: product.name,
+  1236→        content: productContent,
+  1237→        metadata: JSON.stringify({
+  1238→          wooId: product.id,
+  1239→          sku: product.sku,
+  1240→          syncedAt: new Date().toISOString(),
+  1241→          connectionId,
+  1242→        }),
+  1243→      },
+  1244→    })
+  1245→    action = 'updated'
+  1246→  } else {
+  1247→    await db.contentSource.create({
+  1248→      data: {
+  1249→        projectId: connection.projectId,
+  1250→        name: product.name,
+  1251→        type: 'PRODUCT_DATA',
+  1252→        url: product.permalink,
+  1253→        content: productContent,
+  1254→        metadata: JSON.stringify({
+  1255→          wooId: product.id,
+  1256→          sku: product.sku,
+  1257→          syncedAt: new Date().toISOString(),
+  1258→          connectionId,
+  1259→        }),
+  1260→      },
+  1261→    })
+  1262→    action = 'created'
+  1263→  }
+  1264→
+  1265→  // Audit log
+  1266→  await logContentChange({
+  1267→    projectId: connection.projectId,
+  1268→    changeType: action === 'created' ? 'CREATE' : 'UPDATE',
+  1269→    previousContent: existing?.content ?? undefined,
+  1270→    newContent: productContent,
+  1271→    summary: `Product "${product.name}" (ID: ${productId}) ${action === 'created' ? 'geïmporteerd' : 'gesynchroniseerd'}.`,
+  1272→    rollbackData: existing?.content ?? undefined,
+  1273→  })
+  1274→
+  1275→  return { synced: true, action }
+  1276→}
+  1277→
