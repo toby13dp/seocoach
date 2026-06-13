@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">SEOCoach</string>
+    <string name="title_activity_main">SEOCoach</string>
+    <string name="package_name">nl.seocoach.app</string>
+    <string name="custom_url_scheme">nl.seocoach.app</string>
+</resources>
