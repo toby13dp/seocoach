@@ -333,3 +333,186 @@ Stage Summary:
 - AI simulations are always flagged with Dutch disclaimer
 - Competitor intelligence never invents traffic or revenue
 - Authority data is provider-neutral; outreach is never sent automatically
+
+---
+Task ID: 7-2b
+Agent: Reviews & Reputation Agent
+Task: Build Reviews & Reputation Module (Subphase J, Phase 7)
+
+Work Log:
+- Created /src/lib/reviews/types.ts — Core type definitions:
+  - ReviewImportData interface for review import operations
+  - SentimentAnalysisResult with Dutch themes, complaints, compliments, product/service issues, FAQ/content opportunities, trust signals
+  - ReviewSummary with rating distribution, sentiment distribution, top themes, response rate, avg response time
+  - ReviewResponseDraft interface
+  - Dutch label maps: REVIEW_SOURCE_LABELS (7 sources), REVIEW_SENTIMENT_LABELS (4 sentiments), REVIEW_RESPONSE_STATUS_LABELS (5 statuses)
+  - DEFAULT_REVIEW_COLUMN_MAPPINGS with Dutch/English column aliases for CSV import
+  - NEGATIVE_KEYWORDS (32 Dutch negative keywords), POSITIVE_KEYWORDS (32 Dutch positive keywords)
+  - PRODUCT_THEME_KEYWORDS (24 Dutch product keywords), SERVICE_THEME_KEYWORDS (24 Dutch service keywords)
+
+- Created /src/lib/reviews/sentiment-analyzer.ts — Rule-based sentiment and theme analysis:
+  - analyzeSentiment() — Full analysis combining all sub-analyses
+  - classifySentiment() — Rating-based base score with keyword adjustment (±0.1 per keyword, capped -1 to 1)
+  - detectThemes() — Dutch theme detection (Productkwaliteit, Levering, Verpakking, Prijs-kwaliteit, Klantenservice, etc.)
+  - detectComplaints() — Dutch complaint extraction (15+ patterns: product defect, trage levering, onvriendelijk, etc.)
+  - detectCompliments() — Dutch compliment extraction (13+ patterns: snelle levering, hoge kwaliteit, aanbeveling, etc.)
+  - detectProductIssues() — Product-specific issue detection (12 patterns)
+  - detectServiceIssues() — Service-specific issue detection (11 patterns)
+  - generateFAQOpportunities() — FAQ suggestions from themes/complaints (Dutch)
+  - generateContentOpportunities() — Blog/guide/landing page suggestions (Dutch)
+  - identifyTrustSignals() — Trust signal extraction (geverifieerde aankoop, aanbeveling, terugkerende klant, etc.)
+
+- Created /src/lib/reviews/review-importer.ts — CSV import and bulk operations:
+  - parseReviewCSV() — Flexible CSV parsing with Dutch/English column mapping
+  - parseFlexibleDate() — Multi-format date parsing (YYYY-MM-DD, DD-MM-YYYY, DD/MM/YYYY)
+  - importReview() — Single review import with deduplication by externalId or authorName+reviewDate+source
+  - importReviewsBulk() — Bulk import with individual validation and deduplication
+  - importReviewsCSV() — Full CSV import pipeline with batch ID generation
+  - All error messages in Dutch
+
+- Created /src/lib/reviews/review-manager.ts — Review CRUD and querying:
+  - listReviews() — Paginated listing with 10+ filters (source, sentiment, rating range, dates, search, hasResponse, location)
+  - getReview() — Single review details with responses and location
+  - getReviewSummary() — Aggregated statistics (avg rating, distributions, top themes/complaints/compliments, response rate, avg response time)
+  - analyzeAndSaveReviewSentiment() — Run analysis on a single review and persist results
+  - analyzeProjectReviews() — Batch analysis of all unanalyzed reviews in a project
+  - deleteReview() — Soft delete with deletedAt timestamp
+  - All functions verify projectId for tenant isolation
+
+- Created /src/lib/reviews/response-drafter.ts — Review response drafting with approval workflow:
+  - generateResponseDraft() — Template-based Dutch response generation:
+    - Positive (4-5 stars): Thank customer, mention specifics (levering, kwaliteit, service, prijs)
+    - Neutral (3 stars): Thank and ask for improvement feedback
+    - Negative (1-2 stars): Apologize, address specific issues, offer resolution, invite contact
+  - CRITICAL: Responses ALWAYS created as DRAFT, never auto-published
+  - submitResponseForApproval() — DRAFT → PENDING_APPROVAL transition
+  - approveResponse() — PENDING_APPROVAL → APPROVED transition
+  - rejectResponse() — PENDING_APPROVAL → REJECTED with Dutch reason
+  - updateResponseDraft() — Edit DRAFT or REJECTED responses (REJECTED resets to DRAFT)
+  - publishResponse() — APPROVED → PUBLISHED (only from APPROVED, never from DRAFT)
+  - getReviewResponses() — List all responses for a review
+  - Full approval workflow enforced: DRAFT → PENDING_APPROVAL → APPROVED → PUBLISHED
+
+- Created /src/lib/reviews/index.ts — Barrel export of all public types, functions, and constants
+
+Stage Summary:
+- Complete Reviews & Reputation module with 6 files
+- Rule-based sentiment analyzer with 32+ Dutch negative keywords, 32+ positive keywords, 24 product themes, 24 service themes
+- CSV import with flexible Dutch/English column mapping and multi-format date parsing
+- Automatic deduplication by externalId or authorName+reviewDate+source
+- Full review CRUD with 10+ filters and aggregated summary statistics
+- Template-based Dutch response drafts for positive, neutral, and negative reviews
+- Strict approval-first workflow: responses ALWAYS start as DRAFT, must go through approval before PUBLISHED
+- Direct publishing from DRAFT is explicitly blocked
+- All user-facing text in Dutch
+- All functions verify projectId for tenant isolation
+- No new TypeScript errors introduced
+
+---
+Task ID: 7-2a
+Agent: Local SEO Agent
+Task: Build Local SEO Module (Subphase I, Phase 7)
+
+Work Log:
+- Created /src/lib/local-seo/types.ts — Core type definitions:
+  - NAPRecord, DayHours, OpeningHours, LocalKeywordData, LandingPageQuality, LocationHealthResult, LocationComparison interfaces
+  - LOCAL_HEALTH_CATEGORY_LABELS (10 categories, Dutch labels)
+  - LOCAL_HEALTH_STATUS_LABELS (4 statuses, Dutch labels)
+  - LOCAL_KEYWORD_INTENT_LABELS (5 intents, Dutch labels)
+  - Re-exports Prisma enums (LocalHealthCategory, LocalHealthStatus, LocalKeywordIntent)
+
+- Created /src/lib/local-seo/location-manager.ts — Location CRUD:
+  - createLocation() — Create location with NAP, geo, opening hours, business type, service area
+  - updateLocation() — Update location with tenant isolation verification
+  - deleteLocation() — Soft delete with tenant isolation verification
+  - getLocation() — Get location with all related data (keywords, landing pages, health checks, GBP)
+  - listLocations() — List with optional filters (city, businessType, minHealthScore, minRating)
+  - compareLocations() — Compare multiple locations with keyword and landing page counts
+  - All functions verify projectId for tenant isolation
+  - All error messages in Dutch
+
+- Created /src/lib/local-seo/health-checker.ts — 10-category health analysis:
+  - checkNAPConsistency() — Verifies name, address, phone completeness with optional fields check
+  - checkOpeningHours() — Checks if weekly opening hours are set and complete
+  - checkLocalStructuredData() — Validates JSON-LD quality (5 key fields)
+  - checkLandingPages() — Counts pages and calculates average quality score
+  - checkLocalKeywords() — Checks keyword count, ranking distribution, top 10/3 coverage
+  - checkReviews() — Checks avgRating and reviewCount with scoring matrix
+  - checkGoogleBusinessProfile() — Checks GBP connection status and profile completeness
+  - checkLocalLinks() — Placeholder (NOT_CHECKED)
+  - checkPhotos() — Placeholder (NOT_CHECKED)
+  - checkServiceAreas() — Checks service area coverage
+  - saveHealthChecks() — Upserts results and updates overall health score
+  - calculateOverallHealthScore() — Weighted average (NAP=20, LandingPages=15, Keywords=15, etc.)
+  - getLocationHealthChecks() — Retrieve existing checks with tenant isolation
+  - All titles, descriptions, and recommendations in Dutch
+  - Never fabricates data — NOT_CHECKED for unavailable checks
+
+- Created /src/lib/local-seo/rank-import.ts — CSV rank data import:
+  - parseRankCSV() — Parses CSV with flexible column mapping (Dutch/English)
+  - importRankCSV() — Full import with batch ID, upsert, and error tracking
+  - DEFAULT_RANK_COLUMN_MAPPINGS — 7 fields with Dutch/English aliases
+  - Supports quoted CSV fields, various delimiters, BOM markers
+  - Intent parsing supports Dutch and English names
+  - Generates unique import batch ID
+  - All error messages in Dutch
+
+- Created /src/lib/local-seo/gbp-adapter.ts — Google Business Profile adapter:
+  - connectGBP() — Connect GBP with OAuth tokens, upserts profile record
+  - disconnectGBP() — Disconnect, clears tokens, resets sync status
+  - syncGBPData() — Placeholder sync (updates timestamp, never fabricates data)
+  - getGBPStatus() — Returns connection state, sync status, rating, review count
+  - CRITICAL: Never fabricates sync data — real API integration is a stub
+  - All error messages in Dutch
+
+- Created /src/lib/local-seo/landing-page-analyzer.ts — Landing page quality:
+  - analyzeLandingPageQuality() — 8-element quality scoring (0-100):
+    Title (10), Meta description (10), H1 (10), Word count ≥300 (15),
+    Structured data (15), NAP (15), Map (10), Opening hours (15)
+  - generateLocalStructuredData() — LocalBusiness JSON-LD generator:
+    Only includes fields with data, never fabricates missing values
+    Maps 60+ business types to schema.org types
+    Generates OpeningHoursSpecification and areaServed
+  - saveLandingPageAnalysis() — Upsert landing pages with quality scores
+  - All issue descriptions in Dutch
+
+- Created /src/lib/local-seo/index.ts — Barrel export
+
+Stage Summary:
+- Local SEO module complete with 7 files
+- 10 health check categories with weighted scoring
+- Full location CRUD with tenant isolation
+- CSV rank import with Dutch/English column mapping
+- GBP adapter as stub/interface (never fabricates data)
+- Landing page quality analysis with 8 scoring elements
+- JSON-LD generator never fabricates missing values
+- All user-facing text in Dutch
+- No new TypeScript compilation errors introduced
+
+---
+Task ID: 7
+Agent: Main Agent
+Task: Build Phase 7 - Local SEO & Reputation
+
+Work Log:
+- Updated Prisma schema with 6 new enums (LocalHealthCategory, LocalHealthStatus, ReviewSource, ReviewSentiment, ReviewResponseStatus, LocalKeywordIntent) and 8 new models (expanded Location, LocalKeyword, LocalLandingPage, LocalCompetitor, LocationHealthCheck, GoogleBusinessProfile, RankImport, Review, ReviewResponse)
+- Pushed schema changes to SQLite database
+- Implemented Local SEO module (src/lib/local-seo/, 7 files): Location CRUD with NAP, 10-category health checker, landing page quality analyzer with JSON-LD generation, rank CSV import with Dutch/English columns, Google Business Profile adapter (stub), opening hours management
+- Implemented Reviews & Reputation module (src/lib/reviews/, 6 files): Dutch sentiment analyzer with 60+ keyword patterns, review CSV importer with flexible column mapping, review manager with filters/summary, response drafter with strict approval workflow (DRAFT→PENDING_APPROVAL→APPROVED→PUBLISHED)
+- Created 21 API route files: locations CRUD + health + compare (3), location sub-resources (5), rank import (1), reviews CRUD + import + summary + analyze (5), review response workflow (4)
+- Created 4 frontend pages: locations list, location detail (6 tabs), reviews list (with summary stats + filters + import), review detail (with sentiment analysis + response workflow)
+- Updated project detail page with 2 Phase 7 navigation cards (Locaties, Beoordelingen)
+- Wrote 306 tests across 8 test suites - all passing (608 assertions)
+- Updated IMPLEMENTATION_STATUS.md
+
+Stage Summary:
+- Phase 7 (Local SEO & Reputation) is complete with all definition of done items checked
+- 161 requirements implemented out of 218 total (74%)
+- All lint passes, Phase 7 TypeScript compiles cleanly
+- All user-facing text is in Dutch
+- 2 new backend library modules (13 files), 21 API routes, 4 frontend pages
+- 306 tests all passing
+- Location health checks cover 10 categories with Dutch findings
+- Review response workflow enforces approval-before-publish
+- GBP adapter is a stub ready for real Google API integration
+- Sentiment analysis uses 60+ Dutch keyword patterns

@@ -16,7 +16,7 @@
 | 4 | Content Automation & CMS | 🟢 Complete | 2026-06-13 | 2026-06-13 | 100% |
 | 5 | Analytics & Monitoring | 🟢 Complete | 2026-06-13 | 2026-06-13 | 100% |
 | 6 | GEO & Competitive Intelligence | 🟢 Complete | 2026-06-13 | 2026-06-13 | 100% |
-| 7 | Local SEO & Reputation | ⚪ Planned | — | — | 0% |
+| 7 | Local SEO & Reputation | 🟢 Complete | 2026-06-13 | 2026-06-13 | 100% |
 | 8 | E-commerce SEO | ⚪ Planned | — | — | 0% |
 | 9 | CRO & Business Intelligence | ⚪ Planned | — | — | 0% |
 | 10 | Agency & Client Operations | ⚪ Planned | — | — | 0% |
@@ -366,21 +366,54 @@
 
 ## Phase 7: Local SEO & Reputation
 
-**Status:** ⚪ Planned  
+**Status:** 🟢 Complete  
 **Description:** Implement local SEO management, Google Business Profile adapter, review imports, and reputation management.
 
-### Planned Sub-Deliverables
+### Sub-Deliverables
 
-| Sub-Deliverable | Key Requirements | Dependencies |
-|----------------|-----------------|-------------|
-| A. Local SEO | LOCAL-001 through LOCAL-004 | Location model (Phase 1), structured data (Phase 4) |
-| B. Reviews & reputation | REV-001 through REV-003 | Review adapters, AI for response drafts, approval flow |
+| Sub-Deliverable | Key Requirements | Status | Notes |
+|----------------|-----------------|--------|-------|
+| A. Local SEO | LOCAL-001 through LOCAL-004 | ✅ Complete | Locations, NAP, health checks, GBP, landing pages, local keywords, competitors |
+| B. Reviews & reputation | REV-001 through REV-003 | ✅ Complete | 7 review sources, sentiment analysis, response drafts with approval workflow |
+
+### Phase 7 Implementation Details
+
+**Schema (6 enums, 8 new models):**
+- Enums: `LocalHealthCategory`, `LocalHealthStatus`, `ReviewSource`, `ReviewSentiment`, `ReviewResponseStatus`, `LocalKeywordIntent`
+- Models: `Location` (expanded with 15+ new fields), `LocalKeyword`, `LocalLandingPage`, `LocalCompetitor`, `LocationHealthCheck`, `GoogleBusinessProfile`, `RankImport`, `Review`, `ReviewResponse`
+
+**Backend Modules:**
+- `src/lib/local-seo/` (7 files): Location CRUD, 10-category health checker, landing page analyzer with JSON-LD, rank CSV import, GBP adapter
+- `src/lib/reviews/` (6 files): Sentiment analyzer (Dutch keywords), review importer (CSV), review manager, response drafter (Dutch templates, approval workflow)
+
+**API Routes (21 files):**
+- Locations (3): CRUD, health, compare
+- Location sub-resources (5): keywords, landing-pages, competitors, GBP, structured-data
+- Rank import (1): CSV import
+- Reviews (5): CRUD, import, summary, analyze, response
+- Review responses (4): submit, approve, reject, publish
+
+**Frontend Pages (4 pages):**
+- `/projects/[id]/locations` — Locaties overview with health scores, NAP consistency, GBP status
+- `/projects/[id]/locations/[locationId]` — Locatie detail with 6 tabs
+- `/projects/[id]/reviews` — Beoordelingen overview with summary stats, filters, import
+- `/projects/[id]/reviews/[reviewId]` — Review detail with sentiment analysis and response workflow
+
+**Tests (306 tests, 608 assertions):**
+- `local-seo/location-manager.test.ts` (28 tests)
+- `local-seo/health-checker.test.ts` (32 tests)
+- `local-seo/landing-page-analyzer.test.ts` (24 tests)
+- `local-seo/rank-import.test.ts` (25 tests)
+- `reviews/sentiment-analyzer.test.ts` (87 tests)
+- `reviews/review-manager.test.ts` (30 tests)
+- `reviews/response-drafter.test.ts` (41 tests)
+- `reviews/review-importer.test.ts` (39 tests)
 
 ### Phase 7 Definition of Done
 
-- [ ] A user can manage locations with NAP records
-- [ ] A user can import and analyse reviews
-- [ ] Review response drafts require approval before posting
+- [x] A user can manage locations with NAP records
+- [x] A user can import and analyse reviews
+- [x] Review response drafts require approval before posting
 
 ---
 

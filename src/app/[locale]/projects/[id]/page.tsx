@@ -41,6 +41,8 @@ import {
   Map,
   Brain,
   Users,
+  MapPin,
+  Star,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -597,6 +599,28 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
                     <div>
                       <p className="text-sm font-medium">Concurrentieanalyse</p>
                       <p className="text-xs text-muted-foreground">Wijzigingen volgen</p>
+                    </div>
+                  </CardContent>
+                </Card>
+              </Link>
+              <Link href={`/projects/${id}/locations`}>
+                <Card className="hover:bg-accent/50 transition-colors cursor-pointer">
+                  <CardContent className="p-4 flex items-center gap-3">
+                    <MapPin className="h-5 w-5 text-emerald-600 shrink-0" />
+                    <div>
+                      <p className="text-sm font-medium">Locaties</p>
+                      <p className="text-xs text-muted-foreground">Lokale SEO & NAP</p>
+                    </div>
+                  </CardContent>
+                </Card>
+              </Link>
+              <Link href={`/projects/${id}/reviews`}>
+                <Card className="hover:bg-accent/50 transition-colors cursor-pointer">
+                  <CardContent className="p-4 flex items-center gap-3">
+                    <Star className="h-5 w-5 text-amber-600 shrink-0" />
+                    <div>
+                      <p className="text-sm font-medium">Beoordelingen</p>
+                      <p className="text-xs text-muted-foreground">Reputatiebeheer</p>
                     </div>
                   </CardContent>
                 </Card>

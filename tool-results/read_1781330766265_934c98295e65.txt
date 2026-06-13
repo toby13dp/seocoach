@@ -1,0 +1,738 @@
+     1→"use client";
+     2→
+     3→import { useState, useEffect, use } from "react";
+     4→import { useRouter } from "@/i18n/routing";
+     5→import { useTranslations } from "@/i18n/client";
+     6→import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+     7→import { Button } from "@/components/ui/button";
+     8→import { Badge } from "@/components/ui/badge";
+     9→import { Progress } from "@/components/ui/progress";
+    10→import {
+    11→  Table,
+    12→  TableBody,
+    13→  TableCell,
+    14→  TableHead,
+    15→  TableHeader,
+    16→  TableRow,
+    17→} from "@/components/ui/table";
+    18→import { motion } from "framer-motion";
+    19→import {
+    20→  ArrowLeft,
+    21→  Loader2,
+    22→  RefreshCw,
+    23→  Tag,
+    24→  Link2,
+    25→  BookOpen,
+    26→} from "lucide-react";
+    27→import { toast } from "sonner";
+    28→
+    29→// --- Types ---
+    30→interface OpportunityScoreData {
+    31→  id: string;
+    32→  totalScore: number;
+    33→  volumeScore: number;
+    34→  difficultyScore: number;
+    35→  relevanceScore: number;
+    36→  currentRankScore: number;
+    37→  intentScore: number;
+    38→  funnelScore: number;
+    39→  competitionScore: number;
+    40→  calculationDetails: string | null;
+    41→  calculatedAt: string;
+    42→}
+    43→
+    44→interface RelatedPage {
+    45→  id: string;
+    46→  url: string;
+    47→  title: string | null;
+    48→  relevance: number;
+    49→}
+    50→
+    51→interface AssociatedTopic {
+    52→  id: string;
+    53→  name: string;
+    54→  isPillar: boolean;
+    55→}
+    56→
+    57→interface KeywordDetail {
+    58→  id: string;
+    59→  keyword: string;
+    60→  searchIntent: string;
+    61→  funnelStage: string;
+    62→  searchVolume: number | null;
+    63→  difficulty: number | null;
+    64→  cpc: number | null;
+    65→  currentRanking: number | null;
+    66→  currentUrl: string | null;
+    67→  groupId: string | null;
+    68→  tags: string[] | null;
+    69→  notes: string | null;
+    70→  source: string;
+    71→  opportunity: OpportunityScoreData | null;
+    72→  keywordPages: Array<{ id: string; relevance: number; page: RelatedPage }>;
+    73→  topicKeywords: Array<{ id: string; topic: AssociatedTopic }>;
+    74→  createdAt: string;
+    75→  updatedAt: string;
+    76→}
+    77→
+    78→interface ScoreStep {
+    79→  component: string;
+    80→  rawValue: string;
+    81→  score: number;
+    82→  weight: number;
+    83→  explanation: string;
+    84→}
+    85→
+    86→interface ScoreDetails {
+    87→  keyword: string;
+    88→  weights: Record<string, number>;
+    89→  steps: ScoreStep[];
+    90→  totalScore: number;
+    91→  summary: string;
+    92→}
+    93→
+    94→// --- Badge helpers (same as parent) ---
+    95→const intentBadgeStyle = (intent: string) => {
+    96→  switch (intent) {
+    97→    case "INFORMATIONAL":
+    98→      return "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300";
+    99→    case "NAVIGATIONAL":
+   100→      return "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300";
+   101→    case "TRANSACTIONAL":
+   102→      return "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-300";
+   103→    case "COMMERCIAL_INVESTIGATION":
+   104→      return "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300";
+   105→    case "LOCAL":
+   106→      return "bg-teal-100 text-teal-800 dark:bg-teal-900 dark:text-teal-300";
+   107→    case "BRANDED":
+   108→      return "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-300";
+   109→    default:
+   110→      return "bg-muted text-muted-foreground";
+   111→  }
+   112→};
+   113→
+   114→const funnelBadgeStyle = (stage: string) => {
+   115→  switch (stage) {
+   116→    case "AWARENESS":
+   117→      return "bg-sky-100 text-sky-800 dark:bg-sky-900 dark:text-sky-300";
+   118→    case "CONSIDERATION":
+   119→      return "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300";
+   120→    case "DECISION":
+   121→      return "bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-300";
+   122→    case "RETENTION":
+   123→      return "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-300";
+   124→    default:
+   125→      return "bg-muted text-muted-foreground";
+   126→  }
+   127→};
+   128→
+   129→const intentLabel = (intent: string, t: (k: string) => string) => {
+   130→  switch (intent) {
+   131→    case "INFORMATIONAL": return t("informational");
+   132→    case "NAVIGATIONAL": return t("navigational");
+   133→    case "TRANSACTIONAL": return t("transactional");
+   134→    case "COMMERCIAL_INVESTIGATION": return t("commercialInvestigation");
+   135→    case "LOCAL": return t("local");
+   136→    case "BRANDED": return t("branded");
+   137→    default: return t("unknown");
+   138→  }
+   139→};
+   140→
+   141→const funnelLabel = (stage: string, t: (k: string) => string) => {
+   142→  switch (stage) {
+   143→    case "AWARENESS": return t("awareness");
+   144→    case "CONSIDERATION": return t("consideration");
+   145→    case "DECISION": return t("decision");
+   146→    case "RETENTION": return t("retention");
+   147→    default: return t("unknown");
+   148→  }
+   149→};
+   150→
+   151→const scoreColor = (score: number) => {
+   152→  if (score >= 70) return "text-emerald-600 dark:text-emerald-400";
+   153→  if (score >= 40) return "text-yellow-600 dark:text-yellow-400";
+   154→  return "text-red-600 dark:text-red-400";
+   155→};
+   156→
+   157→const progressBarColor = (score: number) => {
+   158→  if (score >= 70) return "bg-emerald-500";
+   159→  if (score >= 40) return "bg-yellow-500";
+   160→  return "bg-red-500";
+   161→};
+   162→
+   163→// Score component keys to translation keys
+   164→const scoreComponentKey = (key: string) => {
+   165→  switch (key) {
+   166→    case "volumeScore": return "volumeScore";
+   167→    case "difficultyScore": return "difficultyScore";
+   168→    case "relevanceScore": return "relevanceScore";
+   169→    case "currentRankScore": return "currentRankScore";
+   170→    case "intentScore": return "intentScore";
+   171→    case "funnelScore": return "funnelScore";
+   172→    case "competitionScore": return "competitionScore";
+   173→    default: return key;
+   174→  }
+   175→};
+   176→
+   177→export default function KeywordDetailPage({
+   178→  params,
+   179→}: {
+   180→  params: Promise<{ id: string; keywordId: string }>;
+   181→}) {
+   182→  const { id: projectId, keywordId } = use(params);
+   183→  const router = useRouter();
+   184→  const t = useTranslations("keywords");
+   185→  const tCommon = useTranslations("common");
+   186→
+   187→  const [keywordData, setKeywordData] = useState<KeywordDetail | null>(null);
+   188→  const [scoreDetails, setScoreDetails] = useState<ScoreDetails | null>(null);
+   189→  const [isLoading, setIsLoading] = useState(true);
+   190→  const [isRecalculating, setIsRecalculating] = useState(false);
+   191→
+   192→  useEffect(() => {
+   193→    async function fetchData() {
+   194→      setIsLoading(true);
+   195→      try {
+   196→        const res = await fetch(
+   197→          `/api/projects/${projectId}/keywords/${keywordId}`
+   198→        );
+   199→        if (res.ok) {
+   200→          const data = await res.json();
+   201→          const kwData = data.data;
+   202→          setKeywordData(kwData);
+   203→
+   204→          // Parse calculation details if available
+   205→          if (kwData.opportunity?.calculationDetails) {
+   206→            try {
+   207→              const details =
+   208→                typeof kwData.opportunity.calculationDetails === "string"
+   209→                  ? JSON.parse(kwData.opportunity.calculationDetails)
+   210→                  : kwData.opportunity.calculationDetails;
+   211→              setScoreDetails(details);
+   212→            } catch {
+   213→              // ignore parse errors
+   214→            }
+   215→          }
+   216→        }
+   217→      } catch {
+   218→        // silently fail
+   219→      } finally {
+   220→        setIsLoading(false);
+   221→      }
+   222→    }
+   223→    fetchData();
+   224→  }, [projectId, keywordId]);
+   225→
+   226→  // Recalculate score
+   227→  const handleRecalculate = async () => {
+   228→    setIsRecalculating(true);
+   229→    try {
+   230→      const res = await fetch(
+   231→        `/api/projects/${projectId}/keywords/${keywordId}/score`,
+   232→        { method: "POST" }
+   233→      );
+   234→      if (res.ok) {
+   235→        const data = await res.json();
+   236→        toast.success(t("recalculateSuccess"));
+   237→
+   238→        // Update keyword data with new score
+   239→        if (data.data?.score) {
+   240→          setKeywordData((prev) =>
+   241→            prev
+   242→              ? {
+   243→                  ...prev,
+   244→                  opportunity: {
+   245→                    ...prev.opportunity!,
+   246→                    ...data.data.score,
+   247→                  },
+   248→                }
+   249→              : prev
+   250→          );
+   251→        }
+   252→        if (data.data?.details) {
+   253→          setScoreDetails(data.data.details);
+   254→        }
+   255→
+   256→        // Re-fetch to get fresh data
+   257→        const detailRes = await fetch(
+   258→          `/api/projects/${projectId}/keywords/${keywordId}`
+   259→        );
+   260→        if (detailRes.ok) {
+   261→          const detailData = await detailRes.json();
+   262→          setKeywordData(detailData.data);
+   263→          if (detailData.data.opportunity?.calculationDetails) {
+   264→            try {
+   265→              const details =
+   266→                typeof detailData.data.opportunity.calculationDetails === "string"
+   267→                  ? JSON.parse(detailData.data.opportunity.calculationDetails)
+   268→                  : detailData.data.opportunity.calculationDetails;
+   269→              setScoreDetails(details);
+   270→            } catch {
+   271→              // ignore
+   272→            }
+   273→          }
+   274→        }
+   275→      } else {
+   276→        toast.error(t("recalculateError"));
+   277→      }
+   278→    } catch {
+   279→      toast.error(t("recalculateError"));
+   280→    } finally {
+   281→      setIsRecalculating(false);
+   282→    }
+   283→  };
+   284→
+   285→  if (isLoading) {
+   286→    return (
+   287→      <div className="flex items-center justify-center min-h-[calc(100vh-3.5rem)]">
+   288→        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+   289→      </div>
+   290→    );
+   291→  }
+   292→
+   293→  if (!keywordData) {
+   294→    return (
+   295→      <div className="p-4 md:p-6">
+   296→        <Button
+   297→          variant="ghost"
+   298→          onClick={() => router.push(`/projects/${projectId}/keywords`)}
+   299→        >
+   300→          <ArrowLeft className="mr-2 h-4 w-4" />
+   301→          {tCommon("back")}
+   302→        </Button>
+   303→        <p className="text-muted-foreground mt-4">{tCommon("noResults")}</p>
+   304→      </div>
+   305→    );
+   306→  }
+   307→
+   308→  const opp = keywordData.opportunity;
+   309→
+   310→  // Score components for the bar chart visualization
+   311→  const scoreComponents = opp
+   312→    ? [
+   313→        { key: "volumeScore", value: opp.volumeScore, weight: 0.25 },
+   314→        { key: "difficultyScore", value: opp.difficultyScore, weight: 0.15 },
+   315→        { key: "relevanceScore", value: opp.relevanceScore, weight: 0.15 },
+   316→        { key: "currentRankScore", value: opp.currentRankScore, weight: 0.20 },
+   317→        { key: "intentScore", value: opp.intentScore, weight: 0.10 },
+   318→        { key: "funnelScore", value: opp.funnelScore, weight: 0.05 },
+   319→        { key: "competitionScore", value: opp.competitionScore, weight: 0.10 },
+   320→      ]
+   321→    : [];
+   322→
+   323→  return (
+   324→    <motion.div
+   325→      initial={{ opacity: 0 }}
+   326→      animate={{ opacity: 1 }}
+   327→      className="p-4 md:p-6 space-y-6"
+   328→    >
+   329→      {/* Header */}
+   330→      <div className="flex items-center gap-4">
+   331→        <Button
+   332→          variant="ghost"
+   333→          size="icon"
+   334→          onClick={() => router.push(`/projects/${projectId}/keywords`)}
+   335→        >
+   336→          <ArrowLeft className="h-4 w-4" />
+   337→        </Button>
+   338→        <div className="flex-1">
+   339→          <div className="flex items-center gap-3">
+   340→            <h1 className="text-2xl font-bold tracking-tight">
+   341→              {keywordData.keyword}
+   342→            </h1>
+   343→            <Badge
+   344→              variant="outline"
+   345→              className={intentBadgeStyle(keywordData.searchIntent)}
+   346→            >
+   347→              {intentLabel(keywordData.searchIntent, t)}
+   348→            </Badge>
+   349→            <Badge
+   350→              variant="outline"
+   351→              className={funnelBadgeStyle(keywordData.funnelStage)}
+   352→            >
+   353→              {funnelLabel(keywordData.funnelStage, t)}
+   354→            </Badge>
+   355→          </div>
+   356→          <p className="text-sm text-muted-foreground mt-1">
+   357→            {t("keywordDetail")}
+   358→          </p>
+   359→        </div>
+   360→      </div>
+   361→
+   362→      {/* Keyword metrics summary */}
+   363→      <div className="grid gap-4 md:grid-cols-4">
+   364→        <Card>
+   365→          <CardHeader className="pb-2">
+   366→            <CardTitle className="text-sm text-muted-foreground">
+   367→              {t("volume")}
+   368→            </CardTitle>
+   369→          </CardHeader>
+   370→          <CardContent>
+   371→            <p className="text-2xl font-bold tabular-nums">
+   372→              {keywordData.searchVolume?.toLocaleString("nl-NL") ?? "-"}
+   373→            </p>
+   374→          </CardContent>
+   375→        </Card>
+   376→        <Card>
+   377→          <CardHeader className="pb-2">
+   378→            <CardTitle className="text-sm text-muted-foreground">
+   379→              {t("difficulty")}
+   380→            </CardTitle>
+   381→          </CardHeader>
+   382→          <CardContent>
+   383→            <p className="text-2xl font-bold tabular-nums">
+   384→              {keywordData.difficulty != null
+   385→                ? keywordData.difficulty.toFixed(0)
+   386→                : "-"}
+   387→            </p>
+   388→          </CardContent>
+   389→        </Card>
+   390→        <Card>
+   391→          <CardHeader className="pb-2">
+   392→            <CardTitle className="text-sm text-muted-foreground">
+   393→              {t("cpc")}
+   394→            </CardTitle>
+   395→          </CardHeader>
+   396→          <CardContent>
+   397→            <p className="text-2xl font-bold tabular-nums">
+   398→              {keywordData.cpc != null
+   399→                ? `€${keywordData.cpc.toFixed(2)}`
+   400→                : "-"}
+   401→            </p>
+   402→          </CardContent>
+   403→        </Card>
+   404→        <Card>
+   405→          <CardHeader className="pb-2">
+   406→            <CardTitle className="text-sm text-muted-foreground">
+   407→              {t("position")}
+   408→            </CardTitle>
+   409→          </CardHeader>
+   410→          <CardContent>
+   411→            <p className="text-2xl font-bold tabular-nums">
+   412→              {keywordData.currentRanking ?? "-"}
+   413→            </p>
+   414→          </CardContent>
+   415→        </Card>
+   416→      </div>
+   417→
+   418→      {/* Opportunity Score */}
+   419→      <Card>
+   420→        <CardHeader>
+   421→          <div className="flex items-center justify-between">
+   422→            <div>
+   423→              <CardTitle className="text-base">{t("scoreBreakdown")}</CardTitle>
+   424→              <CardDescription>
+   425→                {opp
+   426→                  ? `${t("totalScore")}: ${opp.calculatedAt ? new Date(opp.calculatedAt).toLocaleDateString("nl-NL") : ""}`
+   427→                  : t("noScore")}
+   428→              </CardDescription>
+   429→            </div>
+   430→            <Button
+   431→              variant="outline"
+   432→              size="sm"
+   433→              onClick={handleRecalculate}
+   434→              disabled={isRecalculating}
+   435→            >
+   436→              {isRecalculating ? (
+   437→                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+   438→              ) : (
+   439→                <RefreshCw className="mr-2 h-4 w-4" />
+   440→              )}
+   441→              {t("recalculate")}
+   442→            </Button>
+   443→          </div>
+   444→        </CardHeader>
+   445→        <CardContent>
+   446→          {opp ? (
+   447→            <div className="space-y-6">
+   448→              {/* Total score gauge */}
+   449→              <div className="flex items-center gap-6">
+   450→                <div className="relative w-24 h-24">
+   451→                  <svg className="w-24 h-24 -rotate-90" viewBox="0 0 100 100">
+   452→                    <circle
+   453→                      cx="50"
+   454→                      cy="50"
+   455→                      r="40"
+   456→                      fill="none"
+   457→                      stroke="currentColor"
+   458→                      className="text-muted"
+   459→                      strokeWidth="8"
+   460→                    />
+   461→                    <circle
+   462→                      cx="50"
+   463→                      cy="50"
+   464→                      r="40"
+   465→                      fill="none"
+   466→                      stroke="currentColor"
+   467→                      className={
+   468→                        opp.totalScore >= 70
+   469→                          ? "text-emerald-500"
+   470→                          : opp.totalScore >= 40
+   471→                          ? "text-yellow-500"
+   472→                          : "text-red-500"
+   473→                      }
+   474→                      strokeWidth="8"
+   475→                      strokeDasharray={`${(opp.totalScore / 100) * 251.3} 251.3`}
+   476→                      strokeLinecap="round"
+   477→                    />
+   478→                  </svg>
+   479→                  <span
+   480→                    className={`absolute inset-0 flex items-center justify-center text-xl font-bold ${scoreColor(opp.totalScore)}`}
+   481→                  >
+   482→                    {opp.totalScore.toFixed(0)}
+   483→                  </span>
+   484→                </div>
+   485→                <div className="flex-1">
+   486→                  <p className="text-sm font-medium">{t("totalScore")}</p>
+   487→                  {scoreDetails?.summary && (
+   488→                    <p className="text-sm text-muted-foreground mt-1">
+   489→                      {scoreDetails.summary}
+   490→                    </p>
+   491→                  )}
+   492→                </div>
+   493→              </div>
+   494→
+   495→              {/* Score component bars */}
+   496→              <div className="space-y-3">
+   497→                {scoreComponents.map((comp) => (
+   498→                  <div key={comp.key} className="space-y-1">
+   499→                    <div className="flex items-center justify-between text-sm">
+   500→                      <span className="text-muted-foreground">
+   501→                        {t(scoreComponentKey(comp.key))}
+   502→                      </span>
+   503→                      <div className="flex items-center gap-2">
+   504→                        <span className="text-xs text-muted-foreground">
+   505→                          {t("weight")}: {(comp.weight * 100).toFixed(0)}%
+   506→                        </span>
+   507→                        <span className={`font-semibold tabular-nums ${scoreColor(comp.value)}`}>
+   508→                          {comp.value.toFixed(0)}
+   509→                        </span>
+   510→                      </div>
+   511→                    </div>
+   512→                    <div className="w-full bg-muted rounded-full h-2">
+   513→                      <div
+   514→                        className={`h-2 rounded-full transition-all ${progressBarColor(comp.value)}`}
+   515→                        style={{ width: `${comp.value}%` }}
+   516→                      />
+   517→                    </div>
+   518→                  </div>
+   519→                ))}
+   520→              </div>
+   521→
+   522→              {/* Calculation trace */}
+   523→              {scoreDetails?.steps && scoreDetails.steps.length > 0 && (
+   524→                <div className="mt-4">
+   525→                  <h4 className="text-sm font-medium mb-3">
+   526→                    Berekeningsdetails
+   527→                  </h4>
+   528→                  <div className="space-y-3">
+   529→                    {scoreDetails.steps.map((step, idx) => (
+   530→                      <div
+   531→                        key={idx}
+   532→                        className="border rounded-lg p-3 space-y-1"
+   533→                      >
+   534→                        <div className="flex items-center justify-between">
+   535→                          <span className="text-sm font-medium">
+   536→                            {step.component}
+   537→                          </span>
+   538→                          <span className="text-sm font-semibold tabular-nums">
+   539→                            {step.score.toFixed(0)}/100
+   540→                          </span>
+   541→                        </div>
+   542→                        <p className="text-xs text-muted-foreground">
+   543→                          {step.explanation}
+   544→                        </p>
+   545→                        <p className="text-xs text-muted-foreground">
+   546→                          Waarde: {step.rawValue} | {t("weight")}: {(step.weight * 100).toFixed(0)}%
+   547→                        </p>
+   548→                      </div>
+   549→                    ))}
+   550→                  </div>
+   551→                </div>
+   552→              )}
+   553→            </div>
+   554→          ) : (
+   555→            <div className="text-center py-8">
+   556→              <p className="text-muted-foreground">{t("noScore")}</p>
+   557→              <Button
+   558→                className="mt-4"
+   559→                size="sm"
+   560→                onClick={handleRecalculate}
+   561→                disabled={isRecalculating}
+   562→              >
+   563→                {isRecalculating && (
+   564→                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+   565→                )}
+   566→                {t("recalculate")}
+   567→              </Button>
+   568→            </div>
+   569→          )}
+   570→        </CardContent>
+   571→      </Card>
+   572→
+   573→      {/* Additional info grid */}
+   574→      <div className="grid gap-4 md:grid-cols-2">
+   575→        {/* Related pages */}
+   576→        <Card>
+   577→          <CardHeader>
+   578→            <CardTitle className="text-base flex items-center gap-2">
+   579→              <Link2 className="h-4 w-4" />
+   580→              {t("relatedPages")}
+   581→            </CardTitle>
+   582→          </CardHeader>
+   583→          <CardContent>
+   584→            {keywordData.keywordPages &&
+   585→            keywordData.keywordPages.length > 0 ? (
+   586→              <Table>
+   587→                <TableHeader>
+   588→                  <TableRow>
+   589→                    <TableHead>{t("page")}</TableHead>
+   590→                    <TableHead className="text-right">
+   591→                      {t("relevance")}
+   592→                    </TableHead>
+   593→                  </TableRow>
+   594→                </TableHeader>
+   595→                <TableBody>
+   596→                  {keywordData.keywordPages.map((kp) => (
+   597→                    <TableRow key={kp.id}>
+   598→                      <TableCell className="max-w-[250px]">
+   599→                        <div>
+   600→                          {kp.page.title && (
+   601→                            <p className="text-sm font-medium truncate">
+   602→                              {kp.page.title}
+   603→                            </p>
+   604→                          )}
+   605→                          <p className="text-xs text-muted-foreground truncate">
+   606→                            {kp.page.url}
+   607→                          </p>
+   608→                        </div>
+   609→                      </TableCell>
+   610→                      <TableCell className="text-right tabular-nums">
+   611→                        {kp.relevance.toFixed(0)}%
+   612→                      </TableCell>
+   613→                    </TableRow>
+   614→                  ))}
+   615→                </TableBody>
+   616→              </Table>
+   617→            ) : (
+   618→              <div className="flex flex-col items-center py-6 text-center">
+   619→                <Link2 className="h-8 w-8 text-muted-foreground/30 mb-2" />
+   620→                <p className="text-sm text-muted-foreground">
+   621→                  {t("noRelatedPages")}
+   622→                </p>
+   623→              </div>
+   624→            )}
+   625→          </CardContent>
+   626→        </Card>
+   627→
+   628→        {/* Associated topics */}
+   629→        <Card>
+   630→          <CardHeader>
+   631→            <CardTitle className="text-base flex items-center gap-2">
+   632→              <BookOpen className="h-4 w-4" />
+   633→              {t("associatedTopics")}
+   634→            </CardTitle>
+   635→          </CardHeader>
+   636→          <CardContent>
+   637→            {keywordData.topicKeywords &&
+   638→            keywordData.topicKeywords.length > 0 ? (
+   639→              <div className="space-y-2">
+   640→                {keywordData.topicKeywords.map((tk) => (
+   641→                  <div
+   642→                    key={tk.id}
+   643→                    className="flex items-center justify-between border rounded-lg p-3"
+   644→                  >
+   645→                    <div className="flex items-center gap-2">
+   646→                      <span className="text-sm font-medium">
+   647→                        {tk.topic.name}
+   648→                      </span>
+   649→                      {tk.topic.isPillar && (
+   650→                        <Badge
+   651→                          variant="default"
+   652→                          className="text-xs bg-emerald-600"
+   653→                        >
+   654→                          Pilaar
+   655→                        </Badge>
+   656→                      )}
+   657→                    </div>
+   658→                    <Button
+   659→                      variant="ghost"
+   660→                      size="sm"
+   661→                      onClick={() =>
+   662→                        router.push(
+   663→                          `/projects/${projectId}/topics?highlight=${tk.topic.id}`
+   664→                        )
+   665→                      }
+   666→                    >
+   667→                      {tCommon("details")}
+   668→                    </Button>
+   669→                  </div>
+   670→                ))}
+   671→              </div>
+   672→            ) : (
+   673→              <div className="flex flex-col items-center py-6 text-center">
+   674→                <BookOpen className="h-8 w-8 text-muted-foreground/30 mb-2" />
+   675→                <p className="text-sm text-muted-foreground">
+   676→                  {t("noAssociatedTopics")}
+   677→                </p>
+   678→              </div>
+   679→            )}
+   680→          </CardContent>
+   681→        </Card>
+   682→      </div>
+   683→
+   684→      {/* Extra info */}
+   685→      <Card>
+   686→        <CardHeader>
+   687→          <CardTitle className="text-base">Aanvullende gegevens</CardTitle>
+   688→        </CardHeader>
+   689→        <CardContent>
+   690→          <div className="grid gap-4 md:grid-cols-3">
+   691→            {keywordData.groupId && (
+   692→              <div>
+   693→                <span className="text-sm text-muted-foreground">Groep:</span>
+   694→                <p className="text-sm font-medium">{keywordData.groupId}</p>
+   695→              </div>
+   696→            )}
+   697→            {keywordData.currentUrl && (
+   698→              <div>
+   699→                <span className="text-sm text-muted-foreground">
+   700→                  Huidige URL:
+   701→                </span>
+   702→                <p className="text-sm font-medium truncate">
+   703→                  {keywordData.currentUrl}
+   704→                </p>
+   705→              </div>
+   706→            )}
+   707→            <div>
+   708→              <span className="text-sm text-muted-foreground">Bron:</span>
+   709→              <p className="text-sm font-medium capitalize">
+   710→                {keywordData.source}
+   711→              </p>
+   712→            </div>
+   713→            {keywordData.tags && keywordData.tags.length > 0 && (
+   714→              <div className="md:col-span-3">
+   715→                <span className="text-sm text-muted-foreground">Tags:</span>
+   716→                <div className="flex flex-wrap gap-1 mt-1">
+   717→                  {keywordData.tags.map((tag, i) => (
+   718→                    <Badge key={i} variant="secondary" className="text-xs">
+   719→                      <Tag className="mr-1 h-3 w-3" />
+   720→                      {tag}
+   721→                    </Badge>
+   722→                  ))}
+   723→                </div>
+   724→              </div>
+   725→            )}
+   726→            {keywordData.notes && (
+   727→              <div className="md:col-span-3">
+   728→                <span className="text-sm text-muted-foreground">Notities:</span>
+   729→                <p className="text-sm mt-1">{keywordData.notes}</p>
+   730→              </div>
+   731→            )}
+   732→          </div>
+   733→        </CardContent>
+   734→      </Card>
+   735→    </motion.div>
+   736→  );
+   737→}
+   738→

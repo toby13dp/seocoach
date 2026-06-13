@@ -1,0 +1,734 @@
+   100→    score = 0.8;
+   101→  }
+   102→
+   103→  let posCount = 0;
+   104→  let negCount = 0;
+   105→
+   106→  // Adjust based on text keywords
+   107→  if (text && text.trim().length > 0) {
+   108→    const negMatches = countKeywordMatches(text, NEGATIVE_KEYWORDS);
+   109→    const posMatches = countKeywordMatches(text, POSITIVE_KEYWORDS);
+   110→
+   111→    negCount = negMatches.count;
+   112→    posCount = posMatches.count;
+   113→
+   114→    score -= negCount * 0.1;
+   115→    score += posCount * 0.1;
+   116→
+   117→    // Cap at [-1, 1]
+   118→    score = Math.max(-1, Math.min(1, score));
+   119→  }
+   120→
+   121→  // Determine sentiment label from score
+   122→  let sentiment: ReviewSentiment;
+   123→
+   124→  if (score <= -0.3) {
+   125→    sentiment = 'NEGATIVE' as ReviewSentiment;
+   126→  } else if (score >= 0.3) {
+   127→    sentiment = 'POSITIVE' as ReviewSentiment;
+   128→  } else if (score >= -0.1 && score <= 0.1) {
+   129→    sentiment = 'NEUTRAL' as ReviewSentiment;
+   130→  } else {
+   131→    sentiment = 'MIXED' as ReviewSentiment;
+   132→  }
+   133→
+   134→  // Override: negative rating but positive text → MIXED
+   135→  if (rating <= 2 && posCount > negCount && negCount > 0) {
+   136→    sentiment = 'MIXED' as ReviewSentiment;
+   137→  }
+   138→
+   139→  // Override: positive rating but negative text → MIXED
+   140→  if (rating >= 4 && negCount > posCount && posCount > 0) {
+   141→    sentiment = 'MIXED' as ReviewSentiment;
+   142→  }
+   143→
+   144→  return { sentiment, score, posCount, negCount };
+   145→}
+   146→
+   147→// ============================================================================
+   148→// Theme Detection
+   149→// ============================================================================
+   150→
+   151→/**
+   152→ * Detect themes from review text using Dutch keyword patterns.
+   153→ * Returns a list of Dutch theme labels.
+   154→ *
+   155→ * @param text - Review text to analyze
+   156→ * @returns Array of detected Dutch theme labels
+   157→ */
+   158→export function detectThemes(text: string): string[] {
+   159→  if (!text || text.trim().length === 0) return [];
+   160→
+   161→  const themes: string[] = [];
+   162→  const normalized = normalizeText(text);
+   163→
+   164→  // Product themes
+   165→  const productMatches = countKeywordMatches(text, PRODUCT_THEME_KEYWORDS);
+   166→  if (productMatches.count >= 2) {
+   167→    themes.push('Productkwaliteit');
+   168→  } else if (productMatches.count >= 1) {
+   169→    // Check which specific product theme
+   170→    if (normalized.includes('levering') || normalized.includes('bezorging')) {
+   171→      themes.push('Levering');
+   172→    } else if (normalized.includes('verpakking')) {
+   173→      themes.push('Verpakking');
+   174→    } else if (normalized.includes('prijs') || normalized.includes('kosten')) {
+   175→      themes.push('Prijs-kwaliteit');
+   176→    } else if (normalized.includes('maat') || normalized.includes('grootte') || normalized.includes('afmeting')) {
+   177→      themes.push('Pasvorm/Maten');
+   178→    } else if (normalized.includes('kleur')) {
+   179→      themes.push('Kleur/Uiterlijk');
+   180→    } else if (normalized.includes('materiaal') || normalized.includes('duurzaam')) {
+   181→      themes.push('Materiaal/Duurzaamheid');
+   182→    } else if (normalized.includes('kapot') || normalized.includes('defect') || normalized.includes('beschadigd')) {
+   183→      themes.push('Productdefect');
+   184→    } else if (normalized.includes('installatie') || normalized.includes('handleiding')) {
+   185→      themes.push('Installatie/Handleiding');
+   186→    } else if (normalized.includes('gebruik') || normalized.includes('bediening')) {
+   187→      themes.push('Gebruiksgemak');
+   188→    } else {
+   189→      themes.push('Product');
+   190→    }
+   191→  }
+   192→
+   193→  // Service themes
+   194→  const serviceMatches = countKeywordMatches(text, SERVICE_THEME_KEYWORDS);
+   195→  if (serviceMatches.count >= 2) {
+   196→    themes.push('Klantenservice');
+   197→  } else if (serviceMatches.count >= 1) {
+   198→    if (normalized.includes('wachttijd') || normalized.includes('trage') || normalized.includes('langzaam')) {
+   199→      themes.push('Wachttijd');
+   200→    } else if (normalized.includes('communicatie') || normalized.includes('reactie') || normalized.includes('antwoord')) {
+   201→      themes.push('Communicatie');
+   202→    } else if (normalized.includes('retour') || normalized.includes('ruilen') || normalized.includes('terugbetaling')) {
+   203→      themes.push('Retourneren');
+   204→    } else if (normalized.includes('garantie')) {
+   205→      themes.push('Garantie');
+   206→    } else if (normalized.includes('medewerker') || normalized.includes('helpdesk')) {
+   207→      themes.push('Medewerkers');
+   208→    } else if (normalized.includes('bestelling')) {
+   209→      themes.push('Bestelproces');
+   210→    } else {
+   211→      themes.push('Service');
+   212→    }
+   213→  }
+   214→
+   215→  // General themes based on keyword presence
+   216→  if (normalized.includes('aanbevelen') || normalized.includes('aanbevolen') || normalized.includes('aanrader')) {
+   217→    if (!themes.includes('Aanbeveling')) themes.push('Aanbeveling');
+   218→  }
+   219→  if (normalized.includes('ervaring') || normalized.includes('ervaringen')) {
+   220→    if (!themes.includes('Ervaring')) themes.push('Ervaring');
+   221→  }
+   222→  if (normalized.includes('herhalingsaankoop') || normalized.includes('opnieuw') || normalized.includes('terugkomen')) {
+   223→    if (!themes.includes('Terugkerende klant')) themes.push('Terugkerende klant');
+   224→  }
+   225→
+   226→  // Limit to top 5 themes
+   227→  return themes.slice(0, 5);
+   228→}
+   229→
+   230→// ============================================================================
+   231→// Complaint Detection
+   232→// ============================================================================
+   233→
+   234→/**
+   235→ * Detect complaints from negative reviews.
+   236→ * Only extracts complaints from reviews with low ratings (1-3) or negative sentiment indicators.
+   237→ *
+   238→ * @param text - Review text
+   239→ * @param rating - Star rating (1-5)
+   240→ * @returns Array of Dutch complaint descriptions
+   241→ */
+   242→export function detectComplaints(text: string, rating: number): string[] {
+   243→  if (!text || text.trim().length === 0) return [];
+   244→  if (rating >= 5) return []; // No complaints from 5-star reviews
+   245→
+   246→  const complaints: string[] = [];
+   247→  const normalized = normalizeText(text);
+   248→
+   249→  // Only look for complaints in lower-rated reviews
+   250→  const negMatches = countKeywordMatches(text, NEGATIVE_KEYWORDS);
+   251→  if (negMatches.count === 0 && rating >= 4) return [];
+   252→
+   253→  // Product complaints
+   254→  if (normalized.includes('kapot') || normalized.includes('defect')) {
+   255→    complaints.push('Product is kapot/defect aangekomen');
+   256→  }
+   257→  if (normalized.includes('beschadigd')) {
+   258→    complaints.push('Product was beschadigd bij levering');
+   259→  }
+   260→  if (normalized.includes('verkeerd') && (normalized.includes('product') || normalized.includes('artikel') || normalized.includes('geleverd'))) {
+   261→    complaints.push('Verkeerd product geleverd');
+   262→  }
+   263→  if (normalized.includes('langzaam') || normalized.includes('trage')) {
+   264→    if (normalized.includes('levering') || normalized.includes('bezorging')) {
+   265→      complaints.push('Trage levering');
+   266→    } else if (normalized.includes('service') || normalized.includes('reactie')) {
+   267→      complaints.push('Trage reactie van klantenservice');
+   268→    } else {
+   269→      complaints.push('Algemene traagheid');
+   270→    }
+   271→  }
+   272→  if (normalized.includes('onvriendelijk')) {
+   273→    complaints.push('Onvriendelijke medewerker(s)');
+   274→  }
+   275→  if (normalized.includes('onbetrouwbaar')) {
+   276→    complaints.push('Onbetrouwbare service of product');
+   277→  }
+   278→  if (normalized.includes('teleurgesteld') || normalized.includes('ontgoocheld')) {
+   279→    complaints.push('Klant is teleurgesteld');
+   280→  }
+   281→  if (normalized.includes('prijs') && (normalized.includes('hoog') || normalized.includes('duur') || normalized.includes('veel'))) {
+   282→    complaints.push('Prijs is te hoog');
+   283→  }
+   284→  if (normalized.includes('maat') && (normalized.includes('niet') || normalized.includes('verkeerd') || normalized.includes('klein') || normalized.includes('groot'))) {
+   285→    complaints.push('Verkeerde maat/voering');
+   286→  }
+   287→  if (normalized.includes('kwaliteit') && (normalized.includes('slecht') || normalized.includes('matig') || normalized.includes('slechte'))) {
+   288→    complaints.push('Onvoldoende productkwaliteit');
+   289→  }
+   290→  if (normalized.includes('retour') || normalized.includes('ruilen')) {
+   291→    complaints.push('Problemen met retourneren/ruilen');
+   292→  }
+   293→  if (normalized.includes('wachttijd') || normalized.includes('wachten')) {
+   294→    complaints.push('Lange wachttijd');
+   295→  }
+   296→  if (normalized.includes('communicatie') && (normalized.includes('slecht') || normalized.includes('ontbrekend') || normalized.includes('geen'))) {
+   297→    complaints.push('Slechte communicatie');
+   298→  }
+   299→  if (normalized.includes('niet') && normalized.includes('geleverd')) {
+   300→    complaints.push('Product niet geleverd');
+   301→  }
+   302→  if (normalized.includes('verpakking') && (normalized.includes('slecht') || normalized.includes('beschadigd'))) {
+   303→    complaints.push('Slechte verpakking');
+   304→  }
+   305→  if (normalized.includes('geen') && normalized.includes('reactie')) {
+   306→    complaints.push('Geen reactie ontvangen');
+   307→  }
+   308→  if (normalized.includes('mislukt') || normalized.includes('fout')) {
+   309→    complaints.push('Bestelling of proces mislukt');
+   310→  }
+   311→
+   312→  // Generic fallback if negative keywords found but no specific complaint
+   313→  if (complaints.length === 0 && negMatches.count > 0 && rating <= 3) {
+   314→    complaints.push('Algemene ontevredenheid');
+   315→  }
+   316→
+   317→  return [...new Set(complaints)].slice(0, 5);
+   318→}
+   319→
+   320→// ============================================================================
+   321→// Compliment Detection
+   322→// ============================================================================
+   323→
+   324→/**
+   325→ * Detect compliments from positive reviews.
+   326→ * Only extracts compliments from reviews with high ratings (3-5) or positive sentiment indicators.
+   327→ *
+   328→ * @param text - Review text
+   329→ * @param rating - Star rating (1-5)
+   330→ * @returns Array of Dutch compliment descriptions
+   331→ */
+   332→export function detectCompliments(text: string, rating: number): string[] {
+   333→  if (!text || text.trim().length === 0) return [];
+   334→  if (rating <= 1) return []; // No compliments from 1-star reviews
+   335→
+   336→  const compliments: string[] = [];
+   337→  const normalized = normalizeText(text);
+   338→
+   339→  // Only look for compliments in higher-rated reviews
+   340→  const posMatches = countKeywordMatches(text, POSITIVE_KEYWORDS);
+   341→  if (posMatches.count === 0 && rating <= 2) return [];
+   342→
+   343→  if (normalized.includes('snel') || normalized.includes('snelle')) {
+   344→    if (normalized.includes('levering') || normalized.includes('bezorging')) {
+   345→      compliments.push('Snelle levering');
+   346→    } else if (normalized.includes('reactie') || normalized.includes('service')) {
+   347→      compliments.push('Snelle reactie/service');
+   348→    } else {
+   349→      compliments.push('Algemene snelheid');
+   350→    }
+   351→  }
+   352→  if (normalized.includes('vriendelijk')) {
+   353→    compliments.push('Vriendelijke medewerker(s)');
+   354→  }
+   355→  if (normalized.includes('kwaliteit') && (normalized.includes('goed') || normalized.includes('uitstekend') || normalized.includes('top') || normalized.includes('prima'))) {
+   356→    compliments.push('Hoge productkwaliteit');
+   357→  }
+   358→  if (normalized.includes('aanbevelen') || normalized.includes('aanbevolen') || normalized.includes('aanrader')) {
+   359→    compliments.push('Klant beveelt aan');
+   360→  }
+   361→  if (normalized.includes('tevreden')) {
+   362→    compliments.push('Klant is tevreden');
+   363→  }
+   364→  if (normalized.includes('professioneel')) {
+   365→    compliments.push('Professionele service');
+   366→  }
+   367→  if (normalized.includes('betrouwbaar')) {
+   368→    compliments.push('Betrouwbare leverancier');
+   369→  }
+   370→  if (normalized.includes('prijs') && (normalized.includes('goed') || normalized.includes('eerlijk') || normalized.includes('concurrerend'))) {
+   371→    compliments.push('Goede prijs-kwaliteitverhouding');
+   372→  }
+   373→  if (normalized.includes('verpakking') && (normalized.includes('goed') || normalized.includes('netjes') || normalized.includes('zorgvuldig'))) {
+   374→    compliments.push('Zorgvuldige verpakking');
+   375→  }
+   376→  if (normalized.includes('communicatie') && (normalized.includes('goed') || normalized.includes('duidelijk') || normalized.includes('helder'))) {
+   377→    compliments.push('Goede communicatie');
+   378→  }
+   379→  if (normalized.includes('behulpzaam') || normalized.includes('help')) {
+   380→    compliments.push('Behulpzame medewerkers');
+   381→  }
+   382→  if (normalized.includes('soepel') || normalized.includes('vlot')) {
+   383→    compliments.push('Vlot verloop van bestelling');
+   384→  }
+   385→  if (normalized.includes('super') || normalized.includes('geweldig') || normalized.includes('fantastisch')) {
+   386→    compliments.push('Buitengewoon positieve ervaring');
+   387→  }
+   388→
+   389→  // Generic fallback
+   390→  if (compliments.length === 0 && posMatches.count > 0 && rating >= 4) {
+   391→    compliments.push('Algemene tevredenheid');
+   392→  }
+   393→
+   394→  return [...new Set(compliments)].slice(0, 5);
+   395→}
+   396→
+   397→// ============================================================================
+   398→// Product Issues Detection
+   399→// ============================================================================
+   400→
+   401→/**
+   402→ * Detect product-specific issues from review text.
+   403→ *
+   404→ * @param text - Review text
+   405→ * @returns Array of Dutch product issue descriptions
+   406→ */
+   407→export function detectProductIssues(text: string): string[] {
+   408→  if (!text || text.trim().length === 0) return [];
+   409→
+   410→  const issues: string[] = [];
+   411→  const normalized = normalizeText(text);
+   412→  const productMatches = countKeywordMatches(text, PRODUCT_THEME_KEYWORDS);
+   413→
+   414→  // Only detect issues if product-related keywords are present
+   415→  if (productMatches.count === 0) return [];
+   416→
+   417→  if (normalized.includes('kapot') || normalized.includes('defect')) {
+   418→    issues.push('Product defect bij aankomst');
+   419→  }
+   420→  if (normalized.includes('beschadigd')) {
+   421→    issues.push('Productschade tijdens transport');
+   422→  }
+   423→  if (normalized.includes('verkeerd') && (normalized.includes('product') || normalized.includes('artikel') || normalized.includes('kleur') || normalized.includes('maat'))) {
+   424→    issues.push('Verkeerd product of variant ontvangen');
+   425→  }
+   426→  if (normalized.includes('kwaliteit') && (normalized.includes('slecht') || normalized.includes('matig') || normalized.includes('teleurgesteld'))) {
+   427→    issues.push('Kwaliteit voldoet niet aan verwachting');
+   428→  }
+   429→  if (normalized.includes('maat') && (normalized.includes('klein') || normalized.includes('groot') || normalized.includes('valt') || normalized.includes('pasvorm'))) {
+   430→    issues.push('Maatvoering klopt niet');
+   431→  }
+   432→  if (normalized.includes('kleur') && (normalized.includes('afwijkt') || normalized.includes('anders') || normalized.includes('niet'))) {
+   433→    issues.push('Kleur wijkt af van afbeelding');
+   434→  }
+   435→  if (normalized.includes('materiaal') && (normalized.includes('goedkoop') || normalized.includes('slecht') || normalized.includes('dun'))) {
+   436→    issues.push('Materiaal van lage kwaliteit');
+   437→  }
+   438→  if (normalized.includes('handleiding') && (normalized.includes('ontbreekt') || normalized.includes('onduidelijk') || normalized.includes('niet'))) {
+   439→    issues.push('Handleiding ontbreekt of is onduidelijk');
+   440→  }
+   441→  if (normalized.includes('installatie') && (normalized.includes('moeilijk') || normalized.includes('probleem') || normalized.includes('lukt niet'))) {
+   442→    issues.push('Installatieproblemen');
+   443→  }
+   444→  if (normalized.includes('gebruik') && (normalized.includes('moeilijk') || normalized.includes('onhandig') || normalized.includes('onintuitief'))) {
+   445→    issues.push('Product is moeilijk in gebruik');
+   446→  }
+   447→  if (normalized.includes('duurzaam') && (normalized.includes('niet') || normalized.includes('slecht'))) {
+   448→    issues.push('Product is niet duurzaam');
+   449→  }
+   450→  if (normalized.includes('onderdelen') && (normalized.includes('ontbreken') || normalized.includes('missen'))) {
+   451→    issues.push('Onderdelen ontbreken');
+   452→  }
+   453→
+   454→  return [...new Set(issues)].slice(0, 5);
+   455→}
+   456→
+   457→// ============================================================================
+   458→// Service Issues Detection
+   459→// ============================================================================
+   460→
+   461→/**
+   462→ * Detect service-specific issues from review text.
+   463→ *
+   464→ * @param text - Review text
+   465→ * @returns Array of Dutch service issue descriptions
+   466→ */
+   467→export function detectServiceIssues(text: string): string[] {
+   468→  if (!text || text.trim().length === 0) return [];
+   469→
+   470→  const issues: string[] = [];
+   471→  const normalized = normalizeText(text);
+   472→  const serviceMatches = countKeywordMatches(text, SERVICE_THEME_KEYWORDS);
+   473→
+   474→  // Only detect issues if service-related keywords are present
+   475→  if (serviceMatches.count === 0) return [];
+   476→
+   477→  if (normalized.includes('langzaam') || normalized.includes('trage')) {
+   478→    if (normalized.includes('levering') || normalized.includes('bezorging')) {
+   479→      issues.push('Levering duurt te lang');
+   480→    } else {
+   481→      issues.push('Trage afhandeling');
+   482→    }
+   483→  }
+   484→  if (normalized.includes('onvriendelijk')) {
+   485→    issues.push('Onvriendelijke behandeling');
+   486→  }
+   487→  if (normalized.includes('wachttijd') || normalized.includes('wachten') || (normalized.includes('lang') && normalized.includes('telefoon'))) {
+   488→    issues.push('Lange wachttijd bij klantenservice');
+   489→  }
+   490→  if (normalized.includes('geen') && (normalized.includes('reactie') || normalized.includes('antwoord') || normalized.includes('terugbellen'))) {
+   491→    issues.push('Geen reactie op vragen of klachten');
+   492→  }
+   493→  if (normalized.includes('communicatie') && (normalized.includes('slecht') || normalized.includes('onduidelijk') || normalized.includes('ontbreekt'))) {
+   494→    issues.push('Slechte of ontbrekende communicatie');
+   495→  }
+   496→  if (normalized.includes('retour') && (normalized.includes('moeilijk') || normalized.includes('probleem') || normalized.includes('niet'))) {
+   497→    issues.push('Retourneren is moeilijk of onmogelijk');
+   498→  }
+   499→  if (normalized.includes('terugbetaling') && (normalized.includes('niet') || normalized.includes('lang') || normalized.includes('uitblijft'))) {
+   500→    issues.push('Terugbetaling ontbreekt of duurt lang');
+   501→  }
+   502→  if (normalized.includes('garantie') && (normalized.includes('niet') || normalized.includes('weigert') || normalized.includes('probleem'))) {
+   503→    issues.push('Garantie wordt niet nagekomen');
+   504→  }
+   505→  if (normalized.includes('bestelling') && (normalized.includes('fout') || normalized.includes('verkeerd') || normalized.includes('mislukt'))) {
+   506→    issues.push('Fouten in bestelling');
+   507→  }
+   508→  if (normalized.includes('onbereikbaar') || (normalized.includes('bereikbaarheid') && normalized.includes('slecht'))) {
+   509→    issues.push('Klantenservice onbereikbaar');
+   510→  }
+   511→  if (normalized.includes('oplossing') && (normalized.includes('niet') || normalized.includes('geen'))) {
+   512→    issues.push('Probleem wordt niet opgelost');
+   513→  }
+   514→
+   515→  return [...new Set(issues)].slice(0, 5);
+   516→}
+   517→
+   518→// ============================================================================
+   519→// FAQ Opportunities
+   520→// ============================================================================
+   521→
+   522→/**
+   523→ * Generate FAQ content opportunities from detected themes and complaints.
+   524→ * These suggest FAQ entries that could address common customer questions.
+   525→ *
+   526→ * @param themes - Detected Dutch theme labels
+   527→ * @param complaints - Detected Dutch complaints
+   528→ * @returns Array of Dutch FAQ opportunity descriptions
+   529→ */
+   530→export function generateFAQOpportunities(
+   531→  themes: string[],
+   532→  complaints: string[]
+   533→): string[] {
+   534→  const opportunities: string[] = [];
+   535→
+   536→  // Map themes to FAQ opportunities
+   537→  for (const theme of themes) {
+   538→    switch (theme) {
+   539→      case 'Levering':
+   540→        opportunities.push('FAQ: Hoe lang duurt de levering?');
+   541→        break;
+   542→      case 'Retourneren':
+   543→        opportunities.push('FAQ: Hoe kan ik een product retourneren?');
+   544→        break;
+   545→      case 'Prijs-kwaliteit':
+   546→        opportunities.push('FAQ: Waarom zijn jullie prijzen zo? / Wat krijg ik voor mijn geld?');
+   547→        break;
+   548→      case 'Pasvorm/Maten':
+   549→        opportunities.push('FAQ: Hoe kies ik de juiste maat?');
+   550→        break;
+   551→      case 'Kleur/Uiterlijk':
+   552→        opportunities.push('FAQ: Komt de kleur overeen met de foto?');
+   553→        break;
+   554→      case 'Materiaal/Duurzaamheid':
+   555→        opportunities.push('FAQ: Van welk materiaal is dit product gemaakt?');
+   556→        break;
+   557→      case 'Productdefect':
+   558→        opportunities.push('FAQ: Wat moet ik doen als mijn product defect is?');
+   559→        break;
+   560→      case 'Installatie/Handleiding':
+   561→        opportunities.push('FAQ: Hoe installeer ik het product?');
+   562→        break;
+   563→      case 'Gebruiksgemak':
+   564→        opportunities.push('FAQ: Hoe gebruik ik het product?');
+   565→        break;
+   566→      case 'Wachttijd':
+   567→        opportunities.push('FAQ: Hoe lang duurt het voordat ik reactie krijg?');
+   568→        break;
+   569→      case 'Communicatie':
+   570→        opportunities.push('FAQ: Hoe kan ik jullie bereiken?');
+   571→        break;
+   572→      case 'Garantie':
+   573→        opportunities.push('FAQ: Wat is het garantiebeleid?');
+   574→        break;
+   575→      case 'Medewerkers':
+   576→        opportunities.push('FAQ: Hoe kan ik een klacht indienen over een medewerker?');
+   577→        break;
+   578→      case 'Bestelproces':
+   579→        opportunities.push('FAQ: Hoe plaats ik een bestelling?');
+   580→        break;
+   581→    }
+   582→  }
+   583→
+   584→  // Map specific complaints to FAQ opportunities
+   585→  for (const complaint of complaints) {
+   586→    if (complaint.includes('retourneren') && !opportunities.some(o => o.includes('retourneren'))) {
+   587→      opportunities.push('FAQ: Wat is het retourbeleid?');
+   588→    }
+   589→    if (complaint.includes('levering') && !opportunities.some(o => o.includes('levering'))) {
+   590→      opportunities.push('FAQ: Wat zijn de levertijden?');
+   591→    }
+   592→    if (complaint.includes('reactie') && !opportunities.some(o => o.includes('reactie') || o.includes('bereiken'))) {
+   593→      opportunities.push('FAQ: Hoe snel reageren jullie op vragen?');
+   594→    }
+   595→    if (complaint.includes('kapot') && !opportunities.some(o => o.includes('defect'))) {
+   596→      opportunities.push('FAQ: Wat als mijn product kapot is?');
+   597→    }
+   598→    if (complaint.includes('maat') && !opportunities.some(o => o.includes('maat'))) {
+   599→      opportunities.push('FAQ: Hoe kies ik de juiste maat?');
+   600→    }
+   601→    if (complaint.includes('prijs') && !opportunities.some(o => o.includes('prijs'))) {
+   602→      opportunities.push('FAQ: Waarom zijn de prijzen zo?');
+   603→    }
+   604→  }
+   605→
+   606→  return [...new Set(opportunities)].slice(0, 8);
+   607→}
+   608→
+   609→// ============================================================================
+   610→// Content Opportunities
+   611→// ============================================================================
+   612→
+   613→/**
+   614→ * Generate content marketing opportunities from detected themes and complaints.
+   615→ * These suggest blog posts, guides, or landing pages that could address
+   616→ * common customer concerns and improve SEO.
+   617→ *
+   618→ * @param themes - Detected Dutch theme labels
+   619→ * @param complaints - Detected Dutch complaints
+   620→ * @returns Array of Dutch content opportunity descriptions
+   621→ */
+   622→export function generateContentOpportunities(
+   623→  themes: string[],
+   624→  complaints: string[]
+   625→): string[] {
+   626→  const opportunities: string[] = [];
+   627→
+   628→  // Map themes to content opportunities
+   629→  for (const theme of themes) {
+   630→    switch (theme) {
+   631→      case 'Productkwaliteit':
+   632→        opportunities.push('Blog: Hoe wij productkwaliteit waarborgen');
+   633→        break;
+   634→      case 'Levering':
+   635→        opportunities.push('Landingspagina: Leveringsinformatie en verzendopties');
+   636→        break;
+   637→      case 'Verpakking':
+   638→        opportunities.push('Blog: Duurzame verpakking – onze aanpak');
+   639→        break;
+   640→      case 'Prijs-kwaliteit':
+   641→        opportunities.push('Blog: Waarom kwaliteit zijn prijs waard is');
+   642→        break;
+   643→      case 'Pasvorm/Maten':
+   644→        opportunities.push('Gids: Maattabel en advies voor de juiste keuze');
+   645→        break;
+   646→      case 'Materiaal/Duurzaamheid':
+   647→        opportunities.push('Blog: Duurzaamheid van onze materialen');
+   648→        break;
+   649→      case 'Klantenservice':
+   650→        opportunities.push('Landingspagina: Onze klantenservice – altijd bereikbaar');
+   651→        break;
+   652→      case 'Wachttijd':
+   653→        opportunities.push('Blog: Hoe wij snelle reactietijden garanderen');
+   654→        break;
+   655→      case 'Communicatie':
+   656→        opportunities.push('Blog: Transparante communicatie als prioriteit');
+   657→        break;
+   658→      case 'Retourneren':
+   659→        opportunities.push('Gids: Probleemloos retourneren in 3 stappen');
+   660→        break;
+   661→      case 'Garantie':
+   662→        opportunities.push('Landingspagina: Onze garantievoorwaarden');
+   663→        break;
+   664→      case 'Aanbeveling':
+   665→        opportunities.push('Testimonials pagina: Wat klanten zeggen');
+   666→        break;
+   667→    }
+   668→  }
+   669→
+   670→  // Map specific complaints to content opportunities
+   671→  for (const complaint of complaints) {
+   672→    if (complaint.includes('trage levering') && !opportunities.some(o => o.includes('Leveringsinformatie'))) {
+   673→      opportunities.push('Landingspagina: Actuele levertijden en verzendopties');
+   674→    }
+   675→    if (complaint.includes('onvriendelijk') && !opportunities.some(o => o.includes('klantenservice'))) {
+   676→      opportunities.push('Blog: Onze klantenservice-training en waarden');
+   677→    }
+   678→    if (complaint.includes('teleurgesteld') && !opportunities.some(o => o.includes('kwaliteit'))) {
+   679→      opportunities.push('Blog: Hoe wij klanttevredenheid verbeteren');
+   680→    }
+   681→    if (complaint.includes('retourneren') && !opportunities.some(o => o.includes('retourneren'))) {
+   682→      opportunities.push('Gids: Retourneren en ruilen – alles wat u moet weten');
+   683→    }
+   684→    if (complaint.includes('wachttijd') && !opportunities.some(o => o.includes('reactietijd'))) {
+   685→      opportunities.push('Blog: Hoe wij onze reactietijden verkorten');
+   686→    }
+   687→  }
+   688→
+   689→  return [...new Set(opportunities)].slice(0, 8);
+   690→}
+   691→
+   692→// ============================================================================
+   693→// Trust Signals
+   694→// ============================================================================
+   695→
+   696→/**
+   697→ * Identify trust signals from a review that can be used in marketing.
+   698→ * These are indicators that the business is reliable and trustworthy.
+   699→ *
+   700→ * @param review - Review data with rating, optional content, and verification status
+   701→ * @returns Array of Dutch trust signal descriptions
+   702→ */
+   703→export function identifyTrustSignals(review: {
+   704→  rating: number;
+   705→  content?: string;
+   706→  isVerified?: boolean;
+   707→}): string[] {
+   708→  const signals: string[] = [];
+   709→
+   710→  // Verified purchase is a strong trust signal
+   711→  if (review.isVerified) {
+   712→    signals.push('Geverifieerde aankoop');
+   713→  }
+   714→
+   715→  if (!review.content || review.content.trim().length === 0) {
+   716→    // Rating-only: limited trust signals
+   717→    if (review.rating >= 4) {
+   718→      signals.push('Hoge beoordeling zonder opmerkingen');
+   719→    }
+   720→    return signals;
+   721→  }
+   722→
+   723→  const normalized = normalizeText(review.content);
+   724→
+   725→  // Specific trust signals from text
+   726→  if (normalized.includes('aanbevelen') || normalized.includes('aanbevolen') || normalized.includes('aanrader')) {
+   727→    signals.push('Klant beveelt expliciet aan');
+   728→  }
+   729→  if (normalized.includes('tweede') || normalized.includes('opnieuw') || normalized.includes('weer') || normalized.includes('terugkomen') || normalized.includes('vaste klant')) {
+   730→    signals.push('Terugkerende klant');
+   731→  }
+   732→  if ((normalized.includes('snelle') || normalized.includes('snel')) && (normalized.includes('levering') || normalized.includes('bezorging'))) {
+   733→    signals.push('Snelle levering bevestigd door klant');
+   734→  }
+   735→  if (normalized.includes('kwaliteit') && (normalized.includes('goed') || normalized.includes('uitstekend') || normalized.includes('top'))) {
+   736→    signals.push('Kwaliteit bevestigd door klant');
+   737→  }
+   738→  if (normalized.includes('professioneel')) {
+   739→    signals.push('Professionele service bevestigd');
+   740→  }
+   741→  if (normalized.includes('betrouwbaar')) {
+   742→    signals.push('Betrouwbaarheid bevestigd door klant');
+   743→  }
+   744→  if (normalized.includes('tevreden')) {
+   745→    signals.push('Uitgesproken tevredenheid');
+   746→  }
+   747→  if (normalized.includes('precies') || normalized.includes('exact') || normalized.includes('zoals beschreven') || normalized.includes('volgens verwachting')) {
+   748→    signals.push('Product komt overeen met beschrijving');
+   749→  }
+   750→  if (normalized.includes('voordelig') || normalized.includes('goedkoper') || (normalized.includes('prijs') && normalized.includes('kwaliteit'))) {
+   751→    signals.push('Goede prijs-kwaliteit bevestigd');
+   752→  }
+   753→  if (normalized.includes('vriendelijk')) {
+   754→    signals.push('Vriendelijke service bevestigd');
+   755→  }
+   756→
+   757→  // General high-rating trust signal
+   758→  if (review.rating >= 5 && signals.length === 0) {
+   759→    signals.push('Maximumscore ontvangen');
+   760→  }
+   761→
+   762→  return [...new Set(signals)].slice(0, 6);
+   763→}
+   764→
+   765→// ============================================================================
+   766→// Main Analysis Function
+   767→// ============================================================================
+   768→
+   769→/**
+   770→ * Perform complete sentiment analysis on a review.
+   771→ * Combines all sub-analyses into a single result.
+   772→ *
+   773→ * @param review - Review data with rating, optional content and title
+   774→ * @returns Complete sentiment analysis result
+   775→ *
+   776→ * @example
+   777→ * ```typescript
+   778→ * const result = analyzeSentiment({
+   779→ *   rating: 2,
+   780→ *   content: 'Levering was erg langzaam, product is kapot aangekomen. Teleurgesteld.',
+   781→ *   title: 'Niet tevreden',
+   782→ * });
+   783→ * // result.sentiment === 'NEGATIVE'
+   784→ * // result.complaints includes 'Trage levering', 'Product is kapot/defect aangekomen'
+   785→ * // result.themes includes 'Levering', 'Productdefect'
+   786→ * ```
+   787→ */
+   788→export function analyzeSentiment(review: {
+   789→  rating: number;
+   790→  content?: string;
+   791→  title?: string;
+   792→}): SentimentAnalysisResult {
+   793→  // Combine title and content for text analysis
+   794→  const fullText = [review.title, review.content].filter(Boolean).join(' ');
+   795→
+   796→  // Classify overall sentiment
+   797→  const { sentiment, score } = classifySentimentInternal(review.rating, fullText);
+   798→
+   799→  // Detect themes
+   800→  const themes = detectThemes(fullText);
+   801→
+   802→  // Detect complaints and compliments
+   803→  const complaints = detectComplaints(fullText, review.rating);
+   804→  const compliments = detectCompliments(fullText, review.rating);
+   805→
+   806→  // Detect product and service issues
+   807→  const productIssues = detectProductIssues(fullText);
+   808→  const serviceIssues = detectServiceIssues(fullText);
+   809→
+   810→  // Generate opportunities
+   811→  const faqOpportunities = generateFAQOpportunities(themes, complaints);
+   812→  const contentOpportunities = generateContentOpportunities(themes, complaints);
+   813→
+   814→  // Identify trust signals
+   815→  const trustSignals = identifyTrustSignals({
+   816→    rating: review.rating,
+   817→    content: review.content,
+   818→  });
+   819→
+   820→  return {
+   821→    sentiment,
+   822→    score: Math.round(score * 100) / 100, // Round to 2 decimals
+   823→    themes,
+   824→    complaints,
+   825→    compliments,
+   826→    productIssues,
+   827→    serviceIssues,
+   828→    faqOpportunities,
+   829→    contentOpportunities,
+   830→    trustSignals,
+   831→  };
+   832→}
+   833→

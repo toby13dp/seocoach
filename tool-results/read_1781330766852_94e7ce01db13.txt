@@ -1,0 +1,858 @@
+     1→     1→"use client";
+     2→     2→
+     3→     3→import { useState, useEffect, use, useCallback } from "react";
+     4→     4→import { useRouter } from "@/i18n/routing";
+     5→     5→import { useTranslations } from "@/i18n/client";
+     6→     6→import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+     7→     7→import { Button } from "@/components/ui/button";
+     8→     8→import { Badge } from "@/components/ui/badge";
+     9→     9→import { Input } from "@/components/ui/input";
+    10→    10→import { Label } from "@/components/ui/label";
+    11→    11→import { Textarea } from "@/components/ui/textarea";
+    12→    12→import {
+    13→    13→  Table,
+    14→    14→  TableBody,
+    15→    15→  TableCell,
+    16→    16→  TableHead,
+    17→    17→  TableHeader,
+    18→    18→  TableRow,
+    19→    19→} from "@/components/ui/table";
+    20→    20→import {
+    21→    21→  Select,
+    22→    22→  SelectContent,
+    23→    23→  SelectItem,
+    24→    24→  SelectTrigger,
+    25→    25→  SelectValue,
+    26→    26→} from "@/components/ui/select";
+    27→    27→import {
+    28→    28→  Dialog,
+    29→    29→  DialogContent,
+    30→    30→  DialogDescription,
+    31→    31→  DialogFooter,
+    32→    32→  DialogHeader,
+    33→    33→  DialogTitle,
+    34→    34→  DialogTrigger,
+    35→    35→} from "@/components/ui/dialog";
+    36→    36→import { motion } from "framer-motion";
+    37→    37→import {
+    38→    38→  ArrowLeft,
+    39→    39→  Plus,
+    40→    40→  Upload,
+    41→    41→  Search,
+    42→    42→  Loader2,
+    43→    43→  Tag,
+    44→    44→  ArrowUpDown,
+    45→    45→  ChevronLeft,
+    46→    46→  ChevronRight,
+    47→    47→  Sparkles,
+    48→    48→  FileUp,
+    49→    49→} from "lucide-react";
+    50→    50→import { toast } from "sonner";
+    51→    51→
+    52→    52→// --- Types ---
+    53→    53→interface KeywordEntry {
+    54→    54→  id: string;
+    55→    55→  keyword: string;
+    56→    56→  searchIntent: string;
+    57→    57→  funnelStage: string;
+    58→    58→  searchVolume: number | null;
+    59→    59→  difficulty: number | null;
+    60→    60→  cpc: number | null;
+    61→    61→  currentRanking: number | null;
+    62→    62→  currentUrl: string | null;
+    63→    63→  groupId: string | null;
+    64→    64→  tags: string | null;
+    65→    65→  notes: string | null;
+    66→    66→  source: string;
+    67→    67→  createdAt: string;
+    68→    68→  updatedAt: string;
+    69→    69→  opportunity: {
+    70→    70→    totalScore: number;
+    71→    71→    volumeScore: number;
+    72→    72→    difficultyScore: number;
+    73→    73→    relevanceScore: number;
+    74→    74→    currentRankScore: number;
+    75→    75→    intentScore: number;
+    76→    76→    funnelScore: number;
+    77→    77→    competitionScore: number;
+    78→    78→    calculatedAt: string;
+    79→    79→  } | null;
+    80→    80→}
+    81→    81→
+    82→    82→interface KeywordMeta {
+    83→    83→  page: number;
+    84→    84→  limit: number;
+    85→    85→  total: number;
+    86→    86→  totalPages: number;
+    87→    87→}
+    88→    88→
+    89→    89→// --- Badge helpers ---
+    90→    90→const intentBadgeStyle = (intent: string) => {
+    91→    91→  switch (intent) {
+    92→    92→    case "INFORMATIONAL":
+    93→    93→      return "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300";
+    94→    94→    case "NAVIGATIONAL":
+    95→    95→      return "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300";
+    96→    96→    case "TRANSACTIONAL":
+    97→    97→      return "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-300";
+    98→    98→    case "COMMERCIAL_INVESTIGATION":
+    99→    99→      return "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300";
+   100→   100→    case "LOCAL":
+   101→   101→      return "bg-teal-100 text-teal-800 dark:bg-teal-900 dark:text-teal-300";
+   102→   102→    case "BRANDED":
+   103→   103→      return "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-300";
+   104→   104→    default:
+   105→   105→      return "bg-muted text-muted-foreground";
+   106→   106→  }
+   107→   107→};
+   108→   108→
+   109→   109→const funnelBadgeStyle = (stage: string) => {
+   110→   110→  switch (stage) {
+   111→   111→    case "AWARENESS":
+   112→   112→      return "bg-sky-100 text-sky-800 dark:bg-sky-900 dark:text-sky-300";
+   113→   113→    case "CONSIDERATION":
+   114→   114→      return "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300";
+   115→   115→    case "DECISION":
+   116→   116→      return "bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-300";
+   117→   117→    case "RETENTION":
+   118→   118→      return "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-300";
+   119→   119→    default:
+   120→   120→      return "bg-muted text-muted-foreground";
+   121→   121→  }
+   122→   122→};
+   123→   123→
+   124→   124→const intentLabel = (intent: string, t: (k: string) => string) => {
+   125→   125→  switch (intent) {
+   126→   126→    case "INFORMATIONAL": return t("informational");
+   127→   127→    case "NAVIGATIONAL": return t("navigational");
+   128→   128→    case "TRANSACTIONAL": return t("transactional");
+   129→   129→    case "COMMERCIAL_INVESTIGATION": return t("commercialInvestigation");
+   130→   130→    case "LOCAL": return t("local");
+   131→   131→    case "BRANDED": return t("branded");
+   132→   132→    default: return t("unknown");
+   133→   133→  }
+   134→   134→};
+   135→   135→
+   136→   136→const funnelLabel = (stage: string, t: (k: string) => string) => {
+   137→   137→  switch (stage) {
+   138→   138→    case "AWARENESS": return t("awareness");
+   139→   139→    case "CONSIDERATION": return t("consideration");
+   140→   140→    case "DECISION": return t("decision");
+   141→   141→    case "RETENTION": return t("retention");
+   142→   142→    default: return t("unknown");
+   143→   143→  }
+   144→   144→};
+   145→   145→
+   146→   146→const scoreColor = (score: number) => {
+   147→   147→  if (score >= 70) return "text-emerald-600 dark:text-emerald-400";
+   148→   148→  if (score >= 40) return "text-yellow-600 dark:text-yellow-400";
+   149→   149→  return "text-red-600 dark:text-red-400";
+   150→   150→};
+   151→   151→
+   152→   152→export default function KeywordsPage({
+   153→   153→  params,
+   154→   154→}: {
+   155→   155→  params: Promise<{ id: string }>;
+   156→   156→}) {
+   157→   157→  const { id: projectId } = use(params);
+   158→   158→  const router = useRouter();
+   159→   159→  const t = useTranslations("keywords");
+   160→   160→  const tCommon = useTranslations("common");
+   161→   161→
+   162→   162→  // State
+   163→   163→  const [keywords, setKeywords] = useState<KeywordEntry[]>([]);
+   164→   164→  const [meta, setMeta] = useState<KeywordMeta>({
+   165→   165→    page: 1,
+   166→   166→    limit: 20,
+   167→   167→    total: 0,
+   168→   168→    totalPages: 0,
+   169→   169→  });
+   170→   170→  const [isLoading, setIsLoading] = useState(true);
+   171→   171→  const [classifyingIds, setClassifyingIds] = useState<Set<string>>(new Set());
+   172→   172→
+   173→   173→  // Filters
+   174→   174→  const [searchText, setSearchText] = useState("");
+   175→   175→  const [filterIntent, setFilterIntent] = useState<string>("ALL");
+   176→   176→  const [filterFunnel, setFilterFunnel] = useState<string>("ALL");
+   177→   177→  const [filterGroup, setFilterGroup] = useState<string>("ALL");
+   178→   178→  const [minVolume, setMinVolume] = useState("");
+   179→   179→  const [maxDifficulty, setMaxDifficulty] = useState("");
+   180→   180→
+   181→   181→  // Sorting
+   182→   182→  const [sortField, setSortField] = useState("createdAt");
+   183→   183→  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
+   184→   184→
+   185→   185→  // Dialogs
+   186→   186→  const [addDialogOpen, setAddDialogOpen] = useState(false);
+   187→   187→  const [importDialogOpen, setImportDialogOpen] = useState(false);
+   188→   188→  const [isCreating, setIsCreating] = useState(false);
+   189→   189→  const [isImporting, setIsImporting] = useState(false);
+   190→   190→
+   191→   191→  // Form state
+   192→   192→  const [addForm, setAddForm] = useState({
+   193→   193→    keyword: "",
+   194→   194→    searchVolume: "",
+   195→   195→    difficulty: "",
+   196→   196→    cpc: "",
+   197→   197→    currentRanking: "",
+   198→   198→    currentUrl: "",
+   199→   199→    groupId: "",
+   200→   200→    tags: "",
+   201→   201→    notes: "",
+   202→   202→  });
+   203→   203→
+   204→   204→  const [importFile, setImportFile] = useState<File | null>(null);
+   205→   205→
+   206→   206→  // Groups for filter
+   207→   207→  const [groups, setGroups] = useState<string[]>([]);
+   208→   208→
+   209→   209→  // Fetch keywords
+   210→   210→  const fetchKeywords = useCallback(
+   211→   211→    async (page = 1) => {
+   212→   212→      setIsLoading(true);
+   213→   213→      try {
+   214→   214→        const params = new URLSearchParams();
+   215→   215→        params.set("page", String(page));
+   216→   216→        params.set("limit", "20");
+   217→   217→        params.set("sort", sortField);
+   218→   218→        params.set("order", sortOrder);
+   219→   219→        if (searchText) params.set("search", searchText);
+   220→   220→        if (filterIntent !== "ALL") params.set("searchIntent", filterIntent);
+   221→   221→        if (filterFunnel !== "ALL") params.set("funnelStage", filterFunnel);
+   222→   222→        if (filterGroup !== "ALL") params.set("groupId", filterGroup);
+   223→   223→        if (minVolume) params.set("minVolume", minVolume);
+   224→   224→        if (maxDifficulty) params.set("maxDifficulty", maxDifficulty);
+   225→   225→
+   226→   226→        const res = await fetch(
+   227→   227→          `/api/projects/${projectId}/keywords?${params.toString()}`
+   228→   228→        );
+   229→   229→        if (res.ok) {
+   230→   230→          const data = await res.json();
+   231→   231→          setKeywords(data.data || []);
+   232→   232→          setMeta(data.meta || { page: 1, limit: 20, total: 0, totalPages: 0 });
+   233→   233→        }
+   234→   234→      } catch {
+   235→   235→        // silently fail
+   236→   236→      } finally {
+   237→   237→        setIsLoading(false);
+   238→   238→      }
+   239→   239→    },
+   240→   240→    [projectId, sortField, sortOrder, searchText, filterIntent, filterFunnel, filterGroup, minVolume, maxDifficulty]
+   241→   241→  );
+   242→   242→
+   243→   243→  // Fetch groups
+   244→   244→  useEffect(() => {
+   245→   245→    async function fetchGroups() {
+   246→   246→      try {
+   247→   247→        const res = await fetch(
+   248→   248→          `/api/projects/${projectId}/keywords?limit=1000`
+   249→   249→        );
+   250→   250→        if (res.ok) {
+   251→   251→          const data = await res.json();
+   252→   252→          const uniqueGroups = Array.from(
+   253→   253→            new Set(
+   254→   254→              (data.data || [])
+   255→   255→                .map((k: KeywordEntry) => k.groupId)
+   256→   256→                .filter(Boolean) as string[]
+   257→   257→            )
+   258→   258→          );
+   259→   259→          setGroups(uniqueGroups);
+   260→   260→        }
+   261→   261→      } catch {
+   262→   262→        // silently fail
+   263→   263→      }
+   264→   264→    }
+   265→   265→    fetchGroups();
+   266→   266→  }, [projectId]);
+   267→   267→
+   268→   268→  useEffect(() => {
+   269→   269→    fetchKeywords(1);
+   270→   270→  }, [fetchKeywords]);
+   271→   271→
+   272→   272→  // Handle sort
+   273→   273→  const handleSort = (field: string) => {
+   274→   274→    if (sortField === field) {
+   275→   275→      setSortOrder(sortOrder === "asc" ? "desc" : "asc");
+   276→   276→    } else {
+   277→   277→      setSortField(field);
+   278→   278→      setSortOrder("asc");
+   279→   279→    }
+   280→   280→  };
+   281→   281→
+   282→   282→  // Add keyword
+   283→   283→  const handleAddKeyword = async () => {
+   284→   284→    if (!addForm.keyword.trim()) return;
+   285→   285→    setIsCreating(true);
+   286→   286→    try {
+   287→   287→      const res = await fetch(`/api/projects/${projectId}/keywords`, {
+   288→   288→        method: "POST",
+   289→   289→        headers: { "Content-Type": "application/json" },
+   290→   290→        body: JSON.stringify({
+   291→   291→          keyword: addForm.keyword.trim(),
+   292→   292→          searchVolume: addForm.searchVolume ? parseInt(addForm.searchVolume) : undefined,
+   293→   293→          difficulty: addForm.difficulty ? parseFloat(addForm.difficulty) : undefined,
+   294→   294→          cpc: addForm.cpc ? parseFloat(addForm.cpc) : undefined,
+   295→   295→          currentRanking: addForm.currentRanking ? parseInt(addForm.currentRanking) : undefined,
+   296→   296→          currentUrl: addForm.currentUrl || undefined,
+   297→   297→          groupId: addForm.groupId || undefined,
+   298→   298→          tags: addForm.tags ? addForm.tags.split(",").map((t) => t.trim()) : undefined,
+   299→   299→          notes: addForm.notes || undefined,
+   300→   300→        }),
+   301→   301→      });
+   302→   302→      if (res.ok) {
+   303→   303→        toast.success(t("createSuccess"));
+   304→   304→        setAddForm({ keyword: "", searchVolume: "", difficulty: "", cpc: "", currentRanking: "", currentUrl: "", groupId: "", tags: "", notes: "" });
+   305→   305→        setAddDialogOpen(false);
+   306→   306→        fetchKeywords(meta.page);
+   307→   307→      } else {
+   308→   308→        toast.error(t("createError"));
+   309→   309→      }
+   310→   310→    } catch {
+   311→   311→      toast.error(t("createError"));
+   312→   312→    } finally {
+   313→   313→      setIsCreating(false);
+   314→   314→    }
+   315→   315→  };
+   316→   316→
+   317→   317→  // Import CSV
+   318→   318→  const handleImport = async () => {
+   319→   319→    if (!importFile) return;
+   320→   320→    setIsImporting(true);
+   321→   321→    try {
+   322→   322→      const formData = new FormData();
+   323→   323→      formData.append("file", importFile);
+   324→   324→      const res = await fetch(`/api/projects/${projectId}/keywords/import`, {
+   325→   325→        method: "POST",
+   326→   326→        body: formData,
+   327→   327→      });
+   328→   328→      if (res.ok) {
+   329→   329→        const data = await res.json();
+   330→   330→        const count = data.data?.imported || 0;
+   331→   331→        toast.success(t("importSuccess", { count }));
+   332→   332→        setImportFile(null);
+   333→   333→        setImportDialogOpen(false);
+   334→   334→        fetchKeywords(1);
+   335→   335→      } else {
+   336→   336→        toast.error(t("importError"));
+   337→   337→      }
+   338→   338→    } catch {
+   339→   339→      toast.error(t("importError"));
+   340→   340→    } finally {
+   341→   341→      setIsImporting(false);
+   342→   342→    }
+   343→   343→  };
+   344→   344→
+   345→   345→  // Classify intent
+   346→   346→  const handleClassify = async (keywordId: string, useAI = false) => {
+   347→   347→    setClassifyingIds((prev) => new Set(prev).add(keywordId));
+   348→   348→    try {
+   349→   349→      const res = await fetch(
+   350→   350→        `/api/projects/${projectId}/keywords/${keywordId}/classify`,
+   351→   351→        {
+   352→   352→          method: "POST",
+   353→   353→          headers: { "Content-Type": "application/json" },
+   354→   354→          body: JSON.stringify({ useAI }),
+   355→   355→        }
+   356→   356→      );
+   357→   357→      if (res.ok) {
+   358→   358→        toast.success(t("classifySuccess"));
+   359→   359→        fetchKeywords(meta.page);
+   360→   360→      } else {
+   361→   361→        toast.error(t("classifyError"));
+   362→   362→      }
+   363→   363→    } catch {
+   364→   364→      toast.error(t("classifyError"));
+   365→   365→    } finally {
+   366→   366→      setClassifyingIds((prev) => {
+   367→   367→        const next = new Set(prev);
+   368→   368→        next.delete(keywordId);
+   369→   369→        return next;
+   370→   370→      });
+   371→   371→    }
+   372→   372→  };
+   373→   373→
+   374→   374→  // Navigate to keyword detail
+   375→   375→  const goToKeywordDetail = (keywordId: string) => {
+   376→   376→    router.push(`/projects/${projectId}/keywords/${keywordId}`);
+   377→   377→  };
+   378→   378→
+   379→   379→  const SortIcon = ({ field }: { field: string }) => (
+   380→   380→    <ArrowUpDown
+   381→   381→      className={`ml-1 h-3 w-3 inline ${
+   382→   382→        sortField === field ? "opacity-100" : "opacity-30"
+   383→   383→      }`}
+   384→   384→    />
+   385→   385→  );
+   386→   386→
+   387→   387→  return (
+   388→   388→    <motion.div
+   389→   389→      initial={{ opacity: 0 }}
+   390→   390→      animate={{ opacity: 1 }}
+   391→   391→      className="p-4 md:p-6 space-y-6"
+   392→   392→    >
+   393→   393→      {/* Header */}
+   394→   394→      <div className="flex items-center gap-4">
+   395→   395→        <Button
+   396→   396→          variant="ghost"
+   397→   397→          size="icon"
+   398→   398→          onClick={() => router.push(`/projects/${projectId}`)}
+   399→   399→        >
+   400→   400→          <ArrowLeft className="h-4 w-4" />
+   401→   401→        </Button>
+   402→   402→        <div className="flex-1">
+   403→   403→          <h1 className="text-2xl font-bold tracking-tight">{t("title")}</h1>
+   404→   404→          <p className="text-sm text-muted-foreground">
+   405→   405→            {meta.total} trefwoord{meta.total !== 1 ? "en" : ""}
+   406→   406→          </p>
+   407→   407→        </div>
+   408→   408→        <div className="flex items-center gap-2">
+   409→   409→          <Dialog open={importDialogOpen} onOpenChange={setImportDialogOpen}>
+   410→   410→            <DialogTrigger asChild>
+   411→   411→              <Button variant="outline" size="sm">
+   412→   412→                <Upload className="mr-2 h-4 w-4" />
+   413→   413→                {t("importCsv")}
+   414→   414→              </Button>
+   415→   415→            </DialogTrigger>
+   416→   416→            <DialogContent>
+   417→   417→              <DialogHeader>
+   418→   418→                <DialogTitle>{t("importTitle")}</DialogTitle>
+   419→   419→                <DialogDescription>{t("importDesc")}</DialogDescription>
+   420→   420→              </DialogHeader>
+   421→   421→              <div className="space-y-4">
+   422→   422→                <div className="border-2 border-dashed rounded-lg p-6 text-center">
+   423→   423→                  <FileUp className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
+   424→   424→                  <Label htmlFor="csv-upload" className="cursor-pointer">
+   425→   425→                    <span className="text-sm text-primary underline">
+   426→   426→                      {importFile ? importFile.name : "Kies een CSV-bestand"}
+   427→   427→                    </span>
+   428→   428→                    <Input
+   429→   429→                      id="csv-upload"
+   430→   430→                      type="file"
+   431→   431→                      accept=".csv"
+   432→   432→                      className="hidden"
+   433→   433→                      onChange={(e) =>
+   434→   434→                        setImportFile(e.target.files?.[0] || null)
+   435→   435→                      }
+   436→   436→                    />
+   437→   437→                  </Label>
+   438→   438→                </div>
+   439→   439→              </div>
+   440→   440→              <DialogFooter>
+   441→   441→                <Button
+   442→   442→                  variant="outline"
+   443→   443→                  onClick={() => setImportDialogOpen(false)}
+   444→   444→                >
+   445→   445→                  {tCommon("cancel")}
+   446→   446→                </Button>
+   447→   447→                <Button
+   448→   448→                  onClick={handleImport}
+   449→   449→                  disabled={!importFile || isImporting}
+   450→   450→                >
+   451→   451→                  {isImporting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+   452→   452→                  {tCommon("import")}
+   453→   453→                </Button>
+   454→   454→              </DialogFooter>
+   455→   455→            </DialogContent>
+   456→   456→          </Dialog>
+   457→   457→
+   458→   458→          <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
+   459→   459→            <DialogTrigger asChild>
+   460→   460→              <Button size="sm">
+   461→   461→                <Plus className="mr-2 h-4 w-4" />
+   462→   462→                {t("addKeyword")}
+   463→   463→              </Button>
+   464→   464→            </DialogTrigger>
+   465→   465→            <DialogContent className="max-w-lg">
+   466→   466→              <DialogHeader>
+   467→   467→                <DialogTitle>{t("addTitle")}</DialogTitle>
+   468→   468→                <DialogDescription>{t("addDesc")}</DialogDescription>
+   469→   469→              </DialogHeader>
+   470→   470→              <div className="space-y-4">
+   471→   471→                <div className="space-y-2">
+   472→   472→                  <Label>{t("keywordLabel")}</Label>
+   473→   473→                  <Input
+   474→   474→                    value={addForm.keyword}
+   475→   475→                    onChange={(e) =>
+   476→   476→                      setAddForm({ ...addForm, keyword: e.target.value })
+   477→   477→                    }
+   478→   478→                    placeholder={t("keywordPlaceholder")}
+   479→   479→                  />
+   480→   480→                </div>
+   481→   481→                <div className="grid grid-cols-2 gap-4">
+   482→   482→                  <div className="space-y-2">
+   483→   483→                    <Label>{t("volumeLabel")}</Label>
+   484→   484→                    <Input
+   485→   485→                      type="number"
+   486→   486→                      value={addForm.searchVolume}
+   487→   487→                      onChange={(e) =>
+   488→   488→                        setAddForm({ ...addForm, searchVolume: e.target.value })
+   489→   489→                      }
+   490→   490→                      placeholder="1000"
+   491→   491→                    />
+   492→   492→                  </div>
+   493→   493→                  <div className="space-y-2">
+   494→   494→                    <Label>{t("difficultyLabel")}</Label>
+   495→   495→                    <Input
+   496→   496→                      type="number"
+   497→   497→                      value={addForm.difficulty}
+   498→   498→                      onChange={(e) =>
+   499→   499→                        setAddForm({ ...addForm, difficulty: e.target.value })
+   500→   500→                      }
+   501→   501→                      placeholder="50"
+   502→   502→                    />
+   503→   503→                  </div>
+   504→   504→                </div>
+   505→   505→                <div className="grid grid-cols-2 gap-4">
+   506→   506→                  <div className="space-y-2">
+   507→   507→                    <Label>{t("cpcLabel")}</Label>
+   508→   508→                    <Input
+   509→   509→                      type="number"
+   510→   510→                      step="0.01"
+   511→   511→                      value={addForm.cpc}
+   512→   512→                      onChange={(e) =>
+   513→   513→                        setAddForm({ ...addForm, cpc: e.target.value })
+   514→   514→                      }
+   515→   515→                      placeholder="1.50"
+   516→   516→                    />
+   517→   517→                  </div>
+   518→   518→                  <div className="space-y-2">
+   519→   519→                    <Label>{t("positionLabel")}</Label>
+   520→   520→                    <Input
+   521→   521→                      type="number"
+   522→   522→                      value={addForm.currentRanking}
+   523→   523→                      onChange={(e) =>
+   524→   524→                        setAddForm({ ...addForm, currentRanking: e.target.value })
+   525→   525→                      }
+   526→   526→                      placeholder="15"
+   527→   527→                    />
+   528→   528→                  </div>
+   529→   529→                </div>
+   530→   530→                <div className="space-y-2">
+   531→   531→                  <Label>{t("urlLabel")}</Label>
+   532→   532→                  <Input
+   533→   533→                    value={addForm.currentUrl}
+   534→   534→                    onChange={(e) =>
+   535→   535→                      setAddForm({ ...addForm, currentUrl: e.target.value })
+   536→   536→                    }
+   537→   537→                    placeholder="https://voorbeeld.nl/pagina"
+   538→   538→                  />
+   539→   539→                </div>
+   540→   540→                <div className="grid grid-cols-2 gap-4">
+   541→   541→                  <div className="space-y-2">
+   542→   542→                    <Label>{t("groupLabel")}</Label>
+   543→   543→                    <Input
+   544→   544→                      value={addForm.groupId}
+   545→   545→                      onChange={(e) =>
+   546→   546→                        setAddForm({ ...addForm, groupId: e.target.value })
+   547→   547→                      }
+   548→   548→                      placeholder="groep-naam"
+   549→   549→                    />
+   550→   550→                  </div>
+   551→   551→                  <div className="space-y-2">
+   552→   552→                    <Label>{t("tagsLabel")}</Label>
+   553→   553→                    <Input
+   554→   554→                      value={addForm.tags}
+   555→   555→                      onChange={(e) =>
+   556→   556→                        setAddForm({ ...addForm, tags: e.target.value })
+   557→   557→                      }
+   558→   558→                      placeholder="seo, tools"
+   559→   559→                    />
+   560→   560→                  </div>
+   561→   561→                </div>
+   562→   562→                <div className="space-y-2">
+   563→   563→                  <Label>{t("notesLabel")}</Label>
+   564→   564→                  <Textarea
+   565→   565→                    value={addForm.notes}
+   566→   566→                    onChange={(e) =>
+   567→   567→                      setAddForm({ ...addForm, notes: e.target.value })
+   568→   568→                    }
+   569→   569→                    rows={2}
+   570→   570→                  />
+   571→   571→                </div>
+   572→   572→              </div>
+   573→   573→              <DialogFooter>
+   574→   574→                <Button
+   575→   575→                  variant="outline"
+   576→   576→                  onClick={() => setAddDialogOpen(false)}
+   577→   577→                >
+   578→   578→                  {tCommon("cancel")}
+   579→   579→                </Button>
+   580→   580→                <Button
+   581→   581→                  onClick={handleAddKeyword}
+   582→   582→                  disabled={!addForm.keyword.trim() || isCreating}
+   583→   583→                >
+   584→   584→                  {isCreating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+   585→   585→                  {tCommon("create")}
+   586→   586→                </Button>
+   587→   587→              </DialogFooter>
+   588→   588→            </DialogContent>
+   589→   589→          </Dialog>
+   590→   590→        </div>
+   591→   591→      </div>
+   592→   592→
+   593→   593→      {/* Filters */}
+   594→   594→      <Card>
+   595→   595→        <CardContent className="pt-4 pb-4">
+   596→   596→          <div className="flex flex-wrap gap-3 items-end">
+   597→   597→            <div className="flex-1 min-w-[200px]">
+   598→   598→              <div className="relative">
+   599→   599→                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+   600→   600→                <Input
+   601→   601→                  className="pl-9"
+   602→   602→                  placeholder={t("searchPlaceholder")}
+   603→   603→                  value={searchText}
+   604→   604→                  onChange={(e) => setSearchText(e.target.value)}
+   605→   605→                />
+   606→   606→              </div>
+   607→   607→            </div>
+   608→   608→            <Select value={filterIntent} onValueChange={setFilterIntent}>
+   609→   609→              <SelectTrigger className="w-[180px]">
+   610→   610→                <SelectValue placeholder={t("filterIntent")} />
+   611→   611→              </SelectTrigger>
+   612→   612→              <SelectContent>
+   613→   613→                <SelectItem value="ALL">{tCommon("all")}</SelectItem>
+   614→   614→                <SelectItem value="INFORMATIONAL">{t("informational")}</SelectItem>
+   615→   615→                <SelectItem value="NAVIGATIONAL">{t("navigational")}</SelectItem>
+   616→   616→                <SelectItem value="TRANSACTIONAL">{t("transactional")}</SelectItem>
+   617→   617→                <SelectItem value="COMMERCIAL_INVESTIGATION">{t("commercialInvestigation")}</SelectItem>
+   618→   618→                <SelectItem value="LOCAL">{t("local")}</SelectItem>
+   619→   619→                <SelectItem value="BRANDED">{t("branded")}</SelectItem>
+   620→   620→              </SelectContent>
+   621→   621→            </Select>
+   622→   622→            <Select value={filterFunnel} onValueChange={setFilterFunnel}>
+   623→   623→              <SelectTrigger className="w-[160px]">
+   624→   624→                <SelectValue placeholder={t("filterFunnel")} />
+   625→   625→              </SelectTrigger>
+   626→   626→              <SelectContent>
+   627→   627→                <SelectItem value="ALL">{tCommon("all")}</SelectItem>
+   628→   628→                <SelectItem value="AWARENESS">{t("awareness")}</SelectItem>
+   629→   629→                <SelectItem value="CONSIDERATION">{t("consideration")}</SelectItem>
+   630→   630→                <SelectItem value="DECISION">{t("decision")}</SelectItem>
+   631→   631→                <SelectItem value="RETENTION">{t("retention")}</SelectItem>
+   632→   632→              </SelectContent>
+   633→   633→            </Select>
+   634→   634→            {groups.length > 0 && (
+   635→   635→              <Select value={filterGroup} onValueChange={setFilterGroup}>
+   636→   636→                <SelectTrigger className="w-[160px]">
+   637→   637→                  <SelectValue placeholder={t("filterGroup")} />
+   638→   638→                </SelectTrigger>
+   639→   639→                <SelectContent>
+   640→   640→                  <SelectItem value="ALL">{tCommon("all")}</SelectItem>
+   641→   641→                  {groups.map((g) => (
+   642→   642→                    <SelectItem key={g} value={g}>
+   643→   643→                      {g}
+   644→   644→                    </SelectItem>
+   645→   645→                  ))}
+   646→   646→                </SelectContent>
+   647→   647→              </Select>
+   648→   648→            )}
+   649→   649→            <Input
+   650→   650→              type="number"
+   651→   651→              className="w-[120px]"
+   652→   652→              placeholder={t("minVolume")}
+   653→   653→              value={minVolume}
+   654→   654→              onChange={(e) => setMinVolume(e.target.value)}
+   655→   655→            />
+   656→   656→            <Input
+   657→   657→              type="number"
+   658→   658→              className="w-[140px]"
+   659→   659→              placeholder={t("maxDifficulty")}
+   660→   660→              value={maxDifficulty}
+   661→   661→              onChange={(e) => setMaxDifficulty(e.target.value)}
+   662→   662→            />
+   663→   663→          </div>
+   664→   664→        </CardContent>
+   665→   665→      </Card>
+   666→   666→
+   667→   667→      {/* Keywords table */}
+   668→   668→      <Card>
+   669→   669→        <CardContent className="p-0">
+   670→   670→          {isLoading ? (
+   671→   671→            <div className="flex items-center justify-center py-12">
+   672→   672→              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+   673→   673→            </div>
+   674→   674→          ) : keywords.length === 0 ? (
+   675→   675→            <div className="flex flex-col items-center justify-center py-12 text-center">
+   676→   676→              <Tag className="h-12 w-12 text-muted-foreground/30 mb-3" />
+   677→   677→              <h3 className="text-lg font-medium">{t("emptyTitle")}</h3>
+   678→   678→              <p className="text-sm text-muted-foreground mt-1 max-w-md">
+   679→   679→                {t("emptyDesc")}
+   680→   680→              </p>
+   681→   681→              <Button
+   682→   682→                className="mt-4"
+   683→   683→                onClick={() => setAddDialogOpen(true)}
+   684→   684→              >
+   685→   685→                <Plus className="mr-2 h-4 w-4" />
+   686→   686→                {t("addKeyword")}
+   687→   687→              </Button>
+   688→   688→            </div>
+   689→   689→          ) : (
+   690→   690→            <>
+   691→   691→              <div className="overflow-x-auto">
+   692→   692→                <Table>
+   693→   693→                  <TableHeader>
+   694→   694→                    <TableRow>
+   695→   695→                      <TableHead
+   696→   696→                        className="cursor-pointer select-none"
+   697→   697→                        onClick={() => handleSort("keyword")}
+   698→   698→                      >
+   699→   699→                        {t("keyword")} <SortIcon field="keyword" />
+   700→   700→                      </TableHead>
+   701→   701→                      <TableHead>{t("searchIntent")}</TableHead>
+   702→   702→                      <TableHead>{t("funnelStage")}</TableHead>
+   703→   703→                      <TableHead
+   704→   704→                        className="cursor-pointer select-none text-right"
+   705→   705→                        onClick={() => handleSort("searchVolume")}
+   706→   706→                      >
+   707→   707→                        {t("volume")} <SortIcon field="searchVolume" />
+   708→   708→                      </TableHead>
+   709→   709→                      <TableHead
+   710→   710→                        className="cursor-pointer select-none text-right"
+   711→   711→                        onClick={() => handleSort("difficulty")}
+   712→   712→                      >
+   713→   713→                        {t("difficulty")} <SortIcon field="difficulty" />
+   714→   714→                      </TableHead>
+   715→   715→                      <TableHead
+   716→   716→                        className="cursor-pointer select-none text-right"
+   717→   717→                        onClick={() => handleSort("cpc")}
+   718→   718→                      >
+   719→   719→                        {t("cpc")} <SortIcon field="cpc" />
+   720→   720→                      </TableHead>
+   721→   721→                      <TableHead
+   722→   722→                        className="cursor-pointer select-none text-right"
+   723→   723→                        onClick={() => handleSort("currentRanking")}
+   724→   724→                      >
+   725→   725→                        {t("position")} <SortIcon field="currentRanking" />
+   726→   726→                      </TableHead>
+   727→   727→                      <TableHead className="text-right">
+   728→   728→                        {t("opportunityScore")}
+   729→   729→                      </TableHead>
+   730→   730→                      <TableHead className="w-[100px]" />
+   731→   731→                    </TableRow>
+   732→   732→                  </TableHeader>
+   733→   733→                  <TableBody>
+   734→   734→                    {keywords.map((kw) => (
+   735→   735→                      <TableRow
+   736→   736→                        key={kw.id}
+   737→   737→                        className="cursor-pointer hover:bg-muted/50"
+   738→   738→                        onClick={() => goToKeywordDetail(kw.id)}
+   739→   739→                      >
+   740→   740→                        <TableCell className="font-medium max-w-[200px] truncate">
+   741→   741→                          {kw.keyword}
+   742→   742→                        </TableCell>
+   743→   743→                        <TableCell>
+   744→   744→                          <Badge
+   745→   745→                            variant="outline"
+   746→   746→                            className={`text-xs ${intentBadgeStyle(kw.searchIntent)}`}
+   747→   747→                          >
+   748→   748→                            {intentLabel(kw.searchIntent, t)}
+   749→   749→                          </Badge>
+   750→   750→                        </TableCell>
+   751→   751→                        <TableCell>
+   752→   752→                          <Badge
+   753→   753→                            variant="outline"
+   754→   754→                            className={`text-xs ${funnelBadgeStyle(kw.funnelStage)}`}
+   755→   755→                          >
+   756→   756→                            {funnelLabel(kw.funnelStage, t)}
+   757→   757→                          </Badge>
+   758→   758→                        </TableCell>
+   759→   759→                        <TableCell className="text-right tabular-nums">
+   760→   760→                          {kw.searchVolume?.toLocaleString("nl-NL") ?? "-"}
+   761→   761→                        </TableCell>
+   762→   762→                        <TableCell className="text-right tabular-nums">
+   763→   763→                          {kw.difficulty != null ? (
+   764→   764→                            <span
+   765→   765→                              className={
+   766→   766→                                kw.difficulty > 60
+   767→   767→                                  ? "text-red-600"
+   768→   768→                                  : kw.difficulty > 30
+   769→   769→                                  ? "text-yellow-600"
+   770→   770→                                  : "text-emerald-600"
+   771→   771→                              }
+   772→   772→                            >
+   773→   773→                              {kw.difficulty.toFixed(0)}
+   774→   774→                            </span>
+   775→   775→                          ) : (
+   776→   776→                            "-"
+   777→   777→                          )}
+   778→   778→                        </TableCell>
+   779→   779→                        <TableCell className="text-right tabular-nums">
+   780→   780→                          {kw.cpc != null
+   781→   781→                            ? `€${kw.cpc.toFixed(2)}`
+   782→   782→                            : "-"}
+   783→   783→                        </TableCell>
+   784→   784→                        <TableCell className="text-right tabular-nums">
+   785→   785→                          {kw.currentRanking ?? "-"}
+   786→   786→                        </TableCell>
+   787→   787→                        <TableCell className="text-right">
+   788→   788→                          {kw.opportunity ? (
+   789→   789→                            <span
+   790→   790→                              className={`font-semibold tabular-nums ${scoreColor(kw.opportunity.totalScore)}`}
+   791→   791→                            >
+   792→   792→                              {kw.opportunity.totalScore.toFixed(0)}
+   793→   793→                            </span>
+   794→   794→                          ) : (
+   795→   795→                            <span className="text-muted-foreground text-xs">
+   796→   796→                              {t("noScore")}
+   797→   797→                            </span>
+   798→   798→                          )}
+   799→   799→                        </TableCell>
+   800→   800→                        <TableCell>
+   801→   801→                          <Button
+   802→   802→                            variant="ghost"
+   803→   803→                            size="sm"
+   804→   804→                            onClick={(e) => {
+   805→   805→                              e.stopPropagation();
+   806→   806→                              handleClassify(kw.id);
+   807→   807→                            }}
+   808→   808→                            disabled={classifyingIds.has(kw.id)}
+   809→   809→                            title={t("classify")}
+   810→   810→                          >
+   811→   811→                            {classifyingIds.has(kw.id) ? (
+   812→   812→                              <Loader2 className="h-4 w-4 animate-spin" />
+   813→   813→                            ) : (
+   814→   814→                              <Sparkles className="h-4 w-4" />
+   815→   815→                            )}
+   816→   816→                          </Button>
+   817→   817→                        </TableCell>
+   818→   818→                      </TableRow>
+   819→   819→                    ))}
+   820→   820→                  </TableBody>
+   821→   821→                </Table>
+   822→   822→              </div>
+   823→   823→
+   824→   824→              {/* Pagination */}
+   825→   825→              {meta.totalPages > 1 && (
+   826→   826→                <div className="flex items-center justify-between px-4 py-3 border-t">
+   827→   827→                  <p className="text-sm text-muted-foreground">
+   828→   828→                    {meta.total} trefwoord{meta.total !== 1 ? "en" : ""} &middot;{" "}
+   829→   829→                    {tCommon("page")} {meta.page} van {meta.totalPages}
+   830→   830→                  </p>
+   831→   831→                  <div className="flex items-center gap-2">
+   832→   832→                    <Button
+   833→   833→                      variant="outline"
+   834→   834→                      size="sm"
+   835→   835→                      onClick={() => fetchKeywords(meta.page - 1)}
+   836→   836→                      disabled={meta.page <= 1}
+   837→   837→                    >
+   838→   838→                      <ChevronLeft className="h-4 w-4" />
+   839→   839→                    </Button>
+   840→   840→                    <Button
+   841→   841→                      variant="outline"
+   842→   842→                      size="sm"
+   843→   843→                      onClick={() => fetchKeywords(meta.page + 1)}
+   844→   844→                      disabled={meta.page >= meta.totalPages}
+   845→   845→                    >
+   846→   846→                      <ChevronRight className="h-4 w-4" />
+   847→   847→                    </Button>
+   848→   848→                  </div>
+   849→   849→                </div>
+   850→   850→              )}
+   851→   851→            </>
+   852→   852→          )}
+   853→   853→        </CardContent>
+   854→   854→      </Card>
+   855→   855→    </motion.div>
+   856→   856→  );
+   857→   857→}
+   858→   858→

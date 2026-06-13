@@ -1,5 +1,5 @@
 // ============================================================================
-// Prisma Schema — AI-Driven SEO Automation Platform (Phase 1-6)
+// Prisma Schema — AI-Driven SEO Automation Platform (Phase 1-7)
 // ============================================================================
 
 generator client {
@@ -409,20 +409,56 @@ model Location {
   id         String    @id @default(uuid())
   projectId  String
   name       String
+  // NAP (Name, Address, Phone)
   address    String?
   city       String?
   postalCode String?
-  country    String?
+  country    String?   @default("NL")
   phone      String?
   email      String?
+  website    String?
+  // Geo
   latitude   Float?
   longitude  Float?
-  deletedAt  DateTime?
+  // Opening hours (JSON: {"mon":{"open":"09:00","close":"18:00"},...})
+  openingHours  String?  // JSON object
+  // Google Business Profile
+  gbpAccountId String?
+  gbpLocationId String?
+  gbpStatus    String?  @default("not_connected") // not_connected, connected, error
+  // Local SEO metadata
+  businessType  String?  // e.g. "restaurant", "dentist"
+  serviceArea   String?  // JSON array of served areas
+  localKeywordIds String?  // JSON array of local keyword IDs
+  // Health & scoring
+  napConsistency Float?  @default(0) // 0-100 NAP consistency score
+  localHealthScore Float? @default(0) // 0-100 overall local health
+  // Review aggregate
+  avgRating    Float?   @default(0)
+  reviewCount  Int      @default(0)
+  // Structured data
+  localStructuredData String? // JSON-LD for LocalBusiness
+  // Metadata
+  notes       String?  // Dutch notes
+  deletedAt   DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
+  localKeywords    LocalKeyword[]
+  landingPages     LocalLandingPage[]
+  localCompetitors LocalCompetitor[]
+  healthChecks     LocationHealthCheck[]
+  reviews          Review[]
+  googleBusinessProfile GoogleBusinessProfile?
+
   @@index([projectId])
   @@index([deletedAt])
+  @@index([city])
+  @@index([napConsistency])
+  @@index([localHealthScore])
+  @@index([avgRating])
   @@map("locations")
 }
 
@@ -2376,4 +2412,313 @@ model OutreachCampaign {
   @@index([status])
   @@index([deletedAt])
   @@map("outreach_campaigns")
+}
+
+// ============================================================================
+// Phase 7: Enums — Local SEO & Reputation
+// ============================================================================
+
+enum LocalHealthCategory {
+  NAP_CONSISTENCY
+  OPENING_HOURS
+  LOCAL_STRUCTURED_DATA
+  LANDING_PAGES
+  LOCAL_KEYWORDS
+  REVIEWS
+  GOOGLE_BUSINESS_PROFILE
+  LOCAL_LINKS
+  PHOTOS
+  SERVICE_AREAS
+}
+
+enum LocalHealthStatus {
+  PASSING
+  NEEDS_IMPROVEMENT
+  FAILING
+  NOT_CHECKED
+}
+
+enum ReviewSource {
+  GOOGLE
+  WOOCOMMERCE
+  TRUSTPILOT
+  CSV_IMPORT
+  SURVEY
+  SUPPORT_FEEDBACK
+  MANUAL
+}
+
+enum ReviewSentiment {
+  POSITIVE
+  NEUTRAL
+  NEGATIVE
+  MIXED
+}
+
+enum ReviewResponseStatus {
+  DRAFT
+  PENDING_APPROVAL
+  APPROVED
+  REJECTED
+  PUBLISHED
+}
+
+enum LocalKeywordIntent {
+  NAVIGATIONAL
+  INFORMATIONAL
+  TRANSACTIONAL
+  COMMERCIAL
+  LOCAL
+}
+
+// ============================================================================
+// Phase 7: Local SEO Models
+// ============================================================================
+
+model LocalKeyword {
+  id          String             @id @default(uuid())
+  projectId   String
+  locationId  String
+  keyword     String
+  intent      LocalKeywordIntent @default(LOCAL)
+  searchVolume Int?
+  difficulty  Float?
+  currentRank Int?
+  targetRank  Int?
+  url         String?
+  isActive    Boolean            @default(true)
+  deletedAt   DateTime?
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  location Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([locationId])
+  @@index([keyword])
+  @@index([intent])
+  @@index([currentRank])
+  @@index([deletedAt])
+  @@map("local_keywords")
+}
+
+model LocalLandingPage {
+  id          String   @id @default(uuid())
+  projectId   String
+  locationId  String
+  url         String
+  title       String?
+  metaDescription String?
+  h1          String?
+  wordCount   Int      @default(0)
+  hasStructuredData Boolean @default(false)
+  hasNAP      Boolean  @default(false)
+  hasMap      Boolean  @default(false)
+  hasOpeningHours Boolean @default(false)
+  qualityScore Float  @default(0) // 0-100
+  issues      String?  // JSON array of Dutch issues
+  deletedAt   DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  location Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([locationId])
+  @@index([url])
+  @@index([qualityScore])
+  @@index([deletedAt])
+  @@map("local_landing_pages")
+}
+
+model LocalCompetitor {
+  id          String   @id @default(uuid())
+  projectId   String
+  locationId  String
+  name        String
+  address     String?
+  city        String?
+  postalCode  String?
+  website     String?
+  avgRating   Float?
+  reviewCount Int      @default(0)
+  distance    Float?   // km from our location
+  strengths   String?  // JSON array of Dutch strengths
+  weaknesses  String?  // JSON array of Dutch weaknesses
+  notes       String?  // Dutch notes
+  isActive    Boolean  @default(true)
+  deletedAt   DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  location Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([locationId])
+  @@index([isActive])
+  @@index([deletedAt])
+  @@map("local_competitors")
+}
+
+model LocationHealthCheck {
+  id           String             @id @default(uuid())
+  projectId    String
+  locationId   String
+  category     LocalHealthCategory
+  status       LocalHealthStatus  @default(NOT_CHECKED)
+  score        Float              @default(0) // 0-100
+  // Dutch findings
+  title        String             // Dutch title
+  description  String             // Dutch description
+  recommendation String?          // Dutch recommendation
+  evidence     String?            // JSON evidence
+  // Metadata
+  checkedAt    DateTime           @default(now())
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+
+  location Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([locationId])
+  @@index([category])
+  @@index([status])
+  @@index([score])
+  @@map("location_health_checks")
+}
+
+model GoogleBusinessProfile {
+  id              String   @id @default(uuid())
+  projectId       String
+  locationId      String   @unique
+  // GBP connection
+  accountId       String?
+  locationIdGBP   String?
+  accessToken     String?  // encrypted
+  refreshToken    String?  // encrypted
+  // Profile data
+  businessName    String?
+  primaryCategory String?
+  categories      String?  // JSON array
+  websiteUrl      String?
+  // Review stats from GBP
+  avgRating       Float?
+  totalReviews    Int      @default(0)
+  lastSyncAt      DateTime?
+  syncStatus      String   @default("not_connected") // not_connected, connected, syncing, error
+  syncError       String?  // Dutch error description
+  // Metadata
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  location Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([syncStatus])
+  @@map("google_business_profiles")
+}
+
+model RankImport {
+  id          String   @id @default(uuid())
+  projectId   String
+  locationId  String?
+  importBatch String   @unique
+  source      String   // "csv_import", "gbp_adapter", "manual"
+  rowCount    Int      @default(0)
+  successCount Int     @default(0)
+  errorCount  Int      @default(0)
+  errors      String?  // JSON array of error messages
+  importedAt  DateTime @default(now())
+  createdAt   DateTime @default(now())
+
+  @@index([projectId])
+  @@index([locationId])
+  @@index([importBatch])
+  @@index([source])
+  @@map("rank_imports")
+}
+
+// ============================================================================
+// Phase 7: Reviews & Reputation Models
+// ============================================================================
+
+model Review {
+  id            String         @id @default(uuid())
+  projectId     String
+  locationId    String?
+  // Source
+  source        ReviewSource
+  externalId    String?        // ID from external platform
+  sourceUrl     String?        // Link to original review
+  // Reviewer
+  authorName    String?
+  authorAvatar  String?
+  isVerified    Boolean        @default(false)
+  // Content
+  rating        Float          @default(0) // 1-5
+  title         String?
+  content       String?
+  // Analysis
+  sentiment     ReviewSentiment @default(NEUTRAL)
+  sentimentScore Float?        // -1 to 1
+  themes        String?        // JSON array of detected themes
+  complaints    String?        // JSON array of Dutch complaints
+  compliments   String?        // JSON array of Dutch compliments
+  productIssues String?        // JSON array of Dutch product issues
+  serviceIssues String?        // JSON array of Dutch service issues
+  faqOpportunities String?     // JSON array of Dutch FAQ opportunities
+  contentOpportunities String? // JSON array of Dutch content opportunities
+  trustSignals  String?        // JSON array of Dutch trust signals
+  // Metadata
+  language      String?        @default("nl")
+  reviewDate    DateTime?
+  responseDraftId String?      @unique // FK to ReviewResponse
+  importBatch   String?
+  deletedAt     DateTime?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  location        Location?           @relation(fields: [locationId], references: [id], onDelete: SetNull)
+  responseDraft   ReviewResponse?     @relation("ReviewResponseDraft", fields: [responseDraftId], references: [id], onDelete: SetNull)
+  responses       ReviewResponse[]    @relation("ReviewResponses")
+
+  @@index([projectId])
+  @@index([locationId])
+  @@index([source])
+  @@index([rating])
+  @@index([sentiment])
+  @@index([reviewDate])
+  @@index([externalId])
+  @@index([importBatch])
+  @@index([deletedAt])
+  @@map("reviews")
+}
+
+model ReviewResponse {
+  id          String             @id @default(uuid())
+  projectId   String
+  reviewId    String
+  // Response content
+  content     String             // Dutch response text
+  // Approval workflow
+  status      ReviewResponseStatus @default(DRAFT)
+  submittedBy String?
+  reviewedBy  String?
+  reviewedAt  DateTime?
+  rejectionReason String?        // Dutch reason for rejection
+  // Publishing
+  publishedAt DateTime?
+  publishError String?           // Dutch error description
+  // Metadata
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  review      Review  @relation("ReviewResponses", fields: [reviewId], references: [id], onDelete: Cascade)
+  draftForReview Review? @relation("ReviewResponseDraft")
+
+  @@index([projectId])
+  @@index([reviewId])
+  @@index([status])
+  @@index([submittedBy])
+  @@map("review_responses")
 }
