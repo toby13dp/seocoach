@@ -3,7 +3,7 @@
   "appName": "SEOCoach",
   "webDir": "out",
   "server": {
-    "url": "https://seocoach.vercel.app",
+    "url": "https://seocoach-cyan.vercel.app",
     "cleartext": true
   },
   "android": {
