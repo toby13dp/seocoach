@@ -14,7 +14,7 @@ export async function GET(
     }
 
     const { clientId } = await params;
-    const client = await db.client.findUnique({
+    const client = await db.client.findFirst({
       where: { id: clientId, deletedAt: null },
       include: {
         organization: {
@@ -35,7 +35,7 @@ export async function GET(
     }
 
     // Verify tenant access
-    const membership = await db.organizationMembership.findUnique({
+    const membership = await db.organizationMembership.findFirst({
       where: {
         userId_organizationId: {
           userId: user.id,
@@ -69,7 +69,7 @@ export async function PUT(
     }
 
     const { clientId } = await params;
-    const client = await db.client.findUnique({
+    const client = await db.client.findFirst({
       where: { id: clientId, deletedAt: null },
     });
 
@@ -81,7 +81,7 @@ export async function PUT(
     }
 
     // Verify tenant access
-    const membership = await db.organizationMembership.findUnique({
+    const membership = await db.organizationMembership.findFirst({
       where: {
         userId_organizationId: {
           userId: user.id,
@@ -139,7 +139,7 @@ export async function DELETE(
     }
 
     const { clientId } = await params;
-    const client = await db.client.findUnique({
+    const client = await db.client.findFirst({
       where: { id: clientId, deletedAt: null },
     });
 
@@ -151,7 +151,7 @@ export async function DELETE(
     }
 
     // Verify tenant access
-    const membership = await db.organizationMembership.findUnique({
+    const membership = await db.organizationMembership.findFirst({
       where: {
         userId_organizationId: {
           userId: user.id,

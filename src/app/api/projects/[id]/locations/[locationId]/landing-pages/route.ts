@@ -82,7 +82,7 @@ export async function POST(
     }
 
     // Fetch location data for quality analysis
-    const location = await db.location.findUnique({
+    const location = await db.location.findFirst({
       where: { id: locationId, deletedAt: null },
     });
 

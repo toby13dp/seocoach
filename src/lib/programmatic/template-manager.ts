@@ -334,7 +334,7 @@ export async function updateTemplate(
     }
   >
 ) {
-  const existing = await db.programmaticTemplate.findUnique({
+  const existing = await db.programmaticTemplate.findFirst({
     where: { id: templateId },
   });
 
@@ -382,7 +382,7 @@ export async function updateTemplate(
  * @returns Template with pages, or null if not found
  */
 export async function getTemplate(templateId: string): Promise<TemplateWithPages | null> {
-  const template = await db.programmaticTemplate.findUnique({
+  const template = await db.programmaticTemplate.findFirst({
     where: { id: templateId },
     include: {
       pages: {
@@ -490,7 +490,7 @@ export async function listTemplates(projectId: string): Promise<TemplateSummary[
  * @throws Error if the template is not found
  */
 export async function deleteTemplate(templateId: string): Promise<void> {
-  const existing = await db.programmaticTemplate.findUnique({
+  const existing = await db.programmaticTemplate.findFirst({
     where: { id: templateId },
   });
 
@@ -518,7 +518,7 @@ export async function addDataRows(
   templateId: string,
   rows: ProgrammaticDataRows
 ): Promise<void> {
-  const template = await db.programmaticTemplate.findUnique({
+  const template = await db.programmaticTemplate.findFirst({
     where: { id: templateId },
   });
 
@@ -624,7 +624,7 @@ export async function previewTemplate(
   templateId: string,
   rowIndex: number
 ): Promise<TemplatePreview> {
-  const template = await db.programmaticTemplate.findUnique({
+  const template = await db.programmaticTemplate.findFirst({
     where: { id: templateId },
   });
 
@@ -669,7 +669,7 @@ export async function previewBulk(
   templateId: string,
   count: number
 ): Promise<TemplatePreview[]> {
-  const template = await db.programmaticTemplate.findUnique({
+  const template = await db.programmaticTemplate.findFirst({
     where: { id: templateId },
   });
 

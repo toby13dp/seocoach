@@ -48,7 +48,7 @@ export async function GET(
     const { clientId } = await params;
 
     // Controleer of de cliënt bestaat
-    const client = await db.client.findUnique({
+    const client = await db.client.findFirst({
       where: { id: clientId, deletedAt: null },
     });
 
@@ -57,7 +57,7 @@ export async function GET(
     }
 
     // Verifieer organisatielidmaatschap
-    const membership = await db.organizationMembership.findUnique({
+    const membership = await db.organizationMembership.findFirst({
       where: {
         userId_organizationId: {
           userId: user.id,
@@ -71,7 +71,7 @@ export async function GET(
     }
 
     // Haal extensie op
-    const extension = await db.clientExtension.findUnique({
+    const extension = await db.clientExtension.findFirst({
       where: { clientId },
     });
 
@@ -111,7 +111,7 @@ export async function PUT(
     const { clientId } = await params;
 
     // Controleer of de cliënt bestaat
-    const client = await db.client.findUnique({
+    const client = await db.client.findFirst({
       where: { id: clientId, deletedAt: null },
     });
 
@@ -120,7 +120,7 @@ export async function PUT(
     }
 
     // Verifieer organisatielidmaatschap
-    const membership = await db.organizationMembership.findUnique({
+    const membership = await db.organizationMembership.findFirst({
       where: {
         userId_organizationId: {
           userId: user.id,
@@ -236,7 +236,7 @@ export async function POST(
     const { clientId } = await params;
 
     // Controleer of de cliënt bestaat
-    const client = await db.client.findUnique({
+    const client = await db.client.findFirst({
       where: { id: clientId, deletedAt: null },
     });
 
@@ -245,7 +245,7 @@ export async function POST(
     }
 
     // Verifieer organisatielidmaatschap
-    const membership = await db.organizationMembership.findUnique({
+    const membership = await db.organizationMembership.findFirst({
       where: {
         userId_organizationId: {
           userId: user.id,
@@ -259,7 +259,7 @@ export async function POST(
     }
 
     // Controleer of extensie al bestaat
-    const existing = await db.clientExtension.findUnique({
+    const existing = await db.clientExtension.findFirst({
       where: { clientId },
     });
 

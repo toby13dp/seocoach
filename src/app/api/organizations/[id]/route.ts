@@ -21,7 +21,7 @@ export async function GET(
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    const organization = await db.organization.findUnique({
+    const organization = await db.organization.findFirst({
       where: { id, deletedAt: null },
       include: {
         memberships: {

@@ -37,7 +37,7 @@ export type { BehaviourRecord, CROFinding };
  * Throws an error in Dutch if the project is not found.
  */
 async function verifyProject(projectId: string): Promise<void> {
-  const project = await db.project.findUnique({
+  const project = await db.project.findFirst({
     where: { id: projectId, deletedAt: null },
     select: { id: true },
   });

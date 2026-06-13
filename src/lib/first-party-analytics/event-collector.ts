@@ -58,7 +58,7 @@ function generateCookielessSessionId(
  * @param projectId - The project ID to verify
  */
 async function verifyProject(projectId: string): Promise<void> {
-  const project = await db.project.findUnique({
+  const project = await db.project.findFirst({
     where: { id: projectId, deletedAt: null },
     select: { id: true },
   });
@@ -316,7 +316,7 @@ async function upsertSessionFromEvent(
   data: AnalyticsEventData,
   isCookieless: boolean
 ): Promise<void> {
-  const existing = await db.analyticsSession.findUnique({
+  const existing = await db.analyticsSession.findFirst({
     where: {
       projectId_sessionId: { projectId, sessionId },
     },

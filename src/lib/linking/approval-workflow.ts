@@ -44,7 +44,7 @@ export async function approveLink(
   approvedAt: Date | null;
 }> {
   // Fetch the link
-  const link = await db.internalLink.findUnique({
+  const link = await db.internalLink.findFirst({
     where: { id: linkId, deletedAt: null },
   });
 
@@ -100,7 +100,7 @@ export async function rejectLink(
   rejectedBy: string;
   rejectionReason: string | null;
 }> {
-  const link = await db.internalLink.findUnique({
+  const link = await db.internalLink.findFirst({
     where: { id: linkId, deletedAt: null },
   });
 
@@ -245,7 +245,7 @@ export async function bulkApproveLinks(
  * @throws Error if the link is not found
  */
 export async function generateLinkDiff(linkId: string): Promise<LinkDiff> {
-  const link = await db.internalLink.findUnique({
+  const link = await db.internalLink.findFirst({
     where: { id: linkId, deletedAt: null },
   });
 
@@ -258,7 +258,7 @@ export async function generateLinkDiff(linkId: string): Promise<LinkDiff> {
   let sourceTitle = '';
 
   if (link.sourcePageId) {
-    const sourcePage = await db.page.findUnique({
+    const sourcePage = await db.page.findFirst({
       where: { id: link.sourcePageId },
       select: { mainContent: true, title: true },
     });
@@ -502,7 +502,7 @@ export async function publishApprovedLinks(
   } | null = null;
 
   if (cmsConnectionId) {
-    const connection = await db.cMSConnection.findUnique({
+    const connection = await db.cMSConnection.findFirst({
       where: { id: cmsConnectionId, deletedAt: null },
       select: {
         id: true,
@@ -603,7 +603,7 @@ async function publishLinkToCMS(
   }
 ): Promise<string> {
   // Fetch the full link record
-  const link = await db.internalLink.findUnique({
+  const link = await db.internalLink.findFirst({
     where: { id: linkId },
   });
 
@@ -658,7 +658,7 @@ export async function rollbackLink(
   rolledBackAt: Date | null;
   rollbackMeta: string | null;
 }> {
-  const link = await db.internalLink.findUnique({
+  const link = await db.internalLink.findFirst({
     where: { id: linkId, deletedAt: null },
   });
 

@@ -33,7 +33,7 @@ export async function createFeed(
   }
 ) {
   // Verify project exists and belongs to tenant
-  const project = await db.project.findUnique({
+  const project = await db.project.findFirst({
     where: { id: projectId, deletedAt: null },
     select: { id: true },
   });

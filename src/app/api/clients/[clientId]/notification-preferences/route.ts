@@ -21,7 +21,7 @@ export async function GET(
     const { clientId } = await params;
 
     // Controleer of de cliënt bestaat
-    const client = await db.client.findUnique({
+    const client = await db.client.findFirst({
       where: { id: clientId, deletedAt: null },
     });
 
@@ -30,7 +30,7 @@ export async function GET(
     }
 
     // Verifieer organisatielidmaatschap
-    const membership = await db.organizationMembership.findUnique({
+    const membership = await db.organizationMembership.findFirst({
       where: {
         userId_organizationId: {
           userId: user.id,
@@ -75,7 +75,7 @@ export async function PUT(
     const { clientId } = await params;
 
     // Controleer of de cliënt bestaat
-    const client = await db.client.findUnique({
+    const client = await db.client.findFirst({
       where: { id: clientId, deletedAt: null },
     });
 
@@ -84,7 +84,7 @@ export async function PUT(
     }
 
     // Verifieer organisatielidmaatschap
-    const membership = await db.organizationMembership.findUnique({
+    const membership = await db.organizationMembership.findFirst({
       where: {
         userId_organizationId: {
           userId: user.id,

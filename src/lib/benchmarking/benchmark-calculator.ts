@@ -303,7 +303,7 @@ export async function hasBenchmarkConsent(
   projectId: string,
   category: BenchmarkCategory
 ): Promise<boolean> {
-  const consent = await db.benchmarkConsent.findUnique({
+  const consent = await db.benchmarkConsent.findFirst({
     where: {
       projectId_category: { projectId, category },
       deletedAt: null,

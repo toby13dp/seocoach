@@ -18,7 +18,7 @@ import type { SessionSummary } from './types';
  * Throws an error in Dutch if the project is not found.
  */
 async function verifyProject(projectId: string): Promise<void> {
-  const project = await db.project.findUnique({
+  const project = await db.project.findFirst({
     where: { id: projectId, deletedAt: null },
     select: { id: true },
   });
@@ -65,7 +65,7 @@ export async function createOrUpdateSession(
 ) {
   await verifyProject(projectId);
 
-  const existing = await db.analyticsSession.findUnique({
+  const existing = await db.analyticsSession.findFirst({
     where: {
       projectId_sessionId: { projectId, sessionId },
     },
@@ -122,7 +122,7 @@ export async function getSession(
 ) {
   await verifyProject(projectId);
 
-  return db.analyticsSession.findUnique({
+  return db.analyticsSession.findFirst({
     where: {
       projectId_sessionId: { projectId, sessionId },
     },
@@ -307,7 +307,7 @@ export async function endSession(
 ): Promise<void> {
   await verifyProject(projectId);
 
-  const session = await db.analyticsSession.findUnique({
+  const session = await db.analyticsSession.findFirst({
     where: {
       projectId_sessionId: { projectId, sessionId },
     },

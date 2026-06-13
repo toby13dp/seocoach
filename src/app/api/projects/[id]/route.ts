@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getAuthenticatedUser } from "@/app/api/_helpers/auth";
 import { db } from "@/lib/db";
 
 // GET /api/projects/[id]
@@ -7,8 +8,13 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const user = await getAuthenticatedUser();
+    if (!user) {
+      return NextResponse.json({ error: "Niet geauthenticeerd" }, { status: 401 });
+    }
+
     const { id } = await params;
-    const project = await db.project.findUnique({
+    const project = await db.project.findFirst({
       where: { id, deletedAt: null },
       select: {
         id: true,
@@ -20,13 +26,27 @@ export async function GET(
         onboardingStep: true,
         description: true,
         settings: true,
+        organizationId: true,
         createdAt: true,
         updatedAt: true,
       },
     });
 
     if (!project) {
-      return NextResponse.json({ error: "Project not found" }, { status: 404 });
+      return NextResponse.json({ error: "Project niet gevonden" }, { status: 404 });
+    }
+
+    // Verify user has access to the project's organization
+    const membership = await db.organizationMembership.findFirst({
+      where: {
+        userId: user.id,
+        organizationId: project.organizationId,
+        deletedAt: null,
+      },
+    });
+
+    if (!membership) {
+      return NextResponse.json({ error: "Geen toegang tot dit project" }, { status: 403 });
     }
 
     // Get brand profile
@@ -37,7 +57,7 @@ export async function GET(
     return NextResponse.json({ project, brandProfile });
   } catch (error) {
     console.error("Error fetching project:", error);
-    return NextResponse.json({ error: "Failed to fetch project" }, { status: 500 });
+    return NextResponse.json({ error: "Project ophalen mislukt" }, { status: 500 });
   }
 }
 
@@ -47,7 +67,35 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const user = await getAuthenticatedUser();
+    if (!user) {
+      return NextResponse.json({ error: "Niet geauthenticeerd" }, { status: 401 });
+    }
+
     const { id } = await params;
+
+    // Verify user has access
+    const project = await db.project.findFirst({
+      where: { id, deletedAt: null },
+      select: { organizationId: true },
+    });
+
+    if (!project) {
+      return NextResponse.json({ error: "Project niet gevonden" }, { status: 404 });
+    }
+
+    const membership = await db.organizationMembership.findFirst({
+      where: {
+        userId: user.id,
+        organizationId: project.organizationId,
+        deletedAt: null,
+      },
+    });
+
+    if (!membership) {
+      return NextResponse.json({ error: "Geen toegang tot dit project" }, { status: 403 });
+    }
+
     const body = await request.json();
 
     const updateData: Record<string, unknown> = {};
@@ -59,7 +107,7 @@ export async function PATCH(
     if (body.onboardingCompleted !== undefined) updateData.onboardingCompleted = body.onboardingCompleted;
     if (body.settings !== undefined) updateData.settings = JSON.stringify(body.settings);
 
-    const project = await db.project.update({
+    const updatedProject = await db.project.update({
       where: { id },
       data: updateData,
     });
@@ -94,9 +142,9 @@ export async function PATCH(
       }
     }
 
-    return NextResponse.json({ project });
+    return NextResponse.json({ project: updatedProject });
   } catch (error) {
     console.error("Error updating project:", error);
-    return NextResponse.json({ error: "Failed to update project" }, { status: 500 });
+    return NextResponse.json({ error: "Project bijwerken mislukt" }, { status: 500 });
   }
 }

@@ -73,7 +73,7 @@ async function buildBrandContext(
 ): Promise<string> {
   try {
     const profile = brandProfileId
-      ? await db.brandProfile.findUnique({
+      ? await db.brandProfile.findFirst({
           where: { id: brandProfileId, deletedAt: null },
         })
       : await db.brandProfile.findFirst({
@@ -225,7 +225,7 @@ export async function generateDraft(
   createdAt: Date;
 }> {
   // Load the brief
-  const brief = await db.contentBrief.findUnique({
+  const brief = await db.contentBrief.findFirst({
     where: { id: request.briefId },
   });
 
@@ -403,7 +403,7 @@ export async function regenerateDraft(
   createdAt: Date;
 }> {
   // Load the brief
-  const brief = await db.contentBrief.findUnique({
+  const brief = await db.contentBrief.findFirst({
     where: { id: briefId },
   });
 
@@ -556,7 +556,7 @@ export async function saveManualDraft(
   changeSummary: string;
   createdAt: Date;
 }> {
-  const brief = await db.contentBrief.findUnique({
+  const brief = await db.contentBrief.findFirst({
     where: { id: briefId },
   });
 

@@ -49,7 +49,7 @@ export async function validateProjectAccess(
   userId: string,
   projectId: string
 ) {
-  const project = await db.project.findUnique({
+  const project = await db.project.findFirst({
     where: { id: projectId, deletedAt: null },
     select: {
       id: true,

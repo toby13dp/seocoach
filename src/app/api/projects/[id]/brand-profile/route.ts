@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getAuthenticatedUser } from "@/app/api/_helpers/auth";
 import { db } from "@/lib/db";
 
 // PUT /api/projects/[id]/brand-profile
@@ -7,16 +8,35 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = await params;
-    const body = await request.json();
+    const user = await getAuthenticatedUser();
+    if (!user) {
+      return NextResponse.json({ error: "Niet geauthenticeerd" }, { status: 401 });
+    }
 
-    // Check project exists
-    const project = await db.project.findUnique({
+    const { id } = await params;
+
+    // Check project exists (use findFirst — deletedAt is not a unique constraint)
+    const project = await db.project.findFirst({
       where: { id, deletedAt: null },
+      select: { id: true, organizationId: true },
     });
     if (!project) {
-      return NextResponse.json({ error: "Project not found" }, { status: 404 });
+      return NextResponse.json({ error: "Project niet gevonden" }, { status: 404 });
     }
+
+    // Verify user has access
+    const membership = await db.organizationMembership.findFirst({
+      where: {
+        userId: user.id,
+        organizationId: project.organizationId,
+        deletedAt: null,
+      },
+    });
+    if (!membership) {
+      return NextResponse.json({ error: "Geen toegang tot dit project" }, { status: 403 });
+    }
+
+    const body = await request.json();
 
     // Check existing brand profile
     const existing = await db.brandProfile.findUnique({
@@ -62,6 +82,6 @@ export async function PUT(
     return NextResponse.json({ brandProfile });
   } catch (error) {
     console.error("Error saving brand profile:", error);
-    return NextResponse.json({ error: "Failed to save brand profile" }, { status: 500 });
+    return NextResponse.json({ error: "Brand profiel opslaan mislukt" }, { status: 500 });
   }
 }

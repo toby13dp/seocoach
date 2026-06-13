@@ -14,7 +14,7 @@ export async function hasPortalAccess(
   clientId: string,
   accessType: ClientPortalAccessType
 ): Promise<boolean> {
-  const access = await db.clientPortalAccess.findUnique({
+  const access = await db.clientPortalAccess.findFirst({
     where: {
       clientId_accessType: { clientId, accessType },
       deletedAt: null,

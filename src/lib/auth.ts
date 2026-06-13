@@ -252,8 +252,8 @@ export const authOptions: NextAuthOptions = {
   },
 
   pages: {
-    signIn: "/login",
-    error: "/login",
+    signIn: "/nl",
+    error: "/nl",
   },
 
   secret: process.env.NEXTAUTH_SECRET ?? "dev-secret-change-me-in-production",

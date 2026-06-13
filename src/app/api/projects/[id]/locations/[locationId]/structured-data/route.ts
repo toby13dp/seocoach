@@ -22,7 +22,7 @@ export async function GET(
       return NextResponse.json({ error: 'Geen toegang' }, { status: 403 });
     }
 
-    const location = await db.location.findUnique({
+    const location = await db.location.findFirst({
       where: { id: locationId, deletedAt: null },
       select: {
         id: true,
@@ -73,7 +73,7 @@ export async function POST(
       return NextResponse.json({ error: 'Geen toegang' }, { status: 403 });
     }
 
-    const location = await db.location.findUnique({
+    const location = await db.location.findFirst({
       where: { id: locationId, deletedAt: null },
     });
 
