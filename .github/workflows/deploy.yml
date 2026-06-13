@@ -8,10 +8,12 @@ on:
 
 env:
   NODE_VERSION: "24"
+  STORE_PASS: ${{ secrets.KEYSTORE_PASSWORD || 'seocoach2024' }}
+  KEY_PASS: ${{ secrets.KEY_PASSWORD || 'seocoach2024' }}
 
 jobs:
   # ============================================================
-  # Job 1: Build & Test
+  # Job 1: Build & Test Next.js
   # ============================================================
   build:
     name: Build & Test
@@ -121,10 +123,6 @@ jobs:
 
       - name: Generate release keystore
         run: |
-          STORE_PASS="${{ secrets.KEYSTORE_PASSWORD }}"
-          KEY_PASS="${{ secrets.KEY_PASSWORD }}"
-          if [ -z "$STORE_PASS" ]; then STORE_PASS="seocoach2024"; fi
-          if [ -z "$KEY_PASS" ]; then KEY_PASS="seocoach2024"; fi
           keytool -genkey -v \
             -keystore seocoach-release-key.jks \
             -keyalg RSA -keysize 2048 -validity 10000 \
@@ -132,37 +130,32 @@ jobs:
             -storepass "$STORE_PASS" \
             -keypass "$KEY_PASS" \
             -dname "CN=SEOCoach, OU=Mobile, O=SEOCoach, L=Amsterdam, ST=Noord-Holland, C=NL"
-          echo "STORE_PASS=$STORE_PASS" >> $GITHUB_ENV
-          echo "KEY_PASS=$KEY_PASS" >> $GITHUB_ENV
 
       - name: Configure signing in build.gradle
         run: |
           cd android/app
-          python3 << 'PYEOF'
-          with open('build.gradle', 'r') as f:
-              content = f.read()
-          import os
-          store_pass = os.environ.get('STORE_PASS', 'seocoach2024')
-          key_pass = os.environ.get('KEY_PASS', 'seocoach2024')
-          signing = f'''
-              signingConfigs {{
-                  release {{
-                      storeFile file('../../seocoach-release-key.jks')
-                      storePassword '{store_pass}'
-                      keyAlias 'seocoach'
-                      keyPassword '{key_pass}'
-                  }}
-              }}
-          '''
-          if 'signingConfigs' not in content:
-              content = content.replace('    buildTypes {', signing + '    buildTypes {')
-          if 'signingConfig signingConfigs.release' not in content:
-              content = content.replace('proguardFiles getDefaultProguardFile', 'signingConfig signingConfigs.release\n            proguardFiles getDefaultProguardFile')
-          if 'sourceCompatibility' not in content:
-              content = content.replace('    defaultConfig {', '    compileOptions {\n        sourceCompatibility JavaVersion.VERSION_21\n        targetCompatibility JavaVersion.VERSION_21\n    }\n    defaultConfig {')
-          with open('build.gradle', 'w') as f:
-              f.write(content)
-          PYEOF
+          if ! grep -q 'signingConfigs' build.gradle; then
+            sed -i '/buildTypes {/i\
+              signingConfigs {\
+                  release {\
+                      storeFile file('\''../../seocoach-release-key.jks'\'')\
+                      storePassword '\'''$STORE_PASS''\''\
+                      keyAlias '\''seocoach'\''\
+                      keyPassword '\'''$KEY_PASS''\''\
+                  }\
+              }\
+          ' build.gradle
+          fi
+          if ! grep -q 'signingConfig signingConfigs.release' build.gradle; then
+            sed -i 's/proguardFiles getDefaultProguardFile/signingConfig signingConfigs.release\n            proguardFiles getDefaultProguardFile/' build.gradle
+          fi
+          if ! grep -q 'sourceCompatibility' build.gradle; then
+            sed -i 's/    defaultConfig {/    compileOptions {\
+                  sourceCompatibility JavaVersion.VERSION_21\
+                  targetCompatibility JavaVersion.VERSION_21\
+              }\
+              defaultConfig {/' build.gradle
+          fi
 
       - name: Build Release APK
         working-directory: android
