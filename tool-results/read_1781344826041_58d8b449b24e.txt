@@ -1,0 +1,1742 @@
+     1→"use client";
+     2→
+     3→import { useState, useEffect, use, useCallback } from "react";
+     4→import { useRouter } from "@/i18n/routing";
+     5→import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+     6→import { Button } from "@/components/ui/button";
+     7→import { Badge } from "@/components/ui/badge";
+     8→import { Progress } from "@/components/ui/progress";
+     9→import {
+    10→  Dialog,
+    11→  DialogContent,
+    12→  DialogDescription,
+    13→  DialogHeader,
+    14→  DialogTitle,
+    15→  DialogTrigger,
+    16→  DialogFooter,
+    17→} from "@/components/ui/dialog";
+    18→import {
+    19→  Select,
+    20→  SelectContent,
+    21→  SelectItem,
+    22→  SelectTrigger,
+    23→  SelectValue,
+    24→} from "@/components/ui/select";
+    25→import {
+    26→  Tabs,
+    27→  TabsContent,
+    28→  TabsList,
+    29→  TabsTrigger,
+    30→} from "@/components/ui/tabs";
+    31→import {
+    32→  Table,
+    33→  TableBody,
+    34→  TableCell,
+    35→  TableHead,
+    36→  TableHeader,
+    37→  TableRow,
+    38→} from "@/components/ui/table";
+    39→import { Input } from "@/components/ui/input";
+    40→import { Label } from "@/components/ui/label";
+    41→import { Textarea } from "@/components/ui/textarea";
+    42→import { motion } from "framer-motion";
+    43→import {
+    44→  ArrowLeft,
+    45→  Loader2,
+    46→  Plus,
+    47→  MapPin,
+    48→  Star,
+    49→  RefreshCw,
+    50→  Phone,
+    51→  Mail,
+    52→  Globe,
+    53→  Clock,
+    54→  CheckCircle2,
+    55→  XCircle,
+    56→  AlertCircle,
+    57→  Search,
+    58→  ExternalLink,
+    59→  Unplug,
+    60→  Link2,
+    61→  Code2,
+    62→  Navigation,
+    63→  Building2,
+    64→  Users,
+    65→  FileText,
+    66→} from "lucide-react";
+    67→import { toast } from "sonner";
+    68→
+    69→// ---------------------------------------------------------------------------
+    70→// Types
+    71→// ---------------------------------------------------------------------------
+    72→
+    73→interface LocationData {
+    74→  id: string;
+    75→  name: string;
+    76→  address: string | null;
+    77→  city: string | null;
+    78→  postalCode: string | null;
+    79→  country: string | null;
+    80→  phone: string | null;
+    81→  email: string | null;
+    82→  website: string | null;
+    83→  latitude: number | null;
+    84→  longitude: number | null;
+    85→  openingHours: string | null;
+    86→  businessType: string | null;
+    87→  napConsistency: number;
+    88→  localHealthScore: number;
+    89→  avgRating: number;
+    90→  reviewCount: number;
+    91→  gbpStatus: string;
+    92→  gbpAccountId: string | null;
+    93→  gbpLocationId: string | null;
+    94→  localStructuredData: string | null;
+    95→  serviceArea: string | null;
+    96→  notes: string | null;
+    97→  createdAt: string;
+    98→  updatedAt: string;
+    99→}
+   100→
+   101→interface HealthCheck {
+   102→  id: string;
+   103→  category: string;
+   104→  status: string;
+   105→  score: number;
+   106→  title: string;
+   107→  description: string;
+   108→  recommendation: string | null;
+   109→  checkedAt: string;
+   110→}
+   111→
+   112→interface LocalKeyword {
+   113→  id: string;
+   114→  keyword: string;
+   115→  intent: string;
+   116→  searchVolume: number | null;
+   117→  difficulty: number | null;
+   118→  currentRank: number | null;
+   119→  targetRank: number | null;
+   120→  url: string | null;
+   121→}
+   122→
+   123→interface LandingPage {
+   124→  id: string;
+   125→  url: string;
+   126→  title: string | null;
+   127→  metaDescription: string | null;
+   128→  h1: string | null;
+   129→  wordCount: number;
+   130→  hasStructuredData: boolean;
+   131→  hasNAP: boolean;
+   132→  hasMap: boolean;
+   133→  hasOpeningHours: boolean;
+   134→  qualityScore: number;
+   135→  issues: string | null;
+   136→}
+   137→
+   138→interface LocalCompetitor {
+   139→  id: string;
+   140→  name: string;
+   141→  address: string | null;
+   142→  city: string | null;
+   143→  postalCode: string | null;
+   144→  website: string | null;
+   145→  avgRating: number | null;
+   146→  reviewCount: number;
+   147→  distance: number | null;
+   148→  strengths: string | null;
+   149→  weaknesses: string | null;
+   150→  notes: string | null;
+   151→}
+   152→
+   153→interface GBPStatus {
+   154→  connected: boolean;
+   155→  syncStatus: string;
+   156→  businessName: string | null;
+   157→  primaryCategory: string | null;
+   158→  avgRating: number | null;
+   159→  totalReviews: number;
+   160→  lastSyncAt: string | null;
+   161→  syncError: string | null;
+   162→}
+   163→
+   164→interface StructuredData {
+   165→  locationId: string;
+   166→  businessType: string | null;
+   167→  jsonLd: string | null;
+   168→}
+   169→
+   170→// ---------------------------------------------------------------------------
+   171→// Dutch label maps
+   172→// ---------------------------------------------------------------------------
+   173→
+   174→const HEALTH_CATEGORY_LABELS: Record<string, string> = {
+   175→  NAP_CONSISTENCY: "NAP-consistentie",
+   176→  OPENING_HOURS: "Openingstijden",
+   177→  LOCAL_STRUCTURED_DATA: "Gestructureerde gegevens",
+   178→  LANDING_PAGES: "Bestemmingspagina's",
+   179→  LOCAL_KEYWORDS: "Lokale zoekwoorden",
+   180→  REVIEWS: "Beoordelingen",
+   181→  GOOGLE_BUSINESS_PROFILE: "Google Bedrijfsprofiel",
+   182→  LOCAL_LINKS: "Lokale links",
+   183→  PHOTOS: "Foto's",
+   184→  SERVICE_AREAS: "Servicegebieden",
+   185→};
+   186→
+   187→const HEALTH_STATUS_LABELS: Record<string, { label: string; className: string }> = {
+   188→  PASSING: { label: "Goed", className: "bg-green-50 text-green-700 border-green-200" },
+   189→  NEEDS_IMPROVEMENT: { label: "Verbetering nodig", className: "bg-yellow-50 text-yellow-700 border-yellow-200" },
+   190→  FAILING: { label: "Onvoldoende", className: "bg-red-50 text-red-700 border-red-200" },
+   191→  NOT_CHECKED: { label: "Niet gecontroleerd", className: "bg-gray-50 text-gray-500 border-gray-200" },
+   192→};
+   193→
+   194→const INTENT_LABELS: Record<string, string> = {
+   195→  NAVIGATIONAL: "Navigatie",
+   196→  INFORMATIONAL: "Informatief",
+   197→  TRANSACTIONAL: "Transactioneel",
+   198→  COMMERCIAL: "Commercieel",
+   199→  LOCAL: "Lokaal",
+   200→};
+   201→
+   202→const INTENT_COLORS: Record<string, string> = {
+   203→  NAVIGATIONAL: "bg-blue-50 text-blue-700 border-blue-200",
+   204→  INFORMATIONAL: "bg-purple-50 text-purple-700 border-purple-200",
+   205→  TRANSACTIONAL: "bg-emerald-50 text-emerald-700 border-emerald-200",
+   206→  COMMERCIAL: "bg-orange-50 text-orange-700 border-orange-200",
+   207→  LOCAL: "bg-teal-50 text-teal-700 border-teal-200",
+   208→};
+   209→
+   210→// ---------------------------------------------------------------------------
+   211→// Helpers
+   212→// ---------------------------------------------------------------------------
+   213→
+   214→function scoreColor(score: number): string {
+   215→  if (score >= 80) return "text-green-600";
+   216→  if (score >= 50) return "text-yellow-600";
+   217→  return "text-red-600";
+   218→}
+   219→
+   220→function scoreBg(score: number): string {
+   221→  if (score >= 80) return "bg-green-50 text-green-700 border-green-200";
+   222→  if (score >= 50) return "bg-yellow-50 text-yellow-700 border-yellow-200";
+   223→  return "bg-red-50 text-red-700 border-red-200";
+   224→}
+   225→
+   226→function renderStars(rating: number) {
+   227→  const full = Math.floor(rating);
+   228→  const half = rating - full >= 0.5;
+   229→  const stars = [];
+   230→  for (let i = 0; i < 5; i++) {
+   231→    if (i < full) {
+   232→      stars.push(<Star key={i} className="w-3.5 h-3.5 fill-yellow-400 text-yellow-400" />);
+   233→    } else if (i === full && half) {
+   234→      stars.push(<Star key={i} className="w-3.5 h-3.5 fill-yellow-400/50 text-yellow-400" />);
+   235→    } else {
+   236→      stars.push(<Star key={i} className="w-3.5 h-3.5 text-gray-300" />);
+   237→    }
+   238→  }
+   239→  return stars;
+   240→}
+   241→
+   242→function healthStatusIcon(status: string) {
+   243→  switch (status) {
+   244→    case "PASSING":
+   245→      return <CheckCircle2 className="w-4 h-4 text-green-600" />;
+   246→    case "FAILING":
+   247→      return <XCircle className="w-4 h-4 text-red-600" />;
+   248→    case "NEEDS_IMPROVEMENT":
+   249→      return <AlertCircle className="w-4 h-4 text-yellow-600" />;
+   250→    default:
+   251→      return <Clock className="w-4 h-4 text-gray-400" />;
+   252→  }
+   253→}
+   254→
+   255→// ---------------------------------------------------------------------------
+   256→// Component
+   257→// ---------------------------------------------------------------------------
+   258→
+   259→export default function LocationDetailPage({
+   260→  params,
+   261→}: {
+   262→  params: Promise<{ id: string; locationId: string }>;
+   263→}) {
+   264→  const { id: projectId, locationId } = use(params);
+   265→  const router = useRouter();
+   266→
+   267→  // Location data
+   268→  const [location, setLocation] = useState<LocationData | null>(null);
+   269→  const [isLoading, setIsLoading] = useState(true);
+   270→
+   271→  // Health checks
+   272→  const [healthChecks, setHealthChecks] = useState<HealthCheck[]>([]);
+   273→  const [isRunningHealth, setIsRunningHealth] = useState(false);
+   274→
+   275→  // Local keywords
+   276→  const [keywords, setKeywords] = useState<LocalKeyword[]>([]);
+   277→  const [keywordDialogOpen, setKeywordDialogOpen] = useState(false);
+   278→  const [isAddingKeyword, setIsAddingKeyword] = useState(false);
+   279→  const [keywordForm, setKeywordForm] = useState({
+   280→    keyword: "",
+   281→    intent: "LOCAL",
+   282→    searchVolume: "",
+   283→    difficulty: "",
+   284→    currentRank: "",
+   285→    targetRank: "",
+   286→    url: "",
+   287→  });
+   288→
+   289→  // Landing pages
+   290→  const [landingPages, setLandingPages] = useState<LandingPage[]>([]);
+   291→  const [lpDialogOpen, setLpDialogOpen] = useState(false);
+   292→  const [isAddingLp, setIsAddingLp] = useState(false);
+   293→  const [lpForm, setLpForm] = useState({ url: "" });
+   294→
+   295→  // Competitors
+   296→  const [competitors, setCompetitors] = useState<LocalCompetitor[]>([]);
+   297→  const [compDialogOpen, setCompDialogOpen] = useState(false);
+   298→  const [isAddingComp, setIsAddingComp] = useState(false);
+   299→  const [compForm, setCompForm] = useState({
+   300→    name: "",
+   301→    address: "",
+   302→    city: "",
+   303→    postalCode: "",
+   304→    website: "",
+   305→    avgRating: "",
+   306→    reviewCount: "",
+   307→    distance: "",
+   308→    notes: "",
+   309→  });
+   310→
+   311→  // GBP
+   312→  const [gbpStatus, setGbpStatus] = useState<GBPStatus | null>(null);
+   313→  const [gbpDialogOpen, setGbpDialogOpen] = useState(false);
+   314→  const [isConnectingGbp, setIsConnectingGbp] = useState(false);
+   315→  const [gbpForm, setGbpForm] = useState({
+   316→    accountId: "",
+   317→    locationIdGBP: "",
+   318→    accessToken: "",
+   319→    refreshToken: "",
+   320→  });
+   321→  const [isDisconnectingGbp, setIsDisconnectingGbp] = useState(false);
+   322→
+   323→  // Structured data
+   324→  const [structuredData, setStructuredData] = useState<StructuredData | null>(null);
+   325→  const [isGeneratingSD, setIsGeneratingSD] = useState(false);
+   326→
+   327→  // Active tab
+   328→  const [activeTab, setActiveTab] = useState("overview");
+   329→
+   330→  // ---------------------------------------------------------------------------
+   331→  // Fetch Location
+   332→  // ---------------------------------------------------------------------------
+   333→
+   334→  const fetchLocation = useCallback(async () => {
+   335→    try {
+   336→      setIsLoading(true);
+   337→      const res = await fetch(`/api/projects/${projectId}/locations/${locationId}`);
+   338→      if (!res.ok) throw new Error("Fout bij ophalen locatie");
+   339→      const json = await res.json();
+   340→      setLocation(json.data);
+   341→    } catch {
+   342→      toast.error("Kon locatie niet laden");
+   343→    } finally {
+   344→      setIsLoading(false);
+   345→    }
+   346→  }, [projectId, locationId]);
+   347→
+   348→  // ---------------------------------------------------------------------------
+   349→  // Fetch Health Checks
+   350→  // ---------------------------------------------------------------------------
+   351→
+   352→  const fetchHealthChecks = useCallback(async () => {
+   353→    try {
+   354→      const res = await fetch(`/api/projects/${projectId}/locations/${locationId}/health`);
+   355→      if (!res.ok) throw new Error("Fout bij ophalen gezondheidscontroles");
+   356→      const json = await res.json();
+   357→      setHealthChecks(json.data ?? []);
+   358→    } catch {
+   359→      // silent
+   360→    }
+   361→  }, [projectId, locationId]);
+   362→
+   363→  // ---------------------------------------------------------------------------
+   364→  // Fetch Keywords
+   365→  // ---------------------------------------------------------------------------
+   366→
+   367→  const fetchKeywords = useCallback(async () => {
+   368→    try {
+   369→      const res = await fetch(`/api/projects/${projectId}/locations/${locationId}/keywords`);
+   370→      if (!res.ok) throw new Error("Fout bij ophalen zoekwoorden");
+   371→      const json = await res.json();
+   372→      setKeywords(json.data ?? []);
+   373→    } catch {
+   374→      // silent
+   375→    }
+   376→  }, [projectId, locationId]);
+   377→
+   378→  // ---------------------------------------------------------------------------
+   379→  // Fetch Landing Pages
+   380→  // ---------------------------------------------------------------------------
+   381→
+   382→  const fetchLandingPages = useCallback(async () => {
+   383→    try {
+   384→      const res = await fetch(`/api/projects/${projectId}/locations/${locationId}/landing-pages`);
+   385→      if (!res.ok) throw new Error("Fout bij ophalen bestemmingspagina's");
+   386→      const json = await res.json();
+   387→      setLandingPages(json.data ?? []);
+   388→    } catch {
+   389→      // silent
+   390→    }
+   391→  }, [projectId, locationId]);
+   392→
+   393→  // ---------------------------------------------------------------------------
+   394→  // Fetch Competitors
+   395→  // ---------------------------------------------------------------------------
+   396→
+   397→  const fetchCompetitors = useCallback(async () => {
+   398→    try {
+   399→      const res = await fetch(`/api/projects/${projectId}/locations/${locationId}/competitors`);
+   400→      if (!res.ok) throw new Error("Fout bij ophalen concurrenten");
+   401→      const json = await res.json();
+   402→      setCompetitors(json.data ?? []);
+   403→    } catch {
+   404→      // silent
+   405→    }
+   406→  }, [projectId, locationId]);
+   407→
+   408→  // ---------------------------------------------------------------------------
+   409→  // Fetch GBP
+   410→  // ---------------------------------------------------------------------------
+   411→
+   412→  const fetchGBP = useCallback(async () => {
+   413→    try {
+   414→      const res = await fetch(`/api/projects/${projectId}/locations/${locationId}/gbp`);
+   415→      if (!res.ok) throw new Error("Fout bij ophalen GBP");
+   416→      const json = await res.json();
+   417→      setGbpStatus(json.data);
+   418→    } catch {
+   419→      // silent
+   420→    }
+   421→  }, [projectId, locationId]);
+   422→
+   423→  // ---------------------------------------------------------------------------
+   424→  // Fetch Structured Data
+   425→  // ---------------------------------------------------------------------------
+   426→
+   427→  const fetchStructuredData = useCallback(async () => {
+   428→    try {
+   429→      const res = await fetch(`/api/projects/${projectId}/locations/${locationId}/structured-data`);
+   430→      if (!res.ok) throw new Error("Fout bij ophalen gestructureerde gegevens");
+   431→      const json = await res.json();
+   432→      setStructuredData(json.data);
+   433→    } catch {
+   434→      // silent
+   435→    }
+   436→  }, [projectId, locationId]);
+   437→
+   438→  // ---------------------------------------------------------------------------
+   439→  // Initial load
+   440→  // ---------------------------------------------------------------------------
+   441→
+   442→  useEffect(() => {
+   443→    fetchLocation();
+   444→  }, [fetchLocation]);
+   445→
+   446→  useEffect(() => {
+   447→    if (!location) return;
+   448→    fetchHealthChecks();
+   449→    fetchKeywords();
+   450→    fetchLandingPages();
+   451→    fetchCompetitors();
+   452→    fetchGBP();
+   453→    fetchStructuredData();
+   454→  }, [location, fetchHealthChecks, fetchKeywords, fetchLandingPages, fetchCompetitors, fetchGBP, fetchStructuredData]);
+   455→
+   456→  // ---------------------------------------------------------------------------
+   457→  // Actions
+   458→  // ---------------------------------------------------------------------------
+   459→
+   460→  async function runHealthCheck() {
+   461→    try {
+   462→      setIsRunningHealth(true);
+   463→      const res = await fetch(`/api/projects/${projectId}/locations/${locationId}/health`, { method: "POST" });
+   464→      if (!res.ok) throw new Error("Fout bij uitvoeren gezondheidscontrole");
+   465→      const json = await res.json();
+   466→      setHealthChecks(json.data ?? []);
+   467→      toast.success("Gezondheidscontrole uitgevoerd");
+   468→      // Refresh location to get updated scores
+   469→      fetchLocation();
+   470→    } catch {
+   471→      toast.error("Kon gezondheidscontrole niet uitvoeren");
+   472→    } finally {
+   473→      setIsRunningHealth(false);
+   474→    }
+   475→  }
+   476→
+   477→  async function addKeyword() {
+   478→    if (!keywordForm.keyword.trim()) {
+   479→      toast.error("Zoekwoord is verplicht");
+   480→      return;
+   481→    }
+   482→    try {
+   483→      setIsAddingKeyword(true);
+   484→      const body: Record<string, unknown> = {
+   485→        keyword: keywordForm.keyword.trim(),
+   486→        intent: keywordForm.intent,
+   487→      };
+   488→      if (keywordForm.searchVolume) body.searchVolume = parseInt(keywordForm.searchVolume);
+   489→      if (keywordForm.difficulty) body.difficulty = parseFloat(keywordForm.difficulty);
+   490→      if (keywordForm.currentRank) body.currentRank = parseInt(keywordForm.currentRank);
+   491→      if (keywordForm.targetRank) body.targetRank = parseInt(keywordForm.targetRank);
+   492→      if (keywordForm.url.trim()) body.url = keywordForm.url.trim();
+   493→
+   494→      const res = await fetch(`/api/projects/${projectId}/locations/${locationId}/keywords`, {
+   495→        method: "POST",
+   496→        headers: { "Content-Type": "application/json" },
+   497→        body: JSON.stringify(body),
+   498→      });
+   499→      if (!res.ok) {
+   500→        const err = await res.json();
+   501→        throw new Error(err.error || "Fout bij toevoegen zoekwoord");
+   502→      }
+   503→      toast.success("Zoekwoord toegevoegd");
+   504→      setKeywordDialogOpen(false);
+   505→      setKeywordForm({ keyword: "", intent: "LOCAL", searchVolume: "", difficulty: "", currentRank: "", targetRank: "", url: "" });
+   506→      fetchKeywords();
+   507→    } catch (err) {
+   508→      toast.error(err instanceof Error ? err.message : "Fout bij toevoegen zoekwoord");
+   509→    } finally {
+   510→      setIsAddingKeyword(false);
+   511→    }
+   512→  }
+   513→
+   514→  async function addLandingPage() {
+   515→    if (!lpForm.url.trim()) {
+   516→      toast.error("URL is verplicht");
+   517→      return;
+   518→    }
+   519→    try {
+   520→      setIsAddingLp(true);
+   521→      const res = await fetch(`/api/projects/${projectId}/locations/${locationId}/landing-pages`, {
+   522→        method: "POST",
+   523→        headers: { "Content-Type": "application/json" },
+   524→        body: JSON.stringify({ url: lpForm.url.trim() }),
+   525→      });
+   526→      if (!res.ok) {
+   527→        const err = await res.json();
+   528→        throw new Error(err.error || "Fout bij toevoegen bestemmingspagina");
+   529→      }
+   530→      toast.success("Bestemmingspagina toegevoegd");
+   531→      setLpDialogOpen(false);
+   532→      setLpForm({ url: "" });
+   533→      fetchLandingPages();
+   534→    } catch (err) {
+   535→      toast.error(err instanceof Error ? err.message : "Fout bij toevoegen bestemmingspagina");
+   536→    } finally {
+   537→      setIsAddingLp(false);
+   538→    }
+   539→  }
+   540→
+   541→  async function addCompetitor() {
+   542→    if (!compForm.name.trim()) {
+   543→      toast.error("Concurrentnaam is verplicht");
+   544→      return;
+   545→    }
+   546→    try {
+   547→      setIsAddingComp(true);
+   548→      const body: Record<string, unknown> = {
+   549→        name: compForm.name.trim(),
+   550→        address: compForm.address.trim() || null,
+   551→        city: compForm.city.trim() || null,
+   552→        postalCode: compForm.postalCode.trim() || null,
+   553→        website: compForm.website.trim() || null,
+   554→        notes: compForm.notes.trim() || null,
+   555→      };
+   556→      if (compForm.avgRating) body.avgRating = parseFloat(compForm.avgRating);
+   557→      if (compForm.reviewCount) body.reviewCount = parseInt(compForm.reviewCount);
+   558→      if (compForm.distance) body.distance = parseFloat(compForm.distance);
+   559→
+   560→      const res = await fetch(`/api/projects/${projectId}/locations/${locationId}/competitors`, {
+   561→        method: "POST",
+   562→        headers: { "Content-Type": "application/json" },
+   563→        body: JSON.stringify(body),
+   564→      });
+   565→      if (!res.ok) {
+   566→        const err = await res.json();
+   567→        throw new Error(err.error || "Fout bij toevoegen concurrent");
+   568→      }
+   569→      toast.success("Concurrent toegevoegd");
+   570→      setCompDialogOpen(false);
+   571→      setCompForm({ name: "", address: "", city: "", postalCode: "", website: "", avgRating: "", reviewCount: "", distance: "", notes: "" });
+   572→      fetchCompetitors();
+   573→    } catch (err) {
+   574→      toast.error(err instanceof Error ? err.message : "Fout bij toevoegen concurrent");
+   575→    } finally {
+   576→      setIsAddingComp(false);
+   577→    }
+   578→  }
+   579→
+   580→  async function connectGBP() {
+   581→    if (!gbpForm.accountId.trim() || !gbpForm.locationIdGBP.trim() || !gbpForm.accessToken.trim() || !gbpForm.refreshToken.trim()) {
+   582→      toast.error("Alle velden zijn verplicht");
+   583→      return;
+   584→    }
+   585→    try {
+   586→      setIsConnectingGbp(true);
+   587→      const res = await fetch(`/api/projects/${projectId}/locations/${locationId}/gbp`, {
+   588→        method: "POST",
+   589→        headers: { "Content-Type": "application/json" },
+   590→        body: JSON.stringify({
+   591→          accountId: gbpForm.accountId.trim(),
+   592→          locationIdGBP: gbpForm.locationIdGBP.trim(),
+   593→          accessToken: gbpForm.accessToken.trim(),
+   594→          refreshToken: gbpForm.refreshToken.trim(),
+   595→        }),
+   596→      });
+   597→      if (!res.ok) {
+   598→        const err = await res.json();
+   599→        throw new Error(err.error || "Fout bij verbinden GBP");
+   600→      }
+   601→      toast.success("Google Bedrijfsprofiel verbonden");
+   602→      setGbpDialogOpen(false);
+   603→      setGbpForm({ accountId: "", locationIdGBP: "", accessToken: "", refreshToken: "" });
+   604→      fetchGBP();
+   605→      fetchLocation();
+   606→    } catch (err) {
+   607→      toast.error(err instanceof Error ? err.message : "Fout bij verbinden GBP");
+   608→    } finally {
+   609→      setIsConnectingGbp(false);
+   610→    }
+   611→  }
+   612→
+   613→  async function disconnectGBP() {
+   614→    try {
+   615→      setIsDisconnectingGbp(true);
+   616→      const res = await fetch(`/api/projects/${projectId}/locations/${locationId}/gbp`, { method: "DELETE" });
+   617→      if (!res.ok) {
+   618→        const err = await res.json();
+   619→        throw new Error(err.error || "Fout bij verbreken GBP");
+   620→      }
+   621→      toast.success("Google Bedrijfsprofiel verbroken");
+   622→      fetchGBP();
+   623→      fetchLocation();
+   624→    } catch (err) {
+   625→      toast.error(err instanceof Error ? err.message : "Fout bij verbreken GBP");
+   626→    } finally {
+   627→      setIsDisconnectingGbp(false);
+   628→    }
+   629→  }
+   630→
+   631→  async function generateStructuredData() {
+   632→    try {
+   633→      setIsGeneratingSD(true);
+   634→      const res = await fetch(`/api/projects/${projectId}/locations/${locationId}/structured-data`, { method: "POST" });
+   635→      if (!res.ok) {
+   636→        const err = await res.json();
+   637→        throw new Error(err.error || "Fout bij genereren gestructureerde gegevens");
+   638→      }
+   639→      const json = await res.json();
+   640→      setStructuredData(json.data);
+   641→      toast.success("Gestructureerde gegevens gegenereerd");
+   642→      fetchLocation();
+   643→    } catch (err) {
+   644→      toast.error(err instanceof Error ? err.message : "Fout bij genereren gestructureerde gegevens");
+   645→    } finally {
+   646→      setIsGeneratingSD(false);
+   647→    }
+   648→  }
+   649→
+   650→  // ---------------------------------------------------------------------------
+   651→  // Loading
+   652→  // ---------------------------------------------------------------------------
+   653→
+   654→  if (isLoading) {
+   655→    return (
+   656→      <div className="min-h-screen bg-gray-50/50 flex items-center justify-center">
+   657→        <Loader2 className="w-8 h-8 animate-spin text-emerald-600" />
+   658→        <span className="ml-3 text-muted-foreground">Locatie laden...</span>
+   659→      </div>
+   660→    );
+   661→  }
+   662→
+   663→  if (!location) {
+   664→    return (
+   665→      <div className="min-h-screen bg-gray-50/50 flex items-center justify-center">
+   666→        <Card>
+   667→          <CardContent className="py-12 text-center">
+   668→            <MapPin className="w-12 h-12 text-muted-foreground/40 mx-auto mb-4" />
+   669→            <h3 className="text-lg font-semibold mb-2">Locatie niet gevonden</h3>
+   670→            <p className="text-muted-foreground mb-4">De opgevraagde locatie bestaat niet of je hebt geen toegang.</p>
+   671→            <Button variant="outline" onClick={() => router.push(`/projects/${projectId}/locations`)}>
+   672→              <ArrowLeft className="w-4 h-4 mr-2" />
+   673→              Terug naar locaties
+   674→            </Button>
+   675→          </CardContent>
+   676→        </Card>
+   677→      </div>
+   678→    );
+   679→  }
+   680→
+   681→  // ---------------------------------------------------------------------------
+   682→  // Derived data
+   683→  // ---------------------------------------------------------------------------
+   684→
+   685→  const healthScore = Math.round(location.localHealthScore || 0);
+   686→  const napScore = Math.round(location.napConsistency || 0);
+   687→
+   688→  // Build health checks map by category
+   689→  const healthByCategory = new Map<string, HealthCheck>();
+   690→  for (const hc of healthChecks) {
+   691→    healthByCategory.set(hc.category, hc);
+   692→  }
+   693→
+   694→  // All 10 categories in order
+   695→  const allCategories = [
+   696→    "NAP_CONSISTENCY",
+   697→    "OPENING_HOURS",
+   698→    "LOCAL_STRUCTURED_DATA",
+   699→    "LANDING_PAGES",
+   700→    "LOCAL_KEYWORDS",
+   701→    "REVIEWS",
+   702→    "GOOGLE_BUSINESS_PROFILE",
+   703→    "LOCAL_LINKS",
+   704→    "PHOTOS",
+   705→    "SERVICE_AREAS",
+   706→  ];
+   707→
+   708→  // Parse opening hours
+   709→  let openingHoursObj: Record<string, { open: string; close: string }> | null = null;
+   710→  if (location.openingHours) {
+   711→    try {
+   712→      openingHoursObj = JSON.parse(location.openingHours);
+   713→    } catch {
+   714→      openingHoursObj = null;
+   715→    }
+   716→  }
+   717→
+   718→  const dayLabels: Record<string, string> = {
+   719→    mon: "Maandag",
+   720→    tue: "Dinsdag",
+   721→    wed: "Woensdag",
+   722→    thu: "Donderdag",
+   723→    fri: "Vrijdag",
+   724→    sat: "Zaterdag",
+   725→    sun: "Zondag",
+   726→  };
+   727→
+   728→  // Parse issues for landing pages
+   729→  function parseIssues(issuesStr: string | null): string[] {
+   730→    if (!issuesStr) return [];
+   731→    try {
+   732→      const parsed = JSON.parse(issuesStr);
+   733→      return Array.isArray(parsed) ? parsed : [];
+   734→    } catch {
+   735→      return [];
+   736→    }
+   737→  }
+   738→
+   739→  // ---------------------------------------------------------------------------
+   740→  // Render
+   741→  // ---------------------------------------------------------------------------
+   742→
+   743→  return (
+   744→    <div className="min-h-screen bg-gray-50/50">
+   745→      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+   746→        {/* Header */}
+   747→        <div className="mb-8">
+   748→          <div className="flex items-center gap-4 mb-2">
+   749→            <Button variant="ghost" size="icon" onClick={() => router.push(`/projects/${projectId}/locations`)}>
+   750→              <ArrowLeft className="w-5 h-5" />
+   751→            </Button>
+   752→            <div className="flex-1 min-w-0">
+   753→              <h1 className="text-2xl font-bold text-gray-900 truncate">{location.name}</h1>
+   754→              <p className="text-muted-foreground flex items-center gap-1 mt-1">
+   755→                <MapPin className="w-4 h-4" />
+   756→                {location.city || "Geen stad"}
+   757→                {location.businessType && (
+   758→                  <Badge variant="outline" className="ml-2">{location.businessType}</Badge>
+   759→                )}
+   760→              </p>
+   761→            </div>
+   762→          </div>
+   763→        </div>
+   764→
+   765→        {/* Health Score Card */}
+   766→        <Card className="mb-6">
+   767→          <CardContent className="p-6">
+   768→            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+   769→              <div className="flex items-center gap-6">
+   770→                <div className="text-center">
+   771→                  <p className={`text-5xl font-bold ${scoreColor(healthScore)}`}>{healthScore}</p>
+   772→                  <p className="text-sm text-muted-foreground mt-1">Gezondheidsscore</p>
+   773→                </div>
+   774→                <div className="w-48">
+   775→                  <Progress value={healthScore} className="h-3" />
+   776→                  <div className="flex justify-between text-xs text-muted-foreground mt-1">
+   777→                    <span>0</span>
+   778→                    <span>100</span>
+   779→                  </div>
+   780→                </div>
+   781→              </div>
+   782→              <Button
+   783→                onClick={runHealthCheck}
+   784→                disabled={isRunningHealth}
+   785→                className="bg-emerald-600 hover:bg-emerald-700"
+   786→              >
+   787→                {isRunningHealth ? (
+   788→                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+   789→                ) : (
+   790→                  <RefreshCw className="w-4 h-4 mr-2" />
+   791→                )}
+   792→                Controleer nu
+   793→              </Button>
+   794→            </div>
+   795→          </CardContent>
+   796→        </Card>
+   797→
+   798→        {/* Tabs */}
+   799→        <Tabs value={activeTab} onValueChange={setActiveTab}>
+   800→          <TabsList className="mb-6 flex flex-wrap h-auto gap-1 bg-white border p-1 rounded-lg">
+   801→            <TabsTrigger value="overview" className="data-[state=active]:bg-emerald-50 data-[state=active]:text-emerald-700">
+   802→              Overzicht
+   803→            </TabsTrigger>
+   804→            <TabsTrigger value="keywords" className="data-[state=active]:bg-emerald-50 data-[state=active]:text-emerald-700">
+   805→              Zoekwoorden
+   806→            </TabsTrigger>
+   807→            <TabsTrigger value="landing-pages" className="data-[state=active]:bg-emerald-50 data-[state=active]:text-emerald-700">
+   808→              Bestemmingspagina&apos;s
+   809→            </TabsTrigger>
+   810→            <TabsTrigger value="competitors" className="data-[state=active]:bg-emerald-50 data-[state=active]:text-emerald-700">
+   811→              Concurrenten
+   812→            </TabsTrigger>
+   813→            <TabsTrigger value="gbp" className="data-[state=active]:bg-emerald-50 data-[state=active]:text-emerald-700">
+   814→              Google Bedrijfsprofiel
+   815→            </TabsTrigger>
+   816→            <TabsTrigger value="structured-data" className="data-[state=active]:bg-emerald-50 data-[state=active]:text-emerald-700">
+   817→              Gestructureerde gegevens
+   818→            </TabsTrigger>
+   819→          </TabsList>
+   820→
+   821→          {/* ================================================================ */}
+   822→          {/* TAB: Overzicht */}
+   823→          {/* ================================================================ */}
+   824→          <TabsContent value="overview">
+   825→            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+   826→              {/* NAP Info */}
+   827→              <Card>
+   828→                <CardHeader>
+   829→                  <CardTitle className="text-base flex items-center gap-2">
+   830→                    <MapPin className="w-4 h-4 text-emerald-600" />
+   831→                    NAP-gegevens
+   832→                  </CardTitle>
+   833→                </CardHeader>
+   834→                <CardContent className="space-y-3">
+   835→                  <div className="flex justify-between">
+   836→                    <span className="text-sm text-muted-foreground">Naam</span>
+   837→                    <span className="text-sm font-medium">{location.name}</span>
+   838→                  </div>
+   839→                  <div className="flex justify-between">
+   840→                    <span className="text-sm text-muted-foreground">Adres</span>
+   841→                    <span className="text-sm font-medium">{location.address || "—"}</span>
+   842→                  </div>
+   843→                  <div className="flex justify-between">
+   844→                    <span className="text-sm text-muted-foreground">Stad</span>
+   845→                    <span className="text-sm font-medium">{location.city || "—"}</span>
+   846→                  </div>
+   847→                  <div className="flex justify-between">
+   848→                    <span className="text-sm text-muted-foreground">Postcode</span>
+   849→                    <span className="text-sm font-medium">{location.postalCode || "—"}</span>
+   850→                  </div>
+   851→                  <div className="flex justify-between">
+   852→                    <span className="text-sm text-muted-foreground">Land</span>
+   853→                    <span className="text-sm font-medium">{location.country || "—"}</span>
+   854→                  </div>
+   855→                  <div className="flex justify-between">
+   856→                    <span className="text-sm text-muted-foreground">Telefoon</span>
+   857→                    <span className="text-sm font-medium flex items-center gap-1">
+   858→                      {location.phone ? <><Phone className="w-3 h-3" />{location.phone}</> : "—"}
+   859→                    </span>
+   860→                  </div>
+   861→                  <div className="flex justify-between">
+   862→                    <span className="text-sm text-muted-foreground">E-mail</span>
+   863→                    <span className="text-sm font-medium flex items-center gap-1">
+   864→                      {location.email ? <><Mail className="w-3 h-3" />{location.email}</> : "—"}
+   865→                    </span>
+   866→                  </div>
+   867→                  <div className="flex justify-between">
+   868→                    <span className="text-sm text-muted-foreground">Website</span>
+   869→                    <span className="text-sm font-medium flex items-center gap-1">
+   870→                      {location.website ? <><Globe className="w-3 h-3" />{location.website}</> : "—"}
+   871→                    </span>
+   872→                  </div>
+   873→                  <div className="pt-3 border-t">
+   874→                    <div className="flex justify-between items-center">
+   875→                      <span className="text-sm text-muted-foreground">NAP-consistentie</span>
+   876→                      <Badge className={scoreBg(napScore)} variant="outline">{napScore}%</Badge>
+   877→                    </div>
+   878→                  </div>
+   879→                </CardContent>
+   880→              </Card>
+   881→
+   882→              {/* Opening Hours */}
+   883→              <Card>
+   884→                <CardHeader>
+   885→                  <CardTitle className="text-base flex items-center gap-2">
+   886→                    <Clock className="w-4 h-4 text-emerald-600" />
+   887→                    Openingstijden
+   888→                  </CardTitle>
+   889→                </CardHeader>
+   890→                <CardContent>
+   891→                  {openingHoursObj ? (
+   892→                    <div className="space-y-2">
+   893→                      {Object.entries(dayLabels).map(([key, label]) => {
+   894→                        const hours = openingHoursObj?.[key];
+   895→                        return (
+   896→                          <div key={key} className="flex justify-between">
+   897→                            <span className="text-sm text-muted-foreground">{label}</span>
+   898→                            <span className="text-sm font-medium">
+   899→                              {hours ? `${hours.open} - ${hours.close}` : "Gesloten"}
+   900→                            </span>
+   901→                          </div>
+   902→                        );
+   903→                      })}
+   904→                    </div>
+   905→                  ) : (
+   906→                    <p className="text-sm text-muted-foreground">Geen openingstijden ingesteld</p>
+   907→                  )}
+   908→                </CardContent>
+   909→              </Card>
+   910→
+   911→              {/* GBP Status */}
+   912→              <Card>
+   913→                <CardHeader>
+   914→                  <CardTitle className="text-base flex items-center gap-2">
+   915→                    <Building2 className="w-4 h-4 text-emerald-600" />
+   916→                    Google Bedrijfsprofiel
+   917→                  </CardTitle>
+   918→                </CardHeader>
+   919→                <CardContent>
+   920→                  {location.gbpStatus === "connected" ? (
+   921→                    <div className="space-y-2">
+   922→                      <Badge className="bg-green-50 text-green-700 border-green-200 border">
+   923→                        <CheckCircle2 className="w-3 h-3 mr-1" />
+   924→                        Verbonden
+   925→                      </Badge>
+   926→                      {gbpStatus?.businessName && (
+   927→                        <p className="text-sm font-medium mt-2">{gbpStatus.businessName}</p>
+   928→                      )}
+   929→                      {gbpStatus?.primaryCategory && (
+   930→                        <p className="text-sm text-muted-foreground">{gbpStatus.primaryCategory}</p>
+   931→                      )}
+   932→                    </div>
+   933→                  ) : location.gbpStatus === "error" ? (
+   934→                    <div className="space-y-2">
+   935→                      <Badge className="bg-red-50 text-red-700 border-red-200 border">
+   936→                        <XCircle className="w-3 h-3 mr-1" />
+   937→                        Fout
+   938→                      </Badge>
+   939→                      {gbpStatus?.syncError && (
+   940→                        <p className="text-sm text-red-600 mt-1">{gbpStatus.syncError}</p>
+   941→                      )}
+   942→                    </div>
+   943→                  ) : (
+   944→                    <Badge variant="secondary" className="bg-gray-50 text-gray-500 border-gray-200 border">
+   945→                      <AlertCircle className="w-3 h-3 mr-1" />
+   946→                      Niet verbonden
+   947→                    </Badge>
+   948→                  )}
+   949→                </CardContent>
+   950→              </Card>
+   951→
+   952→              {/* Review Stats */}
+   953→              <Card>
+   954→                <CardHeader>
+   955→                  <CardTitle className="text-base flex items-center gap-2">
+   956→                    <Star className="w-4 h-4 text-emerald-600" />
+   957→                    Beoordelingen
+   958→                  </CardTitle>
+   959→                </CardHeader>
+   960→                <CardContent>
+   961→                  <div className="flex items-center gap-3 mb-4">
+   962→                    <span className="text-4xl font-bold">{location.avgRating.toFixed(1)}</span>
+   963→                    <div>
+   964→                      <div className="flex">{renderStars(location.avgRating)}</div>
+   965→                      <p className="text-sm text-muted-foreground mt-1">{location.reviewCount} beoordelingen</p>
+   966→                    </div>
+   967→                  </div>
+   968→                </CardContent>
+   969→              </Card>
+   970→            </div>
+   971→
+   972→            {/* Health Check Results Grid */}
+   973→            <Card className="mt-6">
+   974→              <CardHeader>
+   975→                <CardTitle className="text-base flex items-center gap-2">
+   976→                  <RefreshCw className="w-4 h-4 text-emerald-600" />
+   977→                  Gezondheidscontroles
+   978→                </CardTitle>
+   979→                <CardDescription>
+   980→                  Resultaten van de laatste controle per categorie
+   981→                </CardDescription>
+   982→              </CardHeader>
+   983→              <CardContent>
+   984→                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3">
+   985→                  {allCategories.map((cat) => {
+   986→                    const hc = healthByCategory.get(cat);
+   987→                    const statusInfo = HEALTH_STATUS_LABELS[hc?.status ?? "NOT_CHECKED"];
+   988→                    return (
+   989→                      <div
+   990→                        key={cat}
+   991→                        className="p-3 rounded-lg border bg-white hover:shadow-sm transition-shadow"
+   992→                      >
+   993→                        <div className="flex items-center justify-between mb-2">
+   994→                          <span className="text-xs font-medium text-muted-foreground">
+   995→                            {HEALTH_CATEGORY_LABELS[cat] || cat}
+   996→                          </span>
+   997→                          {healthStatusIcon(hc?.status ?? "NOT_CHECKED")}
+   998→                        </div>
+   999→                        {hc ? (
+  1000→                          <>
+  1001→                            <div className="flex items-center gap-2 mb-1">
+  1002→                              <span className={`text-lg font-bold ${scoreColor(hc.score)}`}>
+  1003→                                {Math.round(hc.score)}
+  1004→                              </span>
+  1005→                              <Badge className={statusInfo.className} variant="outline">
+  1006→                                {statusInfo.label}
+  1007→                              </Badge>
+  1008→                            </div>
+  1009→                            <p className="text-xs text-muted-foreground line-clamp-2">{hc.title}</p>
+  1010→                          </>
+  1011→                        ) : (
+  1012→                          <>
+  1013→                            <span className="text-lg font-bold text-gray-300">—</span>
+  1014→                            <Badge className={statusInfo.className} variant="outline">
+  1015→                              {statusInfo.label}
+  1016→                            </Badge>
+  1017→                          </>
+  1018→                        )}
+  1019→                      </div>
+  1020→                    );
+  1021→                  })}
+  1022→                </div>
+  1023→              </CardContent>
+  1024→            </Card>
+  1025→          </TabsContent>
+  1026→
+  1027→          {/* ================================================================ */}
+  1028→          {/* TAB: Zoekwoorden */}
+  1029→          {/* ================================================================ */}
+  1030→          <TabsContent value="keywords">
+  1031→            <Card>
+  1032→              <CardHeader>
+  1033→                <div className="flex items-center justify-between">
+  1034→                  <div>
+  1035→                    <CardTitle className="text-base flex items-center gap-2">
+  1036→                      <Search className="w-4 h-4 text-emerald-600" />
+  1037→                      Lokale zoekwoorden
+  1038→                    </CardTitle>
+  1039→                    <CardDescription>{keywords.length} zoekwoorden bij deze locatie</CardDescription>
+  1040→                  </div>
+  1041→                  <Dialog open={keywordDialogOpen} onOpenChange={setKeywordDialogOpen}>
+  1042→                    <DialogTrigger asChild>
+  1043→                      <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700">
+  1044→                        <Plus className="w-4 h-4 mr-1" />
+  1045→                        Zoekwoord toevoegen
+  1046→                      </Button>
+  1047→                    </DialogTrigger>
+  1048→                    <DialogContent className="sm:max-w-[500px]">
+  1049→                      <DialogHeader>
+  1050→                        <DialogTitle>Zoekwoord toevoegen</DialogTitle>
+  1051→                        <DialogDescription>
+  1052→                          Voeg een lokaal zoekwoord toe voor deze locatie.
+  1053→                        </DialogDescription>
+  1054→                      </DialogHeader>
+  1055→                      <div className="grid gap-4 py-4">
+  1056→                        <div className="grid gap-2">
+  1057→                          <Label>Zoekwoord *</Label>
+  1058→                          <Input
+  1059→                            value={keywordForm.keyword}
+  1060→                            onChange={(e) => setKeywordForm((f) => ({ ...f, keyword: e.target.value }))}
+  1061→                            placeholder="Bijv. tandarts amsterdam centrum"
+  1062→                          />
+  1063→                        </div>
+  1064→                        <div className="grid gap-2">
+  1065→                          <Label>Intentie</Label>
+  1066→                          <Select value={keywordForm.intent} onValueChange={(v) => setKeywordForm((f) => ({ ...f, intent: v }))}>
+  1067→                            <SelectTrigger>
+  1068→                              <SelectValue />
+  1069→                            </SelectTrigger>
+  1070→                            <SelectContent>
+  1071→                              <SelectItem value="LOCAL">Lokaal</SelectItem>
+  1072→                              <SelectItem value="NAVIGATIONAL">Navigatie</SelectItem>
+  1073→                              <SelectItem value="INFORMATIONAL">Informatief</SelectItem>
+  1074→                              <SelectItem value="TRANSACTIONAL">Transactioneel</SelectItem>
+  1075→                              <SelectItem value="COMMERCIAL">Commercieel</SelectItem>
+  1076→                            </SelectContent>
+  1077→                          </Select>
+  1078→                        </div>
+  1079→                        <div className="grid grid-cols-2 gap-4">
+  1080→                          <div className="grid gap-2">
+  1081→                            <Label>Zoekvolume</Label>
+  1082→                            <Input
+  1083→                              type="number"
+  1084→                              value={keywordForm.searchVolume}
+  1085→                              onChange={(e) => setKeywordForm((f) => ({ ...f, searchVolume: e.target.value }))}
+  1086→                              placeholder="1000"
+  1087→                            />
+  1088→                          </div>
+  1089→                          <div className="grid gap-2">
+  1090→                            <Label>Moeilijkheid</Label>
+  1091→                            <Input
+  1092→                              type="number"
+  1093→                              value={keywordForm.difficulty}
+  1094→                              onChange={(e) => setKeywordForm((f) => ({ ...f, difficulty: e.target.value }))}
+  1095→                              placeholder="0-100"
+  1096→                            />
+  1097→                          </div>
+  1098→                        </div>
+  1099→                        <div className="grid grid-cols-2 gap-4">
+  1100→                          <div className="grid gap-2">
+  1101→                            <Label>Huidige positie</Label>
+  1102→                            <Input
+  1103→                              type="number"
+  1104→                              value={keywordForm.currentRank}
+  1105→                              onChange={(e) => setKeywordForm((f) => ({ ...f, currentRank: e.target.value }))}
+  1106→                              placeholder="15"
+  1107→                            />
+  1108→                          </div>
+  1109→                          <div className="grid gap-2">
+  1110→                            <Label>Doelpositie</Label>
+  1111→                            <Input
+  1112→                              type="number"
+  1113→                              value={keywordForm.targetRank}
+  1114→                              onChange={(e) => setKeywordForm((f) => ({ ...f, targetRank: e.target.value }))}
+  1115→                              placeholder="1"
+  1116→                            />
+  1117→                          </div>
+  1118→                        </div>
+  1119→                        <div className="grid gap-2">
+  1120→                          <Label>URL</Label>
+  1121→                          <Input
+  1122→                            value={keywordForm.url}
+  1123→                            onChange={(e) => setKeywordForm((f) => ({ ...f, url: e.target.value }))}
+  1124→                            placeholder="https://www.voorbeeld.nl/pagina"
+  1125→                          />
+  1126→                        </div>
+  1127→                      </div>
+  1128→                      <DialogFooter>
+  1129→                        <Button variant="outline" onClick={() => setKeywordDialogOpen(false)}>Annuleren</Button>
+  1130→                        <Button onClick={addKeyword} disabled={isAddingKeyword} className="bg-emerald-600 hover:bg-emerald-700">
+  1131→                          {isAddingKeyword && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+  1132→                          Toevoegen
+  1133→                        </Button>
+  1134→                      </DialogFooter>
+  1135→                    </DialogContent>
+  1136→                  </Dialog>
+  1137→                </div>
+  1138→              </CardHeader>
+  1139→              <CardContent>
+  1140→                {keywords.length === 0 ? (
+  1141→                  <div className="py-8 text-center">
+  1142→                    <Search className="w-10 h-10 text-muted-foreground/40 mx-auto mb-3" />
+  1143→                    <p className="text-muted-foreground">Geen lokale zoekwoorden gevonden. Voeg een zoekwoord toe om te beginnen.</p>
+  1144→                  </div>
+  1145→                ) : (
+  1146→                  <div className="max-h-96 overflow-y-auto">
+  1147→                    <Table>
+  1148→                      <TableHeader>
+  1149→                        <TableRow>
+  1150→                          <TableHead>Zoekwoord</TableHead>
+  1151→                          <TableHead>Intentie</TableHead>
+  1152→                          <TableHead className="text-right">Volume</TableHead>
+  1153→                          <TableHead className="text-right">Positie</TableHead>
+  1154→                          <TableHead>URL</TableHead>
+  1155→                        </TableRow>
+  1156→                      </TableHeader>
+  1157→                      <TableBody>
+  1158→                        {keywords.map((kw) => (
+  1159→                          <TableRow key={kw.id}>
+  1160→                            <TableCell className="font-medium">{kw.keyword}</TableCell>
+  1161→                            <TableCell>
+  1162→                              <Badge className={INTENT_COLORS[kw.intent] || "bg-gray-50 text-gray-700"} variant="outline">
+  1163→                                {INTENT_LABELS[kw.intent] || kw.intent}
+  1164→                              </Badge>
+  1165→                            </TableCell>
+  1166→                            <TableCell className="text-right">{kw.searchVolume ?? "—"}</TableCell>
+  1167→                            <TableCell className="text-right">
+  1168→                              {kw.currentRank ? (
+  1169→                                <span className={kw.currentRank <= 10 ? "text-green-600 font-medium" : ""}>
+  1170→                                  #{kw.currentRank}
+  1171→                                </span>
+  1172→                              ) : "—"}
+  1173→                            </TableCell>
+  1174→                            <TableCell className="max-w-[200px] truncate text-xs text-muted-foreground">
+  1175→                              {kw.url || "—"}
+  1176→                            </TableCell>
+  1177→                          </TableRow>
+  1178→                        ))}
+  1179→                      </TableBody>
+  1180→                    </Table>
+  1181→                  </div>
+  1182→                )}
+  1183→              </CardContent>
+  1184→            </Card>
+  1185→          </TabsContent>
+  1186→
+  1187→          {/* ================================================================ */}
+  1188→          {/* TAB: Bestemmingspagina's */}
+  1189→          {/* ================================================================ */}
+  1190→          <TabsContent value="landing-pages">
+  1191→            <Card>
+  1192→              <CardHeader>
+  1193→                <div className="flex items-center justify-between">
+  1194→                  <div>
+  1195→                    <CardTitle className="text-base flex items-center gap-2">
+  1196→                      <FileText className="w-4 h-4 text-emerald-600" />
+  1197→                      Bestemmingspagina&apos;s
+  1198→                    </CardTitle>
+  1199→                    <CardDescription>{landingPages.length} bestemmingspagina&apos;s bij deze locatie</CardDescription>
+  1200→                  </div>
+  1201→                  <Dialog open={lpDialogOpen} onOpenChange={setLpDialogOpen}>
+  1202→                    <DialogTrigger asChild>
+  1203→                      <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700">
+  1204→                        <Plus className="w-4 h-4 mr-1" />
+  1205→                        Pagina toevoegen
+  1206→                      </Button>
+  1207→                    </DialogTrigger>
+  1208→                    <DialogContent>
+  1209→                      <DialogHeader>
+  1210→                        <DialogTitle>Bestemmingspagina toevoegen</DialogTitle>
+  1211→                        <DialogDescription>
+  1212→                          Voeg een bestemmingspagina toe om de kwaliteit te analyseren.
+  1213→                        </DialogDescription>
+  1214→                      </DialogHeader>
+  1215→                      <div className="grid gap-4 py-4">
+  1216→                        <div className="grid gap-2">
+  1217→                          <Label>URL *</Label>
+  1218→                          <Input
+  1219→                            value={lpForm.url}
+  1220→                            onChange={(e) => setLpForm((f) => ({ ...f, url: e.target.value }))}
+  1221→                            placeholder="https://www.voorbeeld.nl/amsterdam"
+  1222→                          />
+  1223→                        </div>
+  1224→                      </div>
+  1225→                      <DialogFooter>
+  1226→                        <Button variant="outline" onClick={() => setLpDialogOpen(false)}>Annuleren</Button>
+  1227→                        <Button onClick={addLandingPage} disabled={isAddingLp} className="bg-emerald-600 hover:bg-emerald-700">
+  1228→                          {isAddingLp && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+  1229→                          Toevoegen
+  1230→                        </Button>
+  1231→                      </DialogFooter>
+  1232→                    </DialogContent>
+  1233→                  </Dialog>
+  1234→                </div>
+  1235→              </CardHeader>
+  1236→              <CardContent>
+  1237→                {landingPages.length === 0 ? (
+  1238→                  <div className="py-8 text-center">
+  1239→                    <FileText className="w-10 h-10 text-muted-foreground/40 mx-auto mb-3" />
+  1240→                    <p className="text-muted-foreground">Geen bestemmingspagina&apos;s gevonden. Voeg een pagina toe om te beginnen.</p>
+  1241→                  </div>
+  1242→                ) : (
+  1243→                  <div className="max-h-96 overflow-y-auto">
+  1244→                    <Table>
+  1245→                      <TableHeader>
+  1246→                        <TableRow>
+  1247→                          <TableHead>URL</TableHead>
+  1248→                          <TableHead className="text-center">Kwaliteit</TableHead>
+  1249→                          <TableHead className="text-center">Problemen</TableHead>
+  1250→                          <TableHead className="text-center">NAP</TableHead>
+  1251→                          <TableHead className="text-center">Schema</TableHead>
+  1252→                          <TableHead className="text-center">Kaart</TableHead>
+  1253→                          <TableHead className="text-center">Uren</TableHead>
+  1254→                        </TableRow>
+  1255→                      </TableHeader>
+  1256→                      <TableBody>
+  1257→                        {landingPages.map((lp) => {
+  1258→                          const issues = parseIssues(lp.issues);
+  1259→                          return (
+  1260→                            <TableRow key={lp.id}>
+  1261→                              <TableCell className="max-w-[250px]">
+  1262→                                <a
+  1263→                                  href={lp.url}
+  1264→                                  target="_blank"
+  1265→                                  rel="noopener noreferrer"
+  1266→                                  className="text-sm text-emerald-700 hover:underline truncate block flex items-center gap-1"
+  1267→                                >
+  1268→                                  {lp.url}
+  1269→                                  <ExternalLink className="w-3 h-3 shrink-0" />
+  1270→                                </a>
+  1271→                                {lp.title && (
+  1272→                                  <p className="text-xs text-muted-foreground mt-0.5 truncate">{lp.title}</p>
+  1273→                                )}
+  1274→                              </TableCell>
+  1275→                              <TableCell className="text-center">
+  1276→                                <Badge className={scoreBg(lp.qualityScore)} variant="outline">
+  1277→                                  {Math.round(lp.qualityScore)}
+  1278→                                </Badge>
+  1279→                              </TableCell>
+  1280→                              <TableCell className="text-center">
+  1281→                                {issues.length > 0 ? (
+  1282→                                  <Badge className="bg-red-50 text-red-700 border-red-200" variant="outline">
+  1283→                                    {issues.length}
+  1284→                                  </Badge>
+  1285→                                ) : (
+  1286→                                  <Badge className="bg-green-50 text-green-700 border-green-200" variant="outline">0</Badge>
+  1287→                                )}
+  1288→                              </TableCell>
+  1289→                              <TableCell className="text-center">
+  1290→                                {lp.hasNAP ? <CheckCircle2 className="w-4 h-4 text-green-600 mx-auto" /> : <XCircle className="w-4 h-4 text-red-400 mx-auto" />}
+  1291→                              </TableCell>
+  1292→                              <TableCell className="text-center">
+  1293→                                {lp.hasStructuredData ? <CheckCircle2 className="w-4 h-4 text-green-600 mx-auto" /> : <XCircle className="w-4 h-4 text-red-400 mx-auto" />}
+  1294→                              </TableCell>
+  1295→                              <TableCell className="text-center">
+  1296→                                {lp.hasMap ? <CheckCircle2 className="w-4 h-4 text-green-600 mx-auto" /> : <XCircle className="w-4 h-4 text-red-400 mx-auto" />}
+  1297→                              </TableCell>
+  1298→                              <TableCell className="text-center">
+  1299→                                {lp.hasOpeningHours ? <CheckCircle2 className="w-4 h-4 text-green-600 mx-auto" /> : <XCircle className="w-4 h-4 text-red-400 mx-auto" />}
+  1300→                              </TableCell>
+  1301→                            </TableRow>
+  1302→                          );
+  1303→                        })}
+  1304→                      </TableBody>
+  1305→                    </Table>
+  1306→                  </div>
+  1307→                )}
+  1308→              </CardContent>
+  1309→            </Card>
+  1310→          </TabsContent>
+  1311→
+  1312→          {/* ================================================================ */}
+  1313→          {/* TAB: Concurrenten */}
+  1314→          {/* ================================================================ */}
+  1315→          <TabsContent value="competitors">
+  1316→            <Card>
+  1317→              <CardHeader>
+  1318→                <div className="flex items-center justify-between">
+  1319→                  <div>
+  1320→                    <CardTitle className="text-base flex items-center gap-2">
+  1321→                      <Users className="w-4 h-4 text-emerald-600" />
+  1322→                      Lokale concurrenten
+  1323→                    </CardTitle>
+  1324→                    <CardDescription>{competitors.length} concurrenten bij deze locatie</CardDescription>
+  1325→                  </div>
+  1326→                  <Dialog open={compDialogOpen} onOpenChange={setCompDialogOpen}>
+  1327→                    <DialogTrigger asChild>
+  1328→                      <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700">
+  1329→                        <Plus className="w-4 h-4 mr-1" />
+  1330→                        Concurrent toevoegen
+  1331→                      </Button>
+  1332→                    </DialogTrigger>
+  1333→                    <DialogContent className="sm:max-w-[500px]">
+  1334→                      <DialogHeader>
+  1335→                        <DialogTitle>Concurrent toevoegen</DialogTitle>
+  1336→                        <DialogDescription>
+  1337→                          Voeg een lokale concurrent toe om te vergelijken.
+  1338→                        </DialogDescription>
+  1339→                      </DialogHeader>
+  1340→                      <div className="grid gap-4 py-4">
+  1341→                        <div className="grid gap-2">
+  1342→                          <Label>Naam *</Label>
+  1343→                          <Input
+  1344→                            value={compForm.name}
+  1345→                            onChange={(e) => setCompForm((f) => ({ ...f, name: e.target.value }))}
+  1346→                            placeholder="Bijv. Concurrent B.V."
+  1347→                          />
+  1348→                        </div>
+  1349→                        <div className="grid grid-cols-2 gap-4">
+  1350→                          <div className="grid gap-2">
+  1351→                            <Label>Adres</Label>
+  1352→                            <Input
+  1353→                              value={compForm.address}
+  1354→                              onChange={(e) => setCompForm((f) => ({ ...f, address: e.target.value }))}
+  1355→                              placeholder="Keizersgracht 456"
+  1356→                            />
+  1357→                          </div>
+  1358→                          <div className="grid gap-2">
+  1359→                            <Label>Stad</Label>
+  1360→                            <Input
+  1361→                              value={compForm.city}
+  1362→                              onChange={(e) => setCompForm((f) => ({ ...f, city: e.target.value }))}
+  1363→                              placeholder="Amsterdam"
+  1364→                            />
+  1365→                          </div>
+  1366→                        </div>
+  1367→                        <div className="grid grid-cols-2 gap-4">
+  1368→                          <div className="grid gap-2">
+  1369→                            <Label>Postcode</Label>
+  1370→                            <Input
+  1371→                              value={compForm.postalCode}
+  1372→                              onChange={(e) => setCompForm((f) => ({ ...f, postalCode: e.target.value }))}
+  1373→                              placeholder="1016 AB"
+  1374→                            />
+  1375→                          </div>
+  1376→                          <div className="grid gap-2">
+  1377→                            <Label>Website</Label>
+  1378→                            <Input
+  1379→                              value={compForm.website}
+  1380→                              onChange={(e) => setCompForm((f) => ({ ...f, website: e.target.value }))}
+  1381→                              placeholder="https://www.concurrent.nl"
+  1382→                            />
+  1383→                          </div>
+  1384→                        </div>
+  1385→                        <div className="grid grid-cols-3 gap-4">
+  1386→                          <div className="grid gap-2">
+  1387→                            <Label>Beoordeling</Label>
+  1388→                            <Input
+  1389→                              type="number"
+  1390→                              step="0.1"
+  1391→                              value={compForm.avgRating}
+  1392→                              onChange={(e) => setCompForm((f) => ({ ...f, avgRating: e.target.value }))}
+  1393→                              placeholder="4.2"
+  1394→                            />
+  1395→                          </div>
+  1396→                          <div className="grid gap-2">
+  1397→                            <Label>Beoordelingen</Label>
+  1398→                            <Input
+  1399→                              type="number"
+  1400→                              value={compForm.reviewCount}
+  1401→                              onChange={(e) => setCompForm((f) => ({ ...f, reviewCount: e.target.value }))}
+  1402→                              placeholder="120"
+  1403→                            />
+  1404→                          </div>
+  1405→                          <div className="grid gap-2">
+  1406→                            <Label>Afstand (km)</Label>
+  1407→                            <Input
+  1408→                              type="number"
+  1409→                              step="0.1"
+  1410→                              value={compForm.distance}
+  1411→                              onChange={(e) => setCompForm((f) => ({ ...f, distance: e.target.value }))}
+  1412→                              placeholder="1.5"
+  1413→                            />
+  1414→                          </div>
+  1415→                        </div>
+  1416→                        <div className="grid gap-2">
+  1417→                          <Label>Notities</Label>
+  1418→                          <Textarea
+  1419→                            value={compForm.notes}
+  1420→                            onChange={(e) => setCompForm((f) => ({ ...f, notes: e.target.value }))}
+  1421→                            placeholder="Opmerkingen over deze concurrent..."
+  1422→                            rows={2}
+  1423→                          />
+  1424→                        </div>
+  1425→                      </div>
+  1426→                      <DialogFooter>
+  1427→                        <Button variant="outline" onClick={() => setCompDialogOpen(false)}>Annuleren</Button>
+  1428→                        <Button onClick={addCompetitor} disabled={isAddingComp} className="bg-emerald-600 hover:bg-emerald-700">
+  1429→                          {isAddingComp && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+  1430→                          Toevoegen
+  1431→                        </Button>
+  1432→                      </DialogFooter>
+  1433→                    </DialogContent>
+  1434→                  </Dialog>
+  1435→                </div>
+  1436→              </CardHeader>
+  1437→              <CardContent>
+  1438→                {competitors.length === 0 ? (
+  1439→                  <div className="py-8 text-center">
+  1440→                    <Users className="w-10 h-10 text-muted-foreground/40 mx-auto mb-3" />
+  1441→                    <p className="text-muted-foreground">Geen lokale concurrenten gevonden. Voeg een concurrent toe om te vergelijken.</p>
+  1442→                  </div>
+  1443→                ) : (
+  1444→                  <div className="max-h-96 overflow-y-auto">
+  1445→                    <Table>
+  1446→                      <TableHeader>
+  1447→                        <TableRow>
+  1448→                          <TableHead>Naam</TableHead>
+  1449→                          <TableHead className="text-right">Afstand</TableHead>
+  1450→                          <TableHead>Beoordeling</TableHead>
+  1451→                          <TableHead className="text-right">Beoordelingen</TableHead>
+  1452→                          <TableHead>Website</TableHead>
+  1453→                        </TableRow>
+  1454→                      </TableHeader>
+  1455→                      <TableBody>
+  1456→                        {competitors.map((comp) => (
+  1457→                          <TableRow key={comp.id}>
+  1458→                            <TableCell>
+  1459→                              <div>
+  1460→                                <p className="font-medium">{comp.name}</p>
+  1461→                                {comp.city && <p className="text-xs text-muted-foreground">{comp.city}</p>}
+  1462→                              </div>
+  1463→                            </TableCell>
+  1464→                            <TableCell className="text-right">
+  1465→                              {comp.distance != null ? (
+  1466→                                <span className="flex items-center justify-end gap-1">
+  1467→                                  <Navigation className="w-3 h-3 text-muted-foreground" />
+  1468→                                  {comp.distance.toFixed(1)} km
+  1469→                                </span>
+  1470→                              ) : "—"}
+  1471→                            </TableCell>
+  1472→                            <TableCell>
+  1473→                              {comp.avgRating != null ? (
+  1474→                                <div className="flex items-center gap-1">
+  1475→                                  <div className="flex">{renderStars(comp.avgRating)}</div>
+  1476→                                  <span className="text-xs font-medium">{comp.avgRating.toFixed(1)}</span>
+  1477→                                </div>
+  1478→                              ) : "—"}
+  1479→                            </TableCell>
+  1480→                            <TableCell className="text-right">{comp.reviewCount || "—"}</TableCell>
+  1481→                            <TableCell>
+  1482→                              {comp.website ? (
+  1483→                                <a
+  1484→                                  href={comp.website}
+  1485→                                  target="_blank"
+  1486→                                  rel="noopener noreferrer"
+  1487→                                  className="text-sm text-emerald-700 hover:underline flex items-center gap-1"
+  1488→                                >
+  1489→                                  <ExternalLink className="w-3 h-3" />
+  1490→                                  Website
+  1491→                                </a>
+  1492→                              ) : "—"}
+  1493→                            </TableCell>
+  1494→                          </TableRow>
+  1495→                        ))}
+  1496→                      </TableBody>
+  1497→                    </Table>
+  1498→                  </div>
+  1499→                )}
+  1500→              </CardContent>
+  1501→            </Card>
+  1502→          </TabsContent>
+  1503→
+  1504→          {/* ================================================================ */}
+  1505→          {/* TAB: Google Bedrijfsprofiel */}
+  1506→          {/* ================================================================ */}
+  1507→          <TabsContent value="gbp">
+  1508→            <Card>
+  1509→              <CardHeader>
+  1510→                <CardTitle className="text-base flex items-center gap-2">
+  1511→                  <Building2 className="w-4 h-4 text-emerald-600" />
+  1512→                  Google Bedrijfsprofiel
+  1513→                </CardTitle>
+  1514→                <CardDescription>
+  1515→                  Beheer de verbinding met je Google Bedrijfsprofiel
+  1516→                </CardDescription>
+  1517→              </CardHeader>
+  1518→              <CardContent className="space-y-6">
+  1519→                {/* Connection Status */}
+  1520→                <div className="flex items-center justify-between p-4 rounded-lg border bg-white">
+  1521→                  <div className="flex items-center gap-3">
+  1522→                    {gbpStatus?.connected ? (
+  1523→                      <>
+  1524→                        <div className="p-2 bg-green-50 rounded-lg">
+  1525→                          <Link2 className="w-5 h-5 text-green-600" />
+  1526→                        </div>
+  1527→                        <div>
+  1528→                          <p className="font-medium">Verbonden</p>
+  1529→                          <p className="text-sm text-muted-foreground">
+  1530→                            {gbpStatus.businessName || "Google Bedrijfsprofiel is verbonden"}
+  1531→                          </p>
+  1532→                        </div>
+  1533→                      </>
+  1534→                    ) : (
+  1535→                      <>
+  1536→                        <div className="p-2 bg-gray-50 rounded-lg">
+  1537→                          <Unplug className="w-5 h-5 text-gray-400" />
+  1538→                        </div>
+  1539→                        <div>
+  1540→                          <p className="font-medium">Niet verbonden</p>
+  1541→                          <p className="text-sm text-muted-foreground">
+  1542→                            Verbind je Google Bedrijfsprofiel om beoordelingen en gegevens te synchroniseren
+  1543→                          </p>
+  1544→                        </div>
+  1545→                      </>
+  1546→                    )}
+  1547→                  </div>
+  1548→                  <div className="flex gap-2">
+  1549→                    {gbpStatus?.connected ? (
+  1550→                      <Button
+  1551→                        variant="outline"
+  1552→                        onClick={disconnectGBP}
+  1553→                        disabled={isDisconnectingGbp}
+  1554→                        className="text-red-600 hover:text-red-700 hover:bg-red-50"
+  1555→                      >
+  1556→                        {isDisconnectingGbp && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+  1557→                        Verbreken
+  1558→                      </Button>
+  1559→                    ) : (
+  1560→                      <Dialog open={gbpDialogOpen} onOpenChange={setGbpDialogOpen}>
+  1561→                        <DialogTrigger asChild>
+  1562→                          <Button className="bg-emerald-600 hover:bg-emerald-700">
+  1563→                            <Link2 className="w-4 h-4 mr-2" />
+  1564→                            Verbinden
+  1565→                          </Button>
+  1566→                        </DialogTrigger>
+  1567→                        <DialogContent>
+  1568→                          <DialogHeader>
+  1569→                            <DialogTitle>Google Bedrijfsprofiel verbinden</DialogTitle>
+  1570→                            <DialogDescription>
+  1571→                              Voer je Google Bedrijfsprofiel gegevens in om te verbinden.
+  1572→                            </DialogDescription>
+  1573→                          </DialogHeader>
+  1574→                          <div className="grid gap-4 py-4">
+  1575→                            <div className="grid gap-2">
+  1576→                              <Label>Account ID *</Label>
+  1577→                              <Input
+  1578→                                value={gbpForm.accountId}
+  1579→                                onChange={(e) => setGbpForm((f) => ({ ...f, accountId: e.target.value }))}
+  1580→                                placeholder="123456789"
+  1581→                              />
+  1582→                            </div>
+  1583→                            <div className="grid gap-2">
+  1584→                              <Label>Location ID *</Label>
+  1585→                              <Input
+  1586→                                value={gbpForm.locationIdGBP}
+  1587→                                onChange={(e) => setGbpForm((f) => ({ ...f, locationIdGBP: e.target.value }))}
+  1588→                                placeholder="LOC-001"
+  1589→                              />
+  1590→                            </div>
+  1591→                            <div className="grid gap-2">
+  1592→                              <Label>Access Token *</Label>
+  1593→                              <Input
+  1594→                                type="password"
+  1595→                                value={gbpForm.accessToken}
+  1596→                                onChange={(e) => setGbpForm((f) => ({ ...f, accessToken: e.target.value }))}
+  1597→                                placeholder="ya29..."
+  1598→                              />
+  1599→                            </div>
+  1600→                            <div className="grid gap-2">
+  1601→                              <Label>Refresh Token *</Label>
+  1602→                              <Input
+  1603→                                type="password"
+  1604→                                value={gbpForm.refreshToken}
+  1605→                                onChange={(e) => setGbpForm((f) => ({ ...f, refreshToken: e.target.value }))}
+  1606→                                placeholder="1//..."
+  1607→                              />
+  1608→                            </div>
+  1609→                          </div>
+  1610→                          <DialogFooter>
+  1611→                            <Button variant="outline" onClick={() => setGbpDialogOpen(false)}>Annuleren</Button>
+  1612→                            <Button onClick={connectGBP} disabled={isConnectingGbp} className="bg-emerald-600 hover:bg-emerald-700">
+  1613→                              {isConnectingGbp && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+  1614→                              Verbinden
+  1615→                            </Button>
+  1616→                          </DialogFooter>
+  1617→                        </DialogContent>
+  1618→                      </Dialog>
+  1619→                    )}
+  1620→                  </div>
+  1621→                </div>
+  1622→
+  1623→                {/* GBP Details */}
+  1624→                {gbpStatus?.connected && (
+  1625→                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+  1626→                    <div className="p-3 rounded-lg border bg-white">
+  1627→                      <p className="text-xs text-muted-foreground">Bedrijfsnaam</p>
+  1628→                      <p className="font-medium mt-1">{gbpStatus.businessName || "—"}</p>
+  1629→                    </div>
+  1630→                    <div className="p-3 rounded-lg border bg-white">
+  1631→                      <p className="text-xs text-muted-foreground">Primaire categorie</p>
+  1632→                      <p className="font-medium mt-1">{gbpStatus.primaryCategory || "—"}</p>
+  1633→                    </div>
+  1634→                    <div className="p-3 rounded-lg border bg-white">
+  1635→                      <p className="text-xs text-muted-foreground">Gem. beoordeling</p>
+  1636→                      <div className="flex items-center gap-1 mt-1">
+  1637→                        {gbpStatus.avgRating != null ? (
+  1638→                          <>
+  1639→                            <div className="flex">{renderStars(gbpStatus.avgRating)}</div>
+  1640→                            <span className="font-medium">{gbpStatus.avgRating.toFixed(1)}</span>
+  1641→                          </>
+  1642→                        ) : "—"}
+  1643→                      </div>
+  1644→                    </div>
+  1645→                    <div className="p-3 rounded-lg border bg-white">
+  1646→                      <p className="text-xs text-muted-foreground">Totaal beoordelingen</p>
+  1647→                      <p className="font-medium mt-1">{gbpStatus.totalReviews}</p>
+  1648→                    </div>
+  1649→                  </div>
+  1650→                )}
+  1651→
+  1652→                {/* Last Sync */}
+  1653→                {gbpStatus?.lastSyncAt && (
+  1654→                  <div className="p-3 rounded-lg border bg-white">
+  1655→                    <p className="text-xs text-muted-foreground">Laatste synchronisatie</p>
+  1656→                    <p className="font-medium mt-1">
+  1657→                      {new Date(gbpStatus.lastSyncAt).toLocaleString("nl-NL")}
+  1658→                    </p>
+  1659→                  </div>
+  1660→                )}
+  1661→
+  1662→                {/* Sync Error */}
+  1663→                {gbpStatus?.syncError && (
+  1664→                  <div className="p-3 rounded-lg border border-red-200 bg-red-50">
+  1665→                    <p className="text-sm font-medium text-red-700">Fout bij synchronisatie</p>
+  1666→                    <p className="text-sm text-red-600 mt-1">{gbpStatus.syncError}</p>
+  1667→                  </div>
+  1668→                )}
+  1669→              </CardContent>
+  1670→            </Card>
+  1671→          </TabsContent>
+  1672→
+  1673→          {/* ================================================================ */}
+  1674→          {/* TAB: Gestructureerde gegevens */}
+  1675→          {/* ================================================================ */}
+  1676→          <TabsContent value="structured-data">
+  1677→            <Card>
+  1678→              <CardHeader>
+  1679→                <div className="flex items-center justify-between">
+  1680→                  <div>
+  1681→                    <CardTitle className="text-base flex items-center gap-2">
+  1682→                      <Code2 className="w-4 h-4 text-emerald-600" />
+  1683→                      Gestructureerde gegevens (JSON-LD)
+  1684→                    </CardTitle>
+  1685→                    <CardDescription>
+  1686→                      Genereer en bekijk gestructureerde gegevens voor lokale SEO
+  1687→                    </CardDescription>
+  1688→                  </div>
+  1689→                  <Button
+  1690→                    onClick={generateStructuredData}
+  1691→                    disabled={isGeneratingSD}
+  1692→                    className="bg-emerald-600 hover:bg-emerald-700"
+  1693→                  >
+  1694→                    {isGeneratingSD ? (
+  1695→                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+  1696→                    ) : (
+  1697→                      <Code2 className="w-4 h-4 mr-2" />
+  1698→                    )}
+  1699→                    Genereren
+  1700→                  </Button>
+  1701→                </div>
+  1702→              </CardHeader>
+  1703→              <CardContent>
+  1704→                {structuredData?.jsonLd ? (
+  1705→                  <div className="space-y-4">
+  1706→                    {structuredData.businessType && (
+  1707→                      <div className="p-3 rounded-lg border bg-white">
+  1708→                        <p className="text-xs text-muted-foreground">Type bedrijf</p>
+  1709→                        <Badge variant="outline" className="mt-1">{structuredData.businessType}</Badge>
+  1710→                      </div>
+  1711→                    )}
+  1712→                    <div className="relative">
+  1713→                      <pre className="p-4 rounded-lg bg-gray-900 text-gray-100 text-sm overflow-x-auto max-h-96 overflow-y-auto">
+  1714→                        <code>
+  1715→                          {(() => {
+  1716→                            try {
+  1717→                              return JSON.stringify(JSON.parse(structuredData.jsonLd), null, 2);
+  1718→                            } catch {
+  1719→                              return structuredData.jsonLd;
+  1720→                            }
+  1721→                          })()}
+  1722→                        </code>
+  1723→                      </pre>
+  1724→                    </div>
+  1725→                  </div>
+  1726→                ) : (
+  1727→                  <div className="py-8 text-center">
+  1728→                    <Code2 className="w-10 h-10 text-muted-foreground/40 mx-auto mb-3" />
+  1729→                    <p className="text-muted-foreground mb-4">
+  1730→                      Nog geen gestructureerde gegevens gegenereerd. Klik op &quot;Genereren&quot; om JSON-LD te maken.
+  1731→                    </p>
+  1732→                  </div>
+  1733→                )}
+  1734→              </CardContent>
+  1735→            </Card>
+  1736→          </TabsContent>
+  1737→        </Tabs>
+  1738→      </div>
+  1739→    </div>
+  1740→  );
+  1741→}
+  1742→

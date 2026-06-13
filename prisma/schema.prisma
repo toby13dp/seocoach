@@ -2660,6 +2660,25 @@ model GoogleBusinessProfile {
   @@map("google_business_profiles")
 }
 
+// ============================================================================
+// Google OAuth State (CSRF protection for OAuth flow)
+// ============================================================================
+
+model OAuthState {
+  id          String   @id @default(uuid())
+  state       String   @unique
+  projectId   String
+  userId      String
+  scopes      String   // JSON array of requested scopes
+  service     String   // search_console, analytics, business_profile, all
+  expiresAt   DateTime
+  createdAt   DateTime @default(now())
+
+  @@index([state])
+  @@index([expiresAt])
+  @@map("oauth_states")
+}
+
 model RankImport {
   id          String   @id @default(uuid())
   projectId   String

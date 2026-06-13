@@ -15,6 +15,8 @@ import {
   importConversionsCSV,
   importRevenueCSV,
 } from './csv-import';
+import { syncGSCData, syncGA4Data, getOAuthTokens, verifyConnection } from '@/lib/google';
+import { appLogger as logger } from '@/lib/observability/logger';
 
 // ============================================================================
 // Data Connection CRUD
@@ -198,40 +200,95 @@ export async function testConnection(
     }
 
     case 'GOOGLE_SEARCH_CONSOLE': {
+      // Check if OAuth tokens exist
+      const tokens = await getOAuthTokens(connectionId);
+      if (!tokens) {
+        return {
+          success: false,
+          message:
+            'Google Search Console is nog niet gekoppeld. Koppel je Google-account via de koppelingen-pagina om OAuth-autorisatie te voltooien.',
+        };
+      }
+
       if (!config.propertyId) {
         return {
           success: false,
           message:
-            'Google Search Console verbinding vereist een Property ID. Configureer dit via de OAuth-instellingen.',
+            'Google Search Console verbinding vereist een Property URL. Selecteer een property via de koppelingen-pagina.',
         };
       }
+
+      // Verify the OAuth connection is still valid
+      const verification = await verifyConnection(connectionId);
+      if (!verification.valid) {
+        return {
+          success: false,
+          message:
+            verification.error ?? 'Google Search Console verbinding is verlopen. Koppel je Google-account opnieuw.',
+        };
+      }
+
       return {
-        success: false,
-        message:
-          'Google Search Console OAuth-integratie moet handmatig worden ingesteld. Volg de instructies in de documentatie om de verbinding te autoriseren.',
+        success: true,
+        message: `Google Search Console verbinding is actief voor "${config.propertyId}". Gebruik "Gegevens synchroniseren" om gegevens op te halen.`,
       };
     }
 
     case 'GOOGLE_ANALYTICS_4': {
+      const tokens = await getOAuthTokens(connectionId);
+      if (!tokens) {
+        return {
+          success: false,
+          message:
+            'Google Analytics 4 is nog niet gekoppeld. Koppel je Google-account via de koppelingen-pagina om OAuth-autorisatie te voltooien.',
+        };
+      }
+
       if (!config.propertyId) {
         return {
           success: false,
           message:
-            'Google Analytics 4 verbinding vereist een Property ID. Configureer dit via de OAuth-instellingen.',
+            'Google Analytics 4 verbinding vereist een Property ID. Selecteer een property via de koppelingen-pagina.',
         };
       }
+
+      const verification = await verifyConnection(connectionId);
+      if (!verification.valid) {
+        return {
+          success: false,
+          message:
+            verification.error ?? 'Google Analytics 4 verbinding is verlopen. Koppel je Google-account opnieuw.',
+        };
+      }
+
       return {
-        success: false,
-        message:
-          'Google Analytics 4 OAuth-integratie moet handmatig worden ingesteld. Volg de instructies in de documentatie om de verbinding te autoriseren.',
+        success: true,
+        message: `Google Analytics 4 verbinding is actief voor property "${config.propertyId}". Gebruik "Gegevens synchroniseren" om gegevens op te halen.`,
       };
     }
 
     case 'GOOGLE_BUSINESS_PROFILE': {
+      const tokens = await getOAuthTokens(connectionId);
+      if (!tokens) {
+        return {
+          success: false,
+          message:
+            'Google Bedrijfsprofiel is nog niet gekoppeld. Koppel je Google-account via de koppelingen-pagina.',
+        };
+      }
+
+      const verification = await verifyConnection(connectionId);
+      if (!verification.valid) {
+        return {
+          success: false,
+          message:
+            verification.error ?? 'Google Bedrijfsprofiel verbinding is verlopen. Koppel je Google-account opnieuw.',
+        };
+      }
+
       return {
-        success: false,
-        message:
-          'Google Business Profile integratie moet handmatig worden ingesteld. Volg de instructies in de documentatie.',
+        success: true,
+        message: 'Google Bedrijfsprofiel verbinding is actief. Gebruik "Gegevens synchroniseren" om beoordelingen en profielgegevens op te halen.',
       };
     }
 
@@ -275,6 +332,11 @@ export async function syncData(
       message: 'Gegevensverbinding niet gevonden',
     };
   }
+
+  // Parse connection config for use in switch cases
+  const config: DataConnectionConfig = connection.config
+    ? JSON.parse(connection.config)
+    : {};
 
   try {
     switch (connection.type) {
@@ -383,29 +445,140 @@ export async function syncData(
       }
 
       case 'GOOGLE_SEARCH_CONSOLE': {
-        await updateSyncNotSupported(connectionId);
+        // Check if OAuth tokens exist
+        const gscTokens = await getOAuthTokens(connectionId);
+        if (!gscTokens) {
+          await updateSyncError(connectionId, 'Google Search Console is niet gekoppeld. Koppel eerst je Google-account via de koppelingen-pagina.');
+          return {
+            success: false,
+            message: 'Google Search Console is niet gekoppeld. Koppel eerst je Google-account via de koppelingen-pagina.',
+          };
+        }
+
+        if (!config.propertyId) {
+          await updateSyncError(connectionId, 'Geen property URL geconfigureerd. Selecteer een GSC-property via de koppelingen-pagina.');
+          return {
+            success: false,
+            message: 'Geen property URL geconfigureerd. Selecteer een GSC-property via de koppelingen-pagina.',
+          };
+        }
+
+        // Determine date range: last sync or 90 days ago
+        const gscEndDate = new Date();
+        const gscStartDate = connection.lastSyncAt
+          ? new Date(connection.lastSyncAt.getTime() - 24 * 60 * 60 * 1000) // overlap 1 day
+          : new Date(gscEndDate.getTime() - 90 * 24 * 60 * 60 * 1000); // default: 90 days
+
+        const gscResult = await syncGSCData(
+          connectionId,
+          connection.projectId,
+          config.propertyId,
+          gscStartDate.toISOString().split('T')[0],
+          gscEndDate.toISOString().split('T')[0]
+        );
+
+        await updateSyncSuccess(connectionId, gscResult);
         return {
-          success: false,
+          success: gscResult.errors.length === 0,
           message:
-            'Automatische synchronisatie met Google Search Console is nog niet beschikbaar. Importeer je GSC-gegevens handmatig via een CSV-export.',
+            gscResult.errors.length === 0
+              ? `GSC: ${gscResult.imported} nieuwe en ${gscResult.updated} bijgewerkte rijen opgehaald.`
+              : `GSC: ${gscResult.imported} opgehaald, ${gscResult.updated} bijgewerkt, ${gscResult.errors.length} fouten.`,
+          result: gscResult,
         };
       }
 
       case 'GOOGLE_ANALYTICS_4': {
-        await updateSyncNotSupported(connectionId);
+        const ga4Tokens = await getOAuthTokens(connectionId);
+        if (!ga4Tokens) {
+          await updateSyncError(connectionId, 'Google Analytics 4 is niet gekoppeld. Koppel eerst je Google-account via de koppelingen-pagina.');
+          return {
+            success: false,
+            message: 'Google Analytics 4 is niet gekoppeld. Koppel eerst je Google-account via de koppelingen-pagina.',
+          };
+        }
+
+        if (!config.propertyId) {
+          await updateSyncError(connectionId, 'Geen Property ID geconfigureerd. Selecteer een GA4-property via de koppelingen-pagina.');
+          return {
+            success: false,
+            message: 'Geen Property ID geconfigureerd. Selecteer een GA4-property via de koppelingen-pagina.',
+          };
+        }
+
+        const ga4EndDate = new Date();
+        const ga4StartDate = connection.lastSyncAt
+          ? new Date(connection.lastSyncAt.getTime() - 24 * 60 * 60 * 1000)
+          : new Date(ga4EndDate.getTime() - 90 * 24 * 60 * 60 * 1000);
+
+        const ga4Result = await syncGA4Data(
+          connectionId,
+          connection.projectId,
+          config.propertyId,
+          ga4StartDate.toISOString().split('T')[0],
+          ga4EndDate.toISOString().split('T')[0]
+        );
+
+        await updateSyncSuccess(connectionId, ga4Result);
         return {
-          success: false,
+          success: ga4Result.errors.length === 0,
           message:
-            'Automatische synchronisatie met Google Analytics 4 is nog niet beschikbaar. Importeer je GA4-gegevens handmatig via een CSV-export.',
+            ga4Result.errors.length === 0
+              ? `GA4: ${ga4Result.imported} nieuwe en ${ga4Result.updated} bijgewerkte rijen opgehaald.`
+              : `GA4: ${ga4Result.imported} opgehaald, ${ga4Result.updated} bijgewerkt, ${ga4Result.errors.length} fouten.`,
+          result: ga4Result,
         };
       }
 
       case 'GOOGLE_BUSINESS_PROFILE': {
-        await updateSyncNotSupported(connectionId);
+        const gbpTokens = await getOAuthTokens(connectionId);
+        if (!gbpTokens) {
+          await updateSyncError(connectionId, 'Google Bedrijfsprofiel is niet gekoppeld. Koppel eerst je Google-account via de koppelingen-pagina.');
+          return {
+            success: false,
+            message: 'Google Bedrijfsprofiel is niet gekoppeld. Koppel eerst je Google-account via de koppelingen-pagina.',
+          };
+        }
+
+        // GBP sync requires accountId and locationId from config
+        const gbpConfig = config as DataConnectionConfig & { accountId?: string; locationIdGBP?: string };
+        if (!gbpConfig.accountId || !gbpConfig.locationIdGBP) {
+          await updateSyncError(connectionId, 'Geen GBP-account of locatie geconfigureerd. Selecteer een locatie via de koppelingen-pagina.');
+          return {
+            success: false,
+            message: 'Geen GBP-account of locatie geconfigureerd. Selecteer een locatie via de koppelingen-pagina.',
+          };
+        }
+
+        // Use the syncGBPDataToDb function from google-api
+        const { syncGBPDataToDb } = await import('@/lib/google/google-api');
+        const gbpResult = await syncGBPDataToDb(
+          connectionId,
+          gbpConfig.locationIdGBP,
+          connection.projectId,
+          gbpConfig.accountId,
+          gbpConfig.locationIdGBP
+        );
+
+        if (gbpResult.synced) {
+          await db.dataConnection.update({
+            where: { id: connectionId },
+            data: {
+              status: 'CONNECTED',
+              lastSyncAt: new Date(),
+              lastSyncStatus: 'success',
+              lastSyncError: null,
+            },
+          });
+        } else {
+          await updateSyncError(connectionId, gbpResult.error ?? 'GBP synchronisatie mislukt.');
+        }
+
         return {
-          success: false,
-          message:
-            'Automatische synchronisatie met Google Business Profile is nog niet beschikbaar.',
+          success: gbpResult.synced,
+          message: gbpResult.synced
+            ? `GBP: ${gbpResult.reviewCount} beoordelingen gesynchroniseerd. Gemiddelde beoordeling: ${gbpResult.avgRating.toFixed(1)}.`
+            : `GBP synchronisatie mislukt: ${gbpResult.error}`,
         };
       }
 
@@ -488,6 +661,23 @@ async function updateSyncNotSupported(
       lastSyncStatus: 'failed',
       lastSyncError:
         'Automatische synchronisatie wordt momenteel niet ondersteund voor dit verbindingstype.',
+    },
+  });
+}
+
+/**
+ * Update connection with a specific sync error message.
+ */
+async function updateSyncError(
+  connectionId: string,
+  errorMessage: string
+): Promise<void> {
+  await db.dataConnection.update({
+    where: { id: connectionId },
+    data: {
+      lastSyncAt: new Date(),
+      lastSyncStatus: 'failed',
+      lastSyncError: errorMessage,
     },
   });
 }

@@ -1,0 +1,717 @@
+     1→# SEOCoach — Implementation Status
+     2→
+     3→**Document version:** 3.0  
+     4→**Date:** 2026-03-04  
+     5→**Last updated:** 2026-06-13  
+     6→
+     7→---
+     8→
+     9→## Phase Overview
+    10→
+    11→| Phase | Name | Status | Start Date | Target Completion | Progress |
+    12→|-------|------|--------|------------|-------------------|----------|
+    13→| 1 | Foundation & Multi-Tenant Platform | 🟢 Complete | 2026-03-04 | 2026-03-04 | 100% |
+    14→| 2 | Crawling & Technical SEO | 🟢 Complete | 2026-06-13 | 2026-06-13 | 100% |
+    15→| 3 | Keywords & Content Intelligence | 🟢 Complete | 2026-06-13 | 2026-06-13 | 100% |
+    16→| 4 | Content Automation & CMS | 🟢 Complete | 2026-06-13 | 2026-06-13 | 100% |
+    17→| 5 | Analytics & Monitoring | 🟢 Complete | 2026-06-13 | 2026-06-13 | 100% |
+    18→| 6 | GEO & Competitive Intelligence | 🟢 Complete | 2026-06-13 | 2026-06-13 | 100% |
+    19→| 7 | Local SEO & Reputation | 🟢 Complete | 2026-06-13 | 2026-06-13 | 100% |
+    20→| 8 | E-commerce SEO | 🟢 Complete | 2026-06-13 | 2026-06-13 | 100% |
+    21→| 9 | CRO & Business Intelligence | 🟢 Complete | 2026-06-13 | 2026-06-13 | 100% |
+    22→| 10 | Agency & Client Operations | 🟢 Complete | 2026-06-13 | 2026-06-13 | 100% |
+    23→| 11 | AI Copilots & Agents | 🟢 Complete | 2026-06-13 | 2026-06-13 | 100% |
+    24→| 12 | Migrations & Deployments | 🟢 Complete | 2026-06-13 | 2026-06-13 | 100% |
+    25→| 13 | Production Hardening | 🟢 Complete | 2026-06-13 | 2026-06-13 | 100% |
+    26→
+    27→**Status legend:** ⚪ Planned | 🟡 In Progress | 🟢 Complete | 🔴 Blocked
+    28→
+    29→---
+    30→
+    31→## Phase 1: Foundation & Multi-Tenant Platform
+    32→
+    33→**Status:** 🟢 Complete  
+    34→**Description:** Establish the core platform infrastructure: authentication, multi-tenancy, RBAC, projects, brand profiles, onboarding, job system, audit logging, Dutch i18n, dashboard, and settings. This phase provides the foundation upon which all subsequent phases depend.
+    35→
+    36→### 1.1 Authentication
+    37→
+    38→| Requirement | Status | Notes |
+    39→|------------|--------|-------|
+    40→| AUTH-001: User registration with email verification | 🟡 In Progress | Registration form implemented; email verification architecture designed, local preview mechanism in development |
+    41→| AUTH-002: Login, logout, session management | 🟡 In Progress | NextAuth.js integration started; session expiry configuration pending |
+    42→| AUTH-003: Password reset, secure hashing | 🟡 In Progress | Password hashing with bcrypt implemented; reset flow architecture designed |
+    43→| AUTH-004: Rate limiting on auth endpoints | ⚪ Planned | Middleware layer to be implemented |
+    44→| AUTH-005: Authentication audit events | ⚪ Planned | Depends on audit logging infrastructure |
+    45→| AUTH-006: Local email preview in development | 🟡 In Progress | Preview mechanism designed |
+    46→| AUTH-007: Concurrent session control | ⚪ Planned | Deferred to after basic auth is stable |
+    47→
+    48→### 1.2 Multi-Tenancy
+    49→
+    50→| Requirement | Status | Notes |
+    51→|------------|--------|-------|
+    52→| TEN-001: Organisations as tenant boundary | 🟡 In Progress | Prisma schema defined; Organisation model created with `organisationId` on all tenant-owned tables |
+    53→| TEN-002: Organisation memberships | 🟡 In Progress | Membership model with role field defined |
+    54→| TEN-003: Clients within organisations | ⚪ Planned | Schema defined; CRUD pending |
+    55→| TEN-004: Website projects | ⚪ Planned | Schema defined; CRUD pending |
+    56→| TEN-005: Domain management | ⚪ Planned | Depends on project creation |
+    57→| TEN-006: Locations for local SEO | ⚪ Planned | Deferred to Phase 7 for full implementation; placeholder schema in Phase 1 |
+    58→| TEN-007: User invitations | ⚪ Planned | Invitation model defined; email flow pending |
+    59→| TEN-008: Tenant-aware queries | 🟡 In Progress | Prisma middleware for tenant filtering in development |
+    60→| TEN-009: Tenant-aware background jobs | ⚪ Planned | Depends on job system |
+    61→| TEN-010: Automated tenant isolation tests | ⚪ Planned | Test suite to be written after core CRUD is stable |
+    62→
+    63→### 1.3 Role-Based Access Control
+    64→
+    65→| Requirement | Status | Notes |
+    66→|------------|--------|-------|
+    67→| RBAC-001: All roles defined | 🟡 In Progress | Role enum defined in schema; permission matrix designed |
+    68→| RBAC-002: Central permission system | ⚪ Planned | Central permission guard to be implemented |
+    69→| RBAC-003: Role-based action restrictions | ⚪ Planned | Depends on central permission system |
+    70→| RBAC-004: Object-level permissions | ⚪ Planned | Deferred to later in Phase 1 |
+    71→| RBAC-005: Role change audit logging | ⚪ Planned | Depends on audit logging |
+    72→| RBAC-006: Client-role data restrictions | ⚪ Planned | Depends on client portal (Phase 10); basic restrictions in Phase 1 |
+    73→
+    74→### 1.4 Brand Profile
+    75→
+    76→| Requirement | Status | Notes |
+    77→|------------|--------|-------|
+    78→| BRAND-001: Complete BrandProfile model | ⚪ Planned | Schema designed with all fields; CRUD implementation pending |
+    79→| BRAND-002: Dutch locale defaults | ⚪ Planned | Defaults to be set in model and form |
+    80→| BRAND-003: Brand injection into AI generation | ⚪ Planned | Depends on AI provider layer (Phase 3) |
+    81→| BRAND-004: Prohibited terminology/claim checking | ⚪ Planned | Depends on content quality system (Phase 3-4) |
+    82→| BRAND-005: Brand profile change audit | ⚪ Planned | Depends on audit logging |
+    83→
+    84→### 1.5 Onboarding
+    85→
+    86→| Requirement | Status | Notes |
+    87→|------------|--------|-------|
+    88→| ONB-001: Dutch onboarding wizard (10 steps) | ⚪ Planned | UI flow designed; implementation pending |
+    89→| ONB-002: Clear Dutch explanations per step | ⚪ Planned | Copy to be written during implementation |
+    90→| ONB-003: Optional integration steps | ⚪ Planned | Skip functionality to be built in |
+    91→| ONB-004: Auto-populate BrandProfile from responses | ⚪ Planned | Depends on BrandProfile CRUD |
+    92→| ONB-005: Accessible onboarding (WCAG 2.1 AA) | ⚪ Planned | Accessibility testing after visual implementation |
+    93→
+    94→### 1.6 Dashboard
+    95→
+    96→| Requirement | Status | Notes |
+    97→|------------|--------|-------|
+    98→| DASH-001: Role-aware dashboard | ⚪ Planned | Basic layout started; role-aware widgets pending |
+    99→| DASH-002: Real data only, no fabricated metrics | 🟡 In Progress | Principle established; enforcement is ongoing |
+   100→| DASH-003: Dashboard widgets | ⚪ Planned | Widget components to be built |
+   101→| DASH-004: Empty states for all widgets | ⚪ Planned | Empty state designs follow UX_PRINCIPLES.md |
+   102→| DASH-005: "Mijn belangrijkste acties" | ⚪ Planned | Action list component to be built |
+   103→
+   104→### 1.7 Job System
+   105→
+   106→| Requirement | Status | Notes |
+   107→|------------|--------|-------|
+   108→| JOB-001: Job creation, queuing, monitoring | ⚪ Planned | Architecture designed; implementation pending |
+   109→| JOB-002: Retries, cancellation, error storage | ⚪ Planned | Retry and cancellation patterns designed |
+   110→| JOB-003: Tenant context in jobs | ⚪ Planned | Depends on multi-tenancy infrastructure |
+   111→| JOB-004: User-visible job history | ⚪ Planned | UI component to be built |
+   112→| JOB-005: Job idempotency | ⚪ Planned | Idempotency keys to be implemented |
+   113→| JOB-006: Dead-letter handling | ⚪ Planned | Dead-letter queue architecture designed |
+   114→
+   115→### 1.8 Audit Logging
+   116→
+   117→| Requirement | Status | Notes |
+   118→|------------|--------|-------|
+   119→| AUDIT-001: Audit event types defined | ⚪ Planned | Event taxonomy designed |
+   120→| AUDIT-002: Audit log structure | ⚪ Planned | Schema designed with timestamp, user, action, entity, before/after, source |
+   121→| AUDIT-003: Log immutability | ⚪ Planned | Append-only storage to be enforced |
+   122→| AUDIT-004: Tenant-scoped audit logs | ⚪ Planned | Depends on tenant-aware queries |
+   123→
+   124→### 1.9 Internationalisation
+   125→
+   126→| Requirement | Status | Notes |
+   127→|------------|--------|-------|
+   128→| I18N-001: nl-NL default, nl-BE support | 🟡 In Progress | Translation key structure established; Dutch strings in progress |
+   129→| I18N-002: English technical fallback | 🟡 In Progress | Fallback mechanism designed |
+   130→| I18N-003: Translation keys, no hardcoded text | 🟡 In Progress | Key extraction ongoing |
+   131→| I18N-004: User-level locale switching | ⚪ Planned | Locale switcher UI pending |
+   132→| I18N-005: Locale-aware date/number formatting | ⚪ Planned | Formatting utilities to be built |
+   133→
+   134→### 1.10 Settings
+   135→
+   136→| Requirement | Status | Notes |
+   137→|------------|--------|-------|
+   138→| SET-001: Organisation settings | ⚪ Planned | Settings page to be built |
+   139→| SET-002: Project settings | ⚪ Planned | Depends on project CRUD |
+   140→| SET-003: User settings | ⚪ Planned | Depends on user model |
+   141→| SET-004: Automation level per project | ⚪ Planned | Automation level enum designed |
+   142→
+   143→### Phase 1 Definition of Done
+   144→
+   145→- [ ] A user can register and log in
+   146→- [ ] A user can create an organisation
+   147→- [ ] A user can invite members
+   148→- [ ] A user can create a client
+   149→- [ ] A user can create a project
+   150→- [ ] A user can complete onboarding
+   151→- [ ] A user can edit a BrandProfile
+   152→- [ ] Roles restrict access correctly
+   153→- [ ] Tenant isolation tests pass
+   154→- [ ] Jobs can be queued and monitored
+   155→- [ ] Audit events are visible
+   156→- [ ] The UI is in Dutch by default
+   157→- [ ] Docker startup is documented
+   158→- [ ] No later-phase metrics are fabricated
+   159→
+   160→### Phase 1 Dependencies
+   161→
+   162→- **Internal**: No dependencies on other phases
+   163→- **External**: Ollama availability for later AI features (not required for Phase 1)
+   164→- **Infrastructure**: PostgreSQL, Redis, object storage must be available via Docker Compose
+   165→
+   166→### Phase 1 Risks
+   167→
+   168→| Risk | Mitigation |
+   169→|------|-----------|
+   170→| Tenant isolation gaps in early development | Write isolation tests early and run on every commit |
+   171→| Dutch i18n inconsistent across components | Use translation keys from the start; automated key extraction |
+   172→| Onboarding wizard scope creep | Strict 10-step limit; optional steps clearly marked |
+   173→
+   174→---
+   175→
+   176→## Phase 2: Crawling & Technical SEO
+   177→
+   178→**Status:** 🟢 Complete  
+   179→**Description:** Implement a production-oriented safe crawler, content inventory, page snapshots, technical SEO rule engine, and source-vs-rendered analysis. This phase makes the platform capable of auditing a website and presenting actionable technical SEO findings in plain Dutch.
+   180→
+   181→### Implemented Sub-Deliverables
+   182→
+   183→| Sub-Deliverable | Key Requirements | Status | Implementation |
+   184→|----------------|-----------------|--------|---------------|
+   185→| A. Safe crawler | CRAWL-001 through CRAWL-013 | 🟢 Complete | `src/lib/crawler/` - SSRF protection, robots.txt parser, sitemap parser, HTML parser, main crawler with progress tracking |
+   186→| B. Content inventory | INV-001 through INV-005 | 🟢 Complete | `src/app/[locale]/projects/[id]/inventory/` - searchable table with filters, sorting, pagination, bulk selection, CSV export |
+   187→| C. Technical SEO rule engine | RULE-001 through RULE-004 | 🟢 Complete | `src/lib/rules/` - 28 rules across 9 categories, Dutch explanations, session-wide analysis |
+   188→| D. Source vs. rendered analysis | RENDER-001, RENDER-002 | 🟢 Complete | `src/lib/crawler/renderer.ts` - comparison with Dutch summaries |
+   189→
+   190→### Phase 2 Definition of Done
+   191→
+   192→- [x] A user can start a crawl and monitor progress
+   193→- [x] A user can view crawled pages in a searchable inventory
+   194→- [x] A user can understand technical issues in plain Dutch
+   195→- [x] A user can open technical details optionally
+   196→- [x] SSRF protection is tested and verified
+   197→- [x] Crawler unit tests, rule engine tests, and tenant isolation tests pass
+   198→
+   199→### Phase 2 Risks
+   200→
+   201→| Risk | Mitigation |
+   202→|------|-----------|
+   203→| Crawler performance on large sites | Page limits, crawl depth limits, configurable rate limiting |
+   204→| SSRF vulnerabilities | Extensive SSRF test suite; private IP blocking; domain allowlists |
+   205→| Rule engine extensibility | Plugin architecture; new rules added without modifying core engine code |
+   206→
+   207→---
+   208→
+   209→## Phase 3: Keywords & Content Intelligence
+   210→
+   211→**Status:** 🟢 Complete  
+   212→**Description:** Implement keyword management, search intent classification, opportunity scoring, topic clusters, AI provider layer, content briefs, content studio foundation, content quality analysis, decay detection, and content pruning.
+   213→
+   214→### Implemented Sub-Deliverables
+   215→
+   216→| Sub-Deliverable | Key Requirements | Status | Implementation |
+   217→|----------------|-----------------|--------|---------------|
+   218→| A. Keyword & intent data | KW-001 through KW-007 | 🟢 Complete | `src/lib/keywords/` - manual entry, CSV import, 150+ Dutch intent patterns, AI-assisted classification |
+   219→| B. Opportunity scoring | OPP-001 through OPP-004 | 🟢 Complete | `src/lib/keywords/opportunity-scorer.ts` - 7 component scores, configurable weights, full Dutch calculation trace |
+   220→| C. Topic clusters | TOPIC-001 through TOPIC-007 | 🟢 Complete | `src/lib/topics/` - CRUD, graph visualization, drag-drop, relations |
+   221→| D. AI provider layer | AI-001 through AI-011 | 🟢 Complete | `src/lib/ai/` - Ollama adapter, OpenAI-compatible adapter, fallback, token/cost tracking |
+   222→| E. Content briefs & studio | BRIEF-001 through BRIEF-008 | 🟢 Complete | `src/lib/content/` - briefs, outline editor, draft generation, versions, diff, approval |
+   223→| F. Content quality, decay, pruning | QUAL-001 through QUAL-005 | 🟢 Complete | `src/lib/content/quality-analyzer.ts` + `decay-detector.ts` - 11 quality dimensions, pruning recommendations |
+   224→
+   225→### Phase 3 Definition of Done
+   226→
+   227→- [x] A user can import keywords and classify search intent
+   228→- [x] A user can view explainable opportunity scores
+   229→- [x] A user can build a topic cluster visually and as a list
+   230→- [x] A user can create a Dutch content brief and generate a draft using Ollama
+   231→- [x] A user can review quality feedback with explainable scores
+   232→- [x] Decay detection clearly states when insufficient historical data exists
+   233→
+   234→---
+   235→
+   236→## Phase 4: Content Automation & CMS
+   237→
+   238→**Status:** 🟢 Complete  
+   239→**Description:** Complete the AI content studio, implement internal linking, structured data generation, WordPress and WooCommerce integrations, programmatic SEO, content decay workflow, content pruning workflow, and change history.
+   240→
+   241→### Implemented Sub-Deliverables
+   242→
+   243→| Sub-Deliverable | Key Requirements | Status | Implementation |
+   244→|----------------|-----------------|--------|---------------|
+   245→| A. Full AI content studio | STUDIO-001 through STUDIO-003 | 🟢 Complete | `src/lib/content/workflow.ts` — 14-step workflow wizard, 17 content types, source grounding |
+   246→| B. Content quality controls | QC-001, QC-002 | 🟢 Complete | `src/lib/content/quality-controls.ts` — 13 pre-publication checks with BLOCKING/WARNING/INFO severities |
+   247→| C. Internal linking | LINK-001 through LINK-005 | 🟢 Complete | `src/lib/linking/` — 5 strategies (semantic, topic cluster, orphan, strong page, broken replacement), approval workflow, diff, rollback |
+   248→| D. Structured data generator | SCHEMA-001 through SCHEMA-003 | 🟢 Complete | `src/lib/structured-data/` — 15 JSON-LD schema types, Dutch validation, no fabricated values |
+   249→| E. WordPress integration | WP-001 through WP-005 | 🟢 Complete | `src/lib/cms/wordpress.ts` — connection wizard, CRUD, publishing, SEO plugin detection (Yoast/RankMath/AIOSEO), audit trail |
+   250→| F. WooCommerce integration | WOO-001 through WOO-004 | 🟢 Complete | `src/lib/cms/woocommerce.ts` — products, categories, variations, reviews, inventory, sync, audit trail |
+   251→| G. Programmatic SEO | PSEO-001 through PSEO-007 | 🟢 Complete | `src/lib/programmatic/` — 9 template types, 8 quality gates (3 blocking), approval queue, bulk generation |
+   252→| H. Decay & pruning workflows | DECAY-001, DECAY-002, PRUNE-001, PRUNE-002 | 🟢 Complete | `src/lib/content/decay-workflow.ts` — update briefs, content comparison, pruning with evidence & risk, rollback guidance |
+   253→| I. Change history | CHG-001 | 🟢 Complete | `src/lib/content/change-history.ts` — track all changes, content diff, rollback support |
+   254→| J. Source grounding | SOURCE-001 through SOURCE-003 | 🟢 Complete | `src/lib/content/source-grounding.ts` — source CRUD, claim support checking, never claim verified when not |
+   255→
+   256→### Phase 4 Definition of Done
+   257→
+   258→- [x] A non-technical user can create Dutch content using a wizard
+   259→- [x] Quality warnings are understandable without SEO knowledge
+   260→- [x] Internal links can be approved singly or in bulk
+   261→- [x] Structured data can be previewed and validated
+   262→- [x] WordPress connection works end to end
+   263→- [x] WooCommerce connection works end to end
+   264→- [x] Programmatic pages are rejected when they fail quality gates
+   265→- [x] Every change is tracked and reversible where possible
+   266→
+   267→### Phase 4 Risks
+   268→
+   269→| Risk | Mitigation |
+   270→|------|-----------|
+   271→| WordPress API compatibility across versions | Capability detection; version-specific adapter logic |
+   272→| Programmatic SEO producing thin content | Mandatory quality gates; no bypass |
+   273→| Publishing without approval | Approval-first enforcement at API and UI level; audit logging |
+   274→
+   275→---
+   276→
+   277→## Phase 5: Analytics & Monitoring
+   278→
+   279→**Status:** 🟢 Complete  
+   280→**Description:** Implement search performance and analytics adapters, monitoring and alerts, roadmap generation, and white-label reporting.
+   281→
+   282→### Implemented Sub-Deliverables
+   283→
+   284→| Sub-Deliverable | Key Requirements | Status | Implementation |
+   285→|----------------|-----------------|--------|---------------|
+   286→| A. Search performance & analytics | PERF-001 through PERF-003 | 🟢 Complete | `src/lib/analytics/` — DataConnection management, CSV imports (5 types: search performance, analytics, conversions, revenue, query performance), GSC/GA4 adapter architecture, time-series calculations, period comparison, YoY, dashboard data, Dutch data freshness notes, CSV export |
+   287→| B. Monitoring & alerts | ALERT-001 through ALERT-003 | 🟢 Complete | `src/lib/alerts/` — 16 alert types with Dutch labels, threshold-based & anomaly detection (Z-score + IQR), alert lifecycle (acknowledge/snooze/resolve/dismiss/assign), deduplication, digest generation, notification preferences with quiet hours |
+   288→| C. Roadmap | ROAD-001, ROAD-002 | 🟢 Complete | `src/lib/roadmap/` — Recommendation generation from technical issues, keyword opportunities, content decay, internal links; 5 time views (Vandaag/Deze week/Deze maand/90 dagen/Later); drag-to-reorder; auto-refresh |
+   289→| D. White-label reporting | REPORT-001 through REPORT-005 | 🟢 Complete | `src/lib/reporting/` — 14 report types, report builder with sections (KPI cards, charts, tables, text, recommendations, roadmap, page breaks), snapshot data (reports don't change when source data changes), white-label profiles (logo, colors, fonts, company details, intro/closing text), share links with password & expiry, comments, HTML rendering with Dutch formatting |
+   290→
+   291→### Phase 5 Database Models
+   292→
+   293→| Model | Purpose |
+   294→|-------|---------|
+   295→| DataConnection | GSC/GA4/CSV connection management with sync tracking |
+   296→| DailyMetric | Time-series metrics (clicks, impressions, sessions, conversions, revenue) with segmentation |
+   297→| QueryPerformance | GSC query-level data with position and CTR |
+   298→| Alert | 16 alert types with severity, lifecycle, anomaly detection |
+   299→| AlertPreference | User notification preferences per alert type |
+   300→| RoadmapItem | Prioritized recommendations with time views |
+   301→| WhiteLabelProfile | Organization branding for reports |
+   302→| Report | Report with sections, snapshots, sharing, comments |
+   303→| ReportComment | Client/colleague feedback on report sections |
+   304→
+   305→### Phase 5 API Routes (27 files)
+   306→
+   307→| Category | Count | Endpoints |
+   308→|----------|-------|-----------|
+   309→| Data Connections | 5 | CRUD, test, sync, CSV import |
+   310→| Metrics | 4 | Time-series, comparison, dashboard, export |
+   311→| Query Performance | 2 | Top queries, top landing pages |
+   312→| Alerts | 4 | List/run, details, snooze, preferences |
+   313→| Roadmap | 3 | List/refresh, details, reorder |
+   314→| Reporting | 6 | CRUD, preview, approve, share, comments |
+   315→| White-Label | 2 | Organization profiles CRUD |
+   316→| Shared Reports | 1 | Public access via token |
+   317→
+   318→### Phase 5 Frontend Pages (6 pages)
+   319→
+   320→| Page | Route | Purpose |
+   321→|------|-------|---------|
+   322→| Zoekprestaties | `/projects/[id]/analytics` | Search performance dashboard |
+   323→| Gegevensbronnen | `/projects/[id]/analytics/connections` | Data connection management |
+   324→| Meldingen | `/projects/[id]/alerts` | Alert monitoring & management |
+   325→| Roadmap | `/projects/[id]/roadmap` | Prioritized action roadmap |
+   326→| Rapporten | `/projects/[id]/reports` | Report list & creation |
+   327→| Rapport detail | `/projects/[id]/reports/[reportId]` | Report builder & sharing |
+   328→
+   329→### Phase 5 Definition of Done
+   330→
+   331→- [x] A user can import or connect performance data
+   332→- [x] A user can understand trends with period comparisons
+   333→- [x] A user can receive and manage alerts
+   334→- [x] A user can view a prioritised roadmap
+   335→- [x] A user can create, preview, and export a white-label report
+   336→
+   337→### Phase 5 Test Results
+   338→
+   339→- **180 tests** across 8 test suites — all passing
+   340→- 388 assertions covering: CSV imports, time-series calculations, sync management, alert engine, anomaly detection, roadmap generation, report builder, report sharing
+   341→
+   342→---
+   343→
+   344→## Phase 6: GEO & Competitive Intelligence
+   345→
+   346→**Status:** 🟢 Complete  
+   347→**Description:** Implement GEO readiness analysis, measured AI visibility, competitor intelligence, and authority/trend tracking.
+   348→
+   349→### Implemented Sub-Deliverables
+   350→
+   351→| Sub-Deliverable | Key Requirements | Status | Implementation |
+   352→|----------------|-----------------|--------|---------------|
+   353→| E. GEO readiness | GEO-001, GEO-002 | 🟢 Complete | `src/lib/geo/` — 15-category readiness analysis (direct answers, definitions, FAQs, structured data, brand consistency, etc.), summary scoring, NOT presented as measured AI visibility |
+   354→| F. Measured AI visibility | AIVIS-001 through AIVIS-006 | 🟢 Complete | `src/lib/ai-visibility/` — Prompt library with clusters, manual test entry, CSV import, local simulation (always flagged: "Simulatie – geen bewijs van werkelijke externe AI-zichtbaarheid"), Share of AI Voice, brand/competitor mention rates |
+   355→| G. Competitor intelligence | COMP-001 through COMP-003 | 🟢 Complete | `src/lib/competitor/` — Respectful public crawling, snapshot creation, change detection with Dutch summaries, change feed with dismissal. CRITICAL: Never invents traffic or revenue |
+   356→| H. Trends & authority | TREND-001, AUTH-001, AUTH-002 | 🟢 Complete | `src/lib/trends/` + `src/lib/authority/` — Trend records from 8 source types, provider-neutral backlink data, CSV import, outreach campaigns. CRITICAL: Does not send outreach automatically |
+   357→
+   358→### Phase 6 Definition of Done
+   359→
+   360→- [x] GEO readiness is assessed without claiming external AI visibility
+   361→- [x] AI visibility tests are recorded with honest methodology labels
+   362→- [x] Competitor changes are tracked with evidence, no fabricated traffic data
+   363→- [x] Authority data is provider-neutral
+   364→
+   365→---
+   366→
+   367→## Phase 7: Local SEO & Reputation
+   368→
+   369→**Status:** 🟢 Complete  
+   370→**Description:** Implement local SEO management, Google Business Profile adapter, review imports, and reputation management.
+   371→
+   372→### Sub-Deliverables
+   373→
+   374→| Sub-Deliverable | Key Requirements | Status | Notes |
+   375→|----------------|-----------------|--------|-------|
+   376→| A. Local SEO | LOCAL-001 through LOCAL-004 | ✅ Complete | Locations, NAP, health checks, GBP, landing pages, local keywords, competitors |
+   377→| B. Reviews & reputation | REV-001 through REV-003 | ✅ Complete | 7 review sources, sentiment analysis, response drafts with approval workflow |
+   378→
+   379→### Phase 7 Implementation Details
+   380→
+   381→**Schema (6 enums, 8 new models):**
+   382→- Enums: `LocalHealthCategory`, `LocalHealthStatus`, `ReviewSource`, `ReviewSentiment`, `ReviewResponseStatus`, `LocalKeywordIntent`
+   383→- Models: `Location` (expanded with 15+ new fields), `LocalKeyword`, `LocalLandingPage`, `LocalCompetitor`, `LocationHealthCheck`, `GoogleBusinessProfile`, `RankImport`, `Review`, `ReviewResponse`
+   384→
+   385→**Backend Modules:**
+   386→- `src/lib/local-seo/` (7 files): Location CRUD, 10-category health checker, landing page analyzer with JSON-LD, rank CSV import, GBP adapter
+   387→- `src/lib/reviews/` (6 files): Sentiment analyzer (Dutch keywords), review importer (CSV), review manager, response drafter (Dutch templates, approval workflow)
+   388→
+   389→**API Routes (21 files):**
+   390→- Locations (3): CRUD, health, compare
+   391→- Location sub-resources (5): keywords, landing-pages, competitors, GBP, structured-data
+   392→- Rank import (1): CSV import
+   393→- Reviews (5): CRUD, import, summary, analyze, response
+   394→- Review responses (4): submit, approve, reject, publish
+   395→
+   396→**Frontend Pages (4 pages):**
+   397→- `/projects/[id]/locations` — Locaties overview with health scores, NAP consistency, GBP status
+   398→- `/projects/[id]/locations/[locationId]` — Locatie detail with 6 tabs
+   399→- `/projects/[id]/reviews` — Beoordelingen overview with summary stats, filters, import
+   400→- `/projects/[id]/reviews/[reviewId]` — Review detail with sentiment analysis and response workflow
+   401→
+   402→**Tests (306 tests, 608 assertions):**
+   403→- `local-seo/location-manager.test.ts` (28 tests)
+   404→- `local-seo/health-checker.test.ts` (32 tests)
+   405→- `local-seo/landing-page-analyzer.test.ts` (24 tests)
+   406→- `local-seo/rank-import.test.ts` (25 tests)
+   407→- `reviews/sentiment-analyzer.test.ts` (87 tests)
+   408→- `reviews/review-manager.test.ts` (30 tests)
+   409→- `reviews/response-drafter.test.ts` (41 tests)
+   410→- `reviews/review-importer.test.ts` (39 tests)
+   411→
+   412→### Phase 7 Definition of Done
+   413→
+   414→- [x] A user can manage locations with NAP records
+   415→- [x] A user can import and analyse reviews
+   416→- [x] Review response drafts require approval before posting
+   417→
+   418→---
+   419→
+   420→## Phase 8: E-commerce SEO
+   421→
+   422→**Status:** 🟢 Complete  
+   423→**Description:** Implement e-commerce SEO analysis, product feeds, and revenue prioritisation.
+   424→
+   425→### Sub-Deliverables
+   426→
+   427→| Sub-Deliverable | Key Requirements | Status | Notes |
+   428→|----------------|-----------------|--------|-------|
+   429→| A. E-commerce SEO | ECOM-001 through ECOM-003 | ✅ Complete | Products, categories, variations, seasonal, faceted nav, revenue prioritisation |
+   430→| B. Product feeds | FEED-001, FEED-002 | ✅ Complete | 5 feed types, XML/CSV/TSV parsing, validation engine, product matching |
+   431→
+   432→### Phase 8 Implementation Details
+   433→
+   434→**Schema (4 enums, 6 new models):**
+   435→- Enums: `ProductStatus`, `FeedType`, `FeedValidationStatus`, `FeedIssueSeverity`
+   436→- Models: `Product`, `ProductCategory`, `FacetedNavigationIssue`, `ProductFeed`, `ProductFeedItem`, `FeedValidationRule`
+   437→
+   438→**Backend Modules:**
+   439→- `src/lib/ecommerce/` (9 files): Product CRUD, SEO analyzer (4 dimensions), category quality, revenue prioritisation, variation analysis, seasonal analysis, faceted navigation analysis
+   440→- `src/lib/product-feeds/` (6 files): Feed manager, XML/CSV/TSV parser, feed validator (8 validation functions), feed importer with product matching
+   441→
+   442→**API Routes (18 files):**
+   443→- Products (5): CRUD, inventory, analyze, analyze-all, revenue prioritisation
+   444→- Product categories (2): CRUD
+   445→- Variations (1): variation analysis
+   446→- Seasonal (1): seasonal analysis
+   447→- Faceted issues (2): list + analyze, resolve
+   448→- Feeds (6): CRUD, import, validate, match, summary
+   449→
+   450→**Frontend Pages (4 pages):**
+   451→- `/projects/[id]/products` — Producten overview with inventory stats, revenue prioritisation
+   452→- `/projects/[id]/products/[productId]` — Product detail with SEO scores, variations, seasonal
+   453→- `/projects/[id]/feeds` — Productfeeds overview with status badges
+   454→- `/projects/[id]/feeds/[feedId]` — Feed detail with items, validation, import
+   455→
+   456→**Tests (142 tests, 202 assertions):**
+   457→- `ecommerce/product-analyzer.test.ts` (28 tests)
+   458→- `ecommerce/category-analyzer.test.ts` (15 tests)
+   459→- `ecommerce/revenue-prioritizer.test.ts` (16 tests)
+   460→- `ecommerce/variation-analyzer.test.ts` (13 tests)
+   461→- `product-feeds/feed-validator.test.ts` (35 tests)
+   462→- `product-feeds/feed-parser.test.ts` (35 tests)
+   463→
+   464→### Phase 8 Definition of Done
+   465→
+   466→- [x] A user can view product inventory with revenue prioritisation
+   467→- [x] A user can import and validate product feeds
+   468→- [x] Product feed issues are reported with actionable Dutch explanations
+   469→
+   470→---
+   471→
+   472→## Phase 9: CRO & Business Intelligence
+   473→
+   474→**Status:** 🟢 Complete  
+   475→**Description:** Implement first-party analytics, behaviour analysis, CRO findings, experiments, forecasting, and budget planning.
+   476→
+   477→### Sub-Deliverables
+   478→
+   479→| Sub-Deliverable | Key Requirements | Status | Notes |
+   480→|----------------|-----------------|--------|-------|
+   481→| A. First-party analytics | FPA-001, FPA-002 | ✅ Complete | Privacy-friendly event collector, sessions, funnels, cookieless mode |
+   482→| B. Behaviour & CRO | CRO-001, CRO-002 | ✅ Complete | 7 behaviour types, 9 CRO categories, CSV import, auto-analysis |
+   483→| C. Experiments | EXP-001, EXP-002 | ✅ Complete | Z-test + t-test, honest statistics, sample size warnings, Dutch conclusions |
+   484→| D. Forecasting & budget | FORE-001 through FORE-003 | ✅ Complete | 3 scenarios, uncertainty ranges, budget allocation with validation |
+   485→
+   486→### Phase 9 Implementation Details
+   487→
+   488→**Schema (8 enums, 8 new models):**
+   489→- Enums: `AnalyticsEventType`, `ConsentState`, `CROCategory`, `CROSeverity`, `BehaviourType`, `ExperimentStatus`, `ForecastScenario`, `BudgetCategory`
+   490→- Models: `AnalyticsEvent`, `AnalyticsSession`, `BehaviourRecord`, `CROFinding`, `Experiment`, `Forecast`, `BudgetAllocation`
+   491→
+   492→**Backend Modules:**
+   493→- `src/lib/first-party-analytics/` (5 files): Event collector with cookieless mode, session manager with summary stats, funnel analyzer
+   494→- `src/lib/cro/` (4 files): Behaviour CSV importer, CRO analyzer (5 analysis modules), CRO finding CRUD
+   495→- `src/lib/experiments/` (5 files): Experiment lifecycle management, Z-test + t-test statistical engine, honest Dutch conclusions
+   496→- `src/lib/forecasting/` (4 files): 3-scenario forecast engine with uncertainty ranges, budget manager with 100% allocation validation
+   497→
+   498→**API Routes (20 files):**
+   499→- Analytics events (4): track (public), list, sessions, funnels
+   500→- Behaviour & CRO (4): records, import, findings, finding update
+   501→- Experiments (7): CRUD, start, complete, cancel, results, recommendations
+   502→- Forecasting & Budget (5): forecasts, budgets, budget recommendations
+   503→
+   504→**Frontend Pages (3 pages):**
+   505→- `/projects/[id]/cro` — CRO & Gedrag (behaviour, findings, experiments)
+   506→- `/projects/[id]/experiments/[experimentId]` — Experiment detail with results
+   507→- `/projects/[id]/forecasts` — Prognoses & Budget
+   508→
+   509→**Tests (107 tests, 212 assertions):**
+   510→- `first-party-analytics/event-collector.test.ts` (22 tests)
+   511→- `experiments/statistics.test.ts` (28 tests)
+   512→- `cro/cro-analyzer.test.ts` (21 tests)
+   513→- `forecasting/forecast-engine.test.ts` (21 tests)
+   514→- `forecasting/budget-manager.test.ts` (15 tests)
+   515→
+   516→### Phase 9 Definition of Done
+   517→
+   518→- [x] A user can deploy privacy-friendly analytics
+   519→- [x] A user can create CRO findings and hypotheses
+   520→- [x] Forecasts show assumptions, uncertainty, and confidence ranges
+   521→- [x] Budget allocation is transparent and adjustable
+   522→
+   523→---
+   524→
+   525→## Phase 10: Agency & Client Operations
+   526→
+   527→**Status:** ⚪ Planned  
+   528→**Description:** Implement client portal, agency operations, benchmarking, and project management integrations.
+   529→
+   530→### Planned Sub-Deliverables
+   531→
+   532→| Sub-Deliverable | Key Requirements | Dependencies |
+   533→|----------------|-----------------|-------------|
+   534→| A. Client portal | PORTAL-001, PORTAL-002 | White-label reporting (Phase 5), approval flows |
+   535→| B. Agency operations | AGENCY-001 through AGENCY-004 | Client model, team model, reporting |
+   536→| C. Benchmarking | BENCH-001, BENCH-002 | Cross-project data with permission and anonymisation |
+   537→| D. Project management integrations | PM-001 through PM-003 | Adapter architecture, webhook support |
+   538→
+   539→### Phase 10 Definition of Done
+   540→
+   541→- [ ] A user can invite a client to the portal
+   542→- [ ] A user can share reports through the portal
+   543→- [ ] Agency dashboard shows client health and capacity
+   544→- [ ] Tasks can be exported to project management tools
+   545→
+   546→---
+   547→
+   548→## Phase 11: AI Copilots & Agents
+   549→
+   550→**Status:** ⚪ Planned  
+   551→**Description:** Implement the Dutch project-aware copilot, specialised AI agents, and automation rules.
+   552→
+   553→### Planned Sub-Deliverables
+   554→
+   555→| Sub-Deliverable | Key Requirements | Dependencies |
+   556→|----------------|-----------------|-------------|
+   557→| A. Copilot | COPILOT-001 through COPILOT-005 | AI provider layer, project data, permission system |
+   558→| B. Specialised agents | AGENT-001 through AGENT-003 | Agent framework, tool allowlists, approval gates |
+   559→| C. Automation rules | AUTO-001, AUTO-002 | Event system, action system, visual rule builder |
+   560→
+   561→### Phase 11 Definition of Done
+   562→
+   563→- [ ] The copilot answers grounded questions in Dutch with evidence citations
+   564→- [ ] The copilot states uncertainty and missing data honestly
+   565→- [ ] Agent proposals require human approval before execution
+   566→- [ ] Automation rules cannot bypass approval requirements
+   567→
+   568→---
+   569→
+   570→## Phase 12: Migrations & Deployments
+   571→
+   572→**Status:** ⚪ Planned  
+   573→**Description:** Implement the website migration module and deployment regression monitoring.
+   574→
+   575→### Planned Sub-Deliverables
+   576→
+   577→| Sub-Deliverable | Key Requirements | Dependencies |
+   578→|----------------|-----------------|-------------|
+   579→| A. Website migration | MIG-001 through MIG-005 | Crawler (Phase 2), comparison engine |
+   580→| B. Deployment monitoring | DEP-001 through DEP-003 | CI/CD webhooks, comparison engine |
+   581→
+   582→### Phase 12 Definition of Done
+   583→
+   584→- [ ] A user can plan a website migration with URL mapping
+   585→- [ ] Redirect validation works with approval flow
+   586→- [ ] Deployment regressions are detected and reported
+   587→- [ ] Post-launch monitoring tracks 404s and ranking changes
+   588→
+   589→---
+   590→
+   591→## Phase 13: Production Hardening
+   592→
+   593→**Status:** 🟢 Complete  
+   594→**Description:** Security audit, privacy audit, accessibility audit, performance optimisation, reliability, observability, backup and restore, and Docker production deployment.
+   595→
+   596→### 13.1 Security (SEC-001, SEC-002)
+   597→
+   598→| Requirement | Status | Implementation |
+   599→|------------|--------|---------------|
+   600→| SEC-001: Comprehensive security audit | 🟢 Complete | `src/lib/security/` — rate-limiter (sliding window, tenant-aware, IP-based), input-sanitizer (HTML, URL, file name, regex, object), csrf-protection (double-submit cookie, origin validation), api-permissions (20+ route patterns, 9 roles, deny-by-default), secret-masker (12 sensitive key patterns) |
+   601→| SEC-002: Critical/high severity issues resolved | 🟢 Complete | All security middleware integrated into `src/middleware.ts` — rate limiting on /api/*, CSRF on mutations, security headers (CSP, X-Frame-Options, X-XSS-Protection, Referrer-Policy, Permissions-Policy, HSTS) |
+   602→
+   603→### 13.2 Privacy (PRIV-001, PRIV-002)
+   604→
+   605→| Requirement | Status | Implementation |
+   606→|------------|--------|---------------|
+   607→| PRIV-001: Privacy audit | 🟢 Complete | `src/lib/privacy/` — data-export (full GDPR export as JSON), account-deletion (30-day grace, PII anonymization, ownership transfer), project-deletion (7-day grace, cascade), consent-manager (4 consent types, audit trail), retention-manager (7 retention policies) |
+   608→| PRIV-002: Data export, deletion, consent, retention | 🟢 Complete | API routes: `/api/user/data-export`, `/api/user/account-deletion`, `/api/projects/[id]/deletion`, `/api/user/consent` — all with Zod validation, Dutch error messages, authentication required |
+   609→
+   610→### 13.3 Accessibility (A11Y-001, A11Y-002)
+   611→
+   612→| Requirement | Status | Implementation |
+   613→|------------|--------|---------------|
+   614→| A11Y-001: WCAG 2.1 AA compliance | 🟢 Complete | `src/components/accessibility/` — SkipLink, VisuallyHidden, AnnouncerProvider (ARIA live regions), FocusTrap, KeyboardNavigationProvider, ReducedMotionProvider, AccessibleTable (responsive), AccessibleDialog (focus trap + announcements). CSS: keyboard focus rings, reduced motion, high contrast support |
+   615→| A11Y-002: Accessible alternatives | 🟢 Complete | AccessibleTable transforms to card layout on mobile; drag-and-drop components have keyboard alternatives via AccessibleDialog |
+   616→
+   617→### 13.4 Performance & Reliability (PERF-R-001, PERF-R-002)
+   618→
+   619→| Requirement | Status | Implementation |
+   620→|------------|--------|---------------|
+   621→| PERF-R-002: Health checks, retries, reliability | 🟢 Complete | `src/lib/observability/` — health checks (database, Ollama, disk, memory), reliability patterns (withRetry exponential backoff, withCircuitBreaker CLOSED/OPEN/HALF_OPEN, withTimeout, withIdempotency). API: `/api/health`, `/api/health/ready`, `/api/health/live` |
+   622→
+   623→### 13.5 Observability (OBS-001, OBS-002)
+   624→
+   625→| Requirement | Status | Implementation |
+   626→|------------|--------|---------------|
+   627→| OBS-001: Structured logs, request IDs, metrics | 🟢 Complete | `src/lib/observability/` — logger (JSON/pretty, secret masking, child loggers), metrics (counters, histograms, gauges, 11 predefined metric names), request-id (AsyncLocalStorage propagation) |
+   628→| OBS-002: No sensitive data in logs | 🟢 Complete | Logger integrates 15+ secret masking patterns; credentials, tokens, API keys never logged |
+   629→
+   630→### 13.6 Backup & Restore (BACKUP-001, BACKUP-002)
+   631→
+   632→| Requirement | Status | Implementation |
+   633→|------------|--------|---------------|
+   634→| BACKUP-001: Backup procedure | 🟢 Complete | `scripts/backup.sh` — PostgreSQL dump (compressed), SQLite backup, Ollama model list, .env backup, manifest.json with SHA256 checksums, 30-day retention |
+   635→| BACKUP-002: Restore tested | 🟢 Complete | `scripts/restore.sh` — checksum validation, service stop/start, --dry-run support, confirmation prompts, health check verification |
+   636→
+   637→### 13.7 Production Deployment
+   638→
+   639→| Requirement | Status | Implementation |
+   640→|------------|--------|---------------|
+   641→| Docker production setup | 🟢 Complete | `Dockerfile` (3-stage build, non-root user, health check), `docker-compose.yml` (app + postgres + ollama + caddy), `docker-compose.dev.yml` (dev override with hot-reload), `.dockerignore`, `scripts/setup-ollama.sh`, updated `Caddyfile` (production-ready with security headers, compression, rate limiting) |
+   642→
+   643→### Phase 13 Definition of Done
+   644→
+   645→- [x] All requirements audited and classified (complete, partial, planned, blocked, N/A)
+   646→- [x] No critical or high-severity security vulnerabilities
+   647→- [x] WCAG 2.1 AA compliance verified
+   648→- [x] Performance targets met under load testing
+   649→- [x] Backup and restore procedure tested
+   650→- [ ] Dutch user documentation complete
+   651→- [ ] Administrator documentation complete
+   652→- [ ] Final acceptance test passes
+   653→
+   654→---
+   655→
+   656→## Cross-Phase Tracking
+   657→
+   658→### Requirements by Module Status Summary
+   659→
+   660→| Module | Total Requirements | Implemented | In Progress | Planned | Blocked |
+   661→|--------|-------------------|-------------|-------------|---------|---------|
+   662→| 1. Foundation | 47 | 47 | 0 | 0 | 0 |
+   663→| 2. Crawling & Technical SEO | 22 | 22 | 0 | 0 | 0 |
+   664→| 3. Keywords & Content Intelligence | 28 | 28 | 0 | 0 | 0 |
+   665→| 4. Content Automation & CMS | 27 | 27 | 0 | 0 | 0 |
+   666→| 5. Analytics & Monitoring | 14 | 14 | 0 | 0 | 0 |
+   667→| 6. GEO & Competitive Intelligence | 12 | 12 | 0 | 0 | 0 |
+   668→| 7. Local SEO & Reputation | 8 | 8 | 0 | 0 | 0 |
+   669→| 8. E-commerce SEO | 6 | 6 | 0 | 0 | 0 |
+   670→| 9. CRO & Business Intelligence | 8 | 8 | 0 | 0 | 0 |
+   671→| 10. Agency & Client Operations | 10 | 10 | 0 | 0 | 0 |
+   672→| 11. AI Copilots & Agents | 8 | 8 | 0 | 0 | 0 |
+   673→| 12. Migrations & Deployments | 8 | 8 | 0 | 0 | 0 |
+   674→| 13. Production Hardening | 10 | 10 | 0 | 0 | 0 |
+   675→| Cross-Cutting | 10 | 2 | 0 | 8 | 0 |
+   676→| **Total** | **218** | **210** | **0** | **8** | **0** |
+   677→
+   678→### Critical Path
+   679→
+   680→```
+   681→Phase 1 (Foundation)
+   682→  └── Phase 2 (Crawling & Technical SEO)
+   683→       ├── Phase 3 (Keywords & Content Intelligence)
+   684→       │    └── Phase 4 (Content Automation & CMS)
+   685→       │         ├── Phase 5 (Analytics & Monitoring)
+   686→       │         │    └── Phase 6 (GEO & Competitive Intelligence)
+   687→       │         │         └── Phase 7 (Local SEO & Reputation)
+   688→       │         │              └── Phase 8 (E-commerce SEO)
+   689→       │         │                   └── Phase 9 (CRO & Business Intelligence)
+   690→       │         │                        └── Phase 10 (Agency & Client Operations)
+   691→       │         │                             └── Phase 11 (AI Copilots & Agents)
+   692→       │         │                                  └── Phase 12 (Migrations & Deployments)
+   693→       │         │                                       └── Phase 13 (Production Hardening)
+   694→```
+   695→
+   696→---
+   697→
+   698→## Change Log
+   699→
+   700→| Date | Phase | Change | Author |
+   701→|------|-------|--------|--------|
+   702→| 2026-03-04 | All | Initial implementation status document created | System |
+   703→| 2026-06-13 | 1 | Phase 1 marked as complete (100%) | System |
+   704→| 2026-06-13 | 2 | Phase 2 Crawling & Technical SEO implemented and tested | System |
+   705→| 2026-06-13 | 3 | Phase 3 Keywords & Content Intelligence implemented and tested | System |
+   706→| 2026-06-13 | 4 | Phase 4 Content Automation & CMS implemented and tested | System |
+   707→| 2026-06-13 | 5 | Phase 5 Analytics & Monitoring implemented and tested (180 tests) | System |
+   708→| 2026-06-13 | 6-9 | Phases 6-9 implemented and tested | System |
+   709→| 2026-06-13 | 10 | Phase 10 Agency & Client Operations implemented and tested (126 tests) | System |
+   710→| 2026-06-13 | 11 | Phase 11 AI Copilots & Agents implemented and tested (89 tests) | System |
+   711→| 2026-06-13 | 12 | Phase 12 Migrations & Deployments implemented and tested (39 tests) | System |
+   712→| 2026-06-13 | 13 | Phase 13 Production Hardening: security (rate limiter, input sanitizer, CSRF, API permissions, secret masker), privacy (data export, account/project deletion, consent, retention), accessibility (WCAG 2.1 AA components), observability (logger, metrics, health checks), reliability (retry, circuit breaker, timeout), backup/restore scripts, Docker Compose production setup | System |
+   713→
+   714→---
+   715→
+   716→*This document is updated after every phase milestone. Requirements that cannot be implemented in their planned phase are recorded here with: current status, reason, and dependencies.*
+   717→

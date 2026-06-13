@@ -21,28 +21,10 @@ export async function GET(
       return NextResponse.json({ error: 'Geen toegang' }, { status: 403 });
     }
 
-    const gbp = await getGBPStatus(locationId);
-
-    if (!gbp) {
-      return NextResponse.json({
-        data: {
-          connected: false,
-          syncStatus: 'not_connected',
-        },
-      });
-    }
+    const gbp = await getGBPStatus(locationId, projectId);
 
     return NextResponse.json({
-      data: {
-        connected: gbp.syncStatus === 'connected',
-        syncStatus: gbp.syncStatus,
-        businessName: gbp.businessName,
-        primaryCategory: gbp.primaryCategory,
-        avgRating: gbp.avgRating,
-        totalReviews: gbp.totalReviews,
-        lastSyncAt: gbp.lastSyncAt,
-        syncError: gbp.syncError,
-      },
+      data: gbp,
     });
   } catch (error) {
     console.error('Fout bij ophalen Google Bedrijfsprofiel:', error);
@@ -54,6 +36,7 @@ export async function GET(
 }
 
 // POST /api/projects/[id]/locations/[locationId]/gbp — Connect GBP
+// Now uses connectionId from the OAuth flow instead of manual tokens
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string; locationId: string }> }
@@ -71,39 +54,91 @@ export async function POST(
     }
 
     const body = await request.json();
-    const { accountId, locationIdGBP, accessToken, refreshToken } = body;
+    const { accountId, locationIdGBP, connectionId } = body;
 
-    if (!accountId || !locationIdGBP || !accessToken || !refreshToken) {
-      return NextResponse.json(
-        { error: 'Alle velden zijn verplicht (accountId, locationIdGBP, accessToken, refreshToken)' },
-        { status: 400 }
-      );
+    // Support both old (manual token) and new (OAuth connectionId) flows
+    if (connectionId) {
+      // New OAuth flow: use the DataConnection's tokens
+      if (!accountId || !locationIdGBP) {
+        return NextResponse.json(
+          { error: 'accountId en locationIdGBP zijn vereist' },
+          { status: 400 }
+        );
+      }
+
+      const gbp = await connectGBP(locationId, projectId, {
+        accountId,
+        locationIdGBP,
+        connectionId,
+      });
+
+      await logAuditEvent({
+        organizationId: access.project.organizationId,
+        projectId,
+        userId: user.id,
+        action: 'gbp_connected',
+        entity: 'google_business_profile',
+        entityId: gbp.id,
+        changes: { accountId, locationIdGBP, connectionId },
+      });
+
+      return NextResponse.json({ data: gbp }, { status: 201 });
+    } else {
+      // Legacy manual token flow (still supported for backward compatibility)
+      const { accessToken, refreshToken } = body;
+      if (!accountId || !locationIdGBP) {
+        return NextResponse.json(
+          { error: 'accountId en locationIdGBP zijn vereist' },
+          { status: 400 }
+        );
+      }
+
+      // For backward compatibility, store tokens directly
+      const location = await (await import('@/lib/db')).db.location.findFirst({
+        where: { id: locationId, projectId, deletedAt: null },
+      });
+      if (!location) {
+        return NextResponse.json(
+          { error: 'Locatie niet gevonden' },
+          { status: 404 }
+        );
+      }
+
+      const existing = await (await import('@/lib/db')).db.googleBusinessProfile.findUnique({
+        where: { locationId },
+      });
+
+      const tokenData: Record<string, unknown> = {
+        accountId,
+        locationIdGBP,
+      };
+      if (accessToken) tokenData.accessToken = accessToken;
+      if (refreshToken) tokenData.refreshToken = refreshToken;
+      tokenData.syncStatus = 'connected';
+      tokenData.syncError = null;
+
+      let gbp;
+      if (existing) {
+        gbp = await (await import('@/lib/db')).db.googleBusinessProfile.update({
+          where: { id: existing.id },
+          data: tokenData,
+        });
+      } else {
+        gbp = await (await import('@/lib/db')).db.googleBusinessProfile.create({
+          data: {
+            projectId,
+            locationId,
+            ...tokenData,
+          },
+        });
+      }
+
+      return NextResponse.json({ data: gbp }, { status: 201 });
     }
-
-    const gbp = await connectGBP(projectId, locationId, {
-      accountId,
-      locationIdGBP,
-      accessToken,
-      refreshToken,
-    });
-
-    await logAuditEvent({
-      organizationId: access.project.organizationId,
-      projectId,
-      userId: user.id,
-      action: 'gbp_connected',
-      entity: 'google_business_profile',
-      entityId: gbp.id,
-      changes: { accountId, locationIdGBP },
-    });
-
-    return NextResponse.json({ data: gbp }, { status: 201 });
   } catch (error) {
     console.error('Fout bij verbinden Google Bedrijfsprofiel:', error);
-    return NextResponse.json(
-      { error: 'Interne serverfout bij verbinden Google Bedrijfsprofiel' },
-      { status: 500 }
-    );
+    const message = error instanceof Error ? error.message : 'Interne serverfout bij verbinden Google Bedrijfsprofiel';
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
 
@@ -125,15 +160,15 @@ export async function DELETE(
     }
 
     // Check if GBP exists
-    const existing = await getGBPStatus(locationId);
-    if (!existing) {
+    const existing = await getGBPStatus(locationId, projectId);
+    if (!existing.connected) {
       return NextResponse.json(
-        { error: 'Google Bedrijfsprofiel niet gevonden' },
+        { error: 'Google Bedrijfsprofiel niet gevonden of niet verbonden' },
         { status: 404 }
       );
     }
 
-    const gbp = await disconnectGBP(locationId);
+    const gbp = await disconnectGBP(locationId, projectId);
 
     await logAuditEvent({
       organizationId: access.project.organizationId,
@@ -141,7 +176,7 @@ export async function DELETE(
       userId: user.id,
       action: 'gbp_disconnected',
       entity: 'google_business_profile',
-      entityId: existing.id,
+      entityId: (gbp as { id: string }).id,
       changes: { disconnected: true },
     });
 

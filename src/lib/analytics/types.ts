@@ -15,10 +15,12 @@
  * Different fields are used depending on the connection type.
  */
 export interface DataConnectionConfig {
-  /** GSC/GA4 property ID */
+  /** GSC property URL (e.g., 'https://example.com/') or GA4 property ID (e.g., 'properties/123456') */
   propertyId?: string;
-  /** GSC/GA4 account ID */
+  /** GSC/GA4/GBP account ID */
   accountId?: string;
+  /** GBP location ID (e.g., 'accounts/123/locations/456') */
+  locationIdGBP?: string;
   /** CSV file reference name */
   fileName?: string;
   /** Whether to auto-sync data */

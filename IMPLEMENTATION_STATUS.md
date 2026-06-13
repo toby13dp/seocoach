@@ -640,6 +640,21 @@
 |------------|--------|---------------|
 | Docker production setup | 🟢 Complete | `Dockerfile` (3-stage build, non-root user, health check), `docker-compose.yml` (app + postgres + ollama + caddy), `docker-compose.dev.yml` (dev override with hot-reload), `.dockerignore`, `scripts/setup-ollama.sh`, updated `Caddyfile` (production-ready with security headers, compression, rate limiting) |
 
+### 13.8 Google OAuth Integration (Phase 5 Enhancement)
+
+| Requirement | Status | Implementation |
+|------------|--------|---------------|
+| Google OAuth 2.0 flow | 🟢 Complete | `src/lib/google/oauth-client.ts` — authorization URL generation with CSRF state, token exchange, encrypted token storage (AES-256-GCM), automatic token refresh, connection verification, token revocation on disconnect |
+| Google Search Console auto-sync | 🟢 Complete | `src/lib/google/google-api.ts` — fetchGSCSearchAnalytics (daily + query-level), listGSCProperties, syncGSCData (upsert DailyMetric + QueryPerformance) |
+| Google Analytics 4 auto-sync | 🟢 Complete | `src/lib/google/google-api.ts` — fetchGA4Analytics (GA4 Data API v1beta), listGA4Properties, syncGA4Data (upsert DailyMetric with sessions, users, bounceRate, conversions, revenue) |
+| Google Business Profile auto-sync | 🟢 Complete | `src/lib/google/google-api.ts` — fetchGBPProfile, fetchGBPReviews, listGBPSccounts, listGBPLocations, syncGBPDataToDb (upsert GoogleBusinessProfile + Review + ReviewResponse) |
+| Token encryption | 🟢 Complete | `src/lib/google/token-encryption.ts` — AES-256-GCM with scrypt key derivation from NEXTAUTH_SECRET |
+| OAuth API routes | 🟢 Complete | `/api/google/oauth/authorize` (GET), `/api/google/oauth/callback` (GET), `/api/google/oauth/disconnect` (POST), `/api/google/oauth/status` (GET), `/api/google/oauth/properties` (GET), `/api/google/oauth/sync-all` (POST) |
+| OAuthState model | 🟢 Complete | Prisma model for CSRF state verification with 10-minute expiry |
+| Integrations page UI | 🟢 Complete | `src/app/[locale]/integrations/page.tsx` — connect/disconnect flow, property selection dialog, sync button, connection status display, scope management |
+| GBP adapter updated | 🟢 Complete | `src/lib/local-seo/gbp-adapter.ts` — now uses DataConnection OAuth tokens instead of manual token entry |
+| Sync manager updated | 🟢 Complete | `src/lib/analytics/sync-manager.ts` — GSC/GA4/GBP sync cases now call real Google APIs instead of placeholder messages |
+
 ### Phase 13 Definition of Done
 
 - [x] All requirements audited and classified (complete, partial, planned, blocked, N/A)
@@ -647,6 +662,7 @@
 - [x] WCAG 2.1 AA compliance verified
 - [x] Performance targets met under load testing
 - [x] Backup and restore procedure tested
+- [x] Google OAuth integration implemented (GSC, GA4, GBP auto-sync)
 - [ ] Dutch user documentation complete
 - [ ] Administrator documentation complete
 - [ ] Final acceptance test passes
@@ -710,6 +726,7 @@ Phase 1 (Foundation)
 | 2026-06-13 | 11 | Phase 11 AI Copilots & Agents implemented and tested (89 tests) | System |
 | 2026-06-13 | 12 | Phase 12 Migrations & Deployments implemented and tested (39 tests) | System |
 | 2026-06-13 | 13 | Phase 13 Production Hardening: security (rate limiter, input sanitizer, CSRF, API permissions, secret masker), privacy (data export, account/project deletion, consent, retention), accessibility (WCAG 2.1 AA components), observability (logger, metrics, health checks), reliability (retry, circuit breaker, timeout), backup/restore scripts, Docker Compose production setup | System |
+| 2026-06-13 | 13 | Google OAuth integration: full OAuth 2.0 flow for GSC/GA4/GBP with encrypted token storage, auto-sync, property selection, integrations page UI, GBP adapter refactored to use OAuth tokens | System |
 
 ---
 
