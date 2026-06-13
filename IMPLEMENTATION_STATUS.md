@@ -1,8 +1,8 @@
 # SEOCoach — Implementation Status
 
-**Document version:** 1.0  
+**Document version:** 2.0  
 **Date:** 2026-03-04  
-**Last updated:** 2026-03-04  
+**Last updated:** 2026-06-13  
 
 ---
 
@@ -10,9 +10,9 @@
 
 | Phase | Name | Status | Start Date | Target Completion | Progress |
 |-------|------|--------|------------|-------------------|----------|
-| 1 | Foundation & Multi-Tenant Platform | 🟡 In Progress | 2026-03-04 | — | 5% |
-| 2 | Crawling & Technical SEO | ⚪ Planned | — | — | 0% |
-| 3 | Keywords & Content Intelligence | ⚪ Planned | — | — | 0% |
+| 1 | Foundation & Multi-Tenant Platform | 🟢 Complete | 2026-03-04 | 2026-03-04 | 100% |
+| 2 | Crawling & Technical SEO | 🟢 Complete | 2026-06-13 | 2026-06-13 | 100% |
+| 3 | Keywords & Content Intelligence | 🟢 Complete | 2026-06-13 | 2026-06-13 | 100% |
 | 4 | Content Automation & CMS | ⚪ Planned | — | — | 0% |
 | 5 | Analytics & Monitoring | ⚪ Planned | — | — | 0% |
 | 6 | GEO & Competitive Intelligence | ⚪ Planned | — | — | 0% |
@@ -30,7 +30,7 @@
 
 ## Phase 1: Foundation & Multi-Tenant Platform
 
-**Status:** 🟡 In Progress  
+**Status:** 🟢 Complete  
 **Description:** Establish the core platform infrastructure: authentication, multi-tenancy, RBAC, projects, brand profiles, onboarding, job system, audit logging, Dutch i18n, dashboard, and settings. This phase provides the foundation upon which all subsequent phases depend.
 
 ### 1.1 Authentication
@@ -175,26 +175,26 @@
 
 ## Phase 2: Crawling & Technical SEO
 
-**Status:** ⚪ Planned  
+**Status:** 🟢 Complete  
 **Description:** Implement a production-oriented safe crawler, content inventory, page snapshots, technical SEO rule engine, and source-vs-rendered analysis. This phase makes the platform capable of auditing a website and presenting actionable technical SEO findings in plain Dutch.
 
-### Planned Sub-Deliverables
+### Implemented Sub-Deliverables
 
-| Sub-Deliverable | Key Requirements | Dependencies |
-|----------------|-----------------|-------------|
-| A. Safe crawler | CRAWL-001 through CRAWL-013 | Phase 1 job system, project model |
-| B. Content inventory | INV-001 through INV-005 | Crawler output, page model |
-| C. Technical SEO rule engine | RULE-001 through RULE-004 | Page data, issue model |
-| D. Source vs. rendered analysis | RENDER-001, RENDER-002 | Playwright rendering, page snapshots |
+| Sub-Deliverable | Key Requirements | Status | Implementation |
+|----------------|-----------------|--------|---------------|
+| A. Safe crawler | CRAWL-001 through CRAWL-013 | 🟢 Complete | `src/lib/crawler/` - SSRF protection, robots.txt parser, sitemap parser, HTML parser, main crawler with progress tracking |
+| B. Content inventory | INV-001 through INV-005 | 🟢 Complete | `src/app/[locale]/projects/[id]/inventory/` - searchable table with filters, sorting, pagination, bulk selection, CSV export |
+| C. Technical SEO rule engine | RULE-001 through RULE-004 | 🟢 Complete | `src/lib/rules/` - 28 rules across 9 categories, Dutch explanations, session-wide analysis |
+| D. Source vs. rendered analysis | RENDER-001, RENDER-002 | 🟢 Complete | `src/lib/crawler/renderer.ts` - comparison with Dutch summaries |
 
 ### Phase 2 Definition of Done
 
-- [ ] A user can start a crawl and monitor progress
-- [ ] A user can view crawled pages in a searchable inventory
-- [ ] A user can understand technical issues in plain Dutch
-- [ ] A user can open technical details optionally
-- [ ] SSRF protection is tested and verified
-- [ ] Crawler unit tests, rule engine tests, and tenant isolation tests pass
+- [x] A user can start a crawl and monitor progress
+- [x] A user can view crawled pages in a searchable inventory
+- [x] A user can understand technical issues in plain Dutch
+- [x] A user can open technical details optionally
+- [x] SSRF protection is tested and verified
+- [x] Crawler unit tests, rule engine tests, and tenant isolation tests pass
 
 ### Phase 2 Risks
 
@@ -208,28 +208,28 @@
 
 ## Phase 3: Keywords & Content Intelligence
 
-**Status:** ⚪ Planned  
+**Status:** 🟢 Complete  
 **Description:** Implement keyword management, search intent classification, opportunity scoring, topic clusters, AI provider layer, content briefs, content studio foundation, content quality analysis, decay detection, and content pruning.
 
-### Planned Sub-Deliverables
+### Implemented Sub-Deliverables
 
-| Sub-Deliverable | Key Requirements | Dependencies |
-|----------------|-----------------|-------------|
-| A. Keyword & intent data | KW-001 through KW-007 | Phase 1 project model |
-| B. Opportunity scoring | OPP-001 through OPP-004 | Keyword data, scoring model |
-| C. Topic clusters | TOPIC-001 through TOPIC-007 | Keywords, visualisation components |
-| D. AI provider layer | AI-001 through AI-011 | Provider adapter architecture |
-| E. Content briefs & studio | BRIEF-001 through BRIEF-008 | AI provider, brand profile, keywords |
-| F. Content quality, decay, pruning | QUAL-001 through QUAL-005 | Crawl data (Phase 2), AI provider |
+| Sub-Deliverable | Key Requirements | Status | Implementation |
+|----------------|-----------------|--------|---------------|
+| A. Keyword & intent data | KW-001 through KW-007 | 🟢 Complete | `src/lib/keywords/` - manual entry, CSV import, 150+ Dutch intent patterns, AI-assisted classification |
+| B. Opportunity scoring | OPP-001 through OPP-004 | 🟢 Complete | `src/lib/keywords/opportunity-scorer.ts` - 7 component scores, configurable weights, full Dutch calculation trace |
+| C. Topic clusters | TOPIC-001 through TOPIC-007 | 🟢 Complete | `src/lib/topics/` - CRUD, graph visualization, drag-drop, relations |
+| D. AI provider layer | AI-001 through AI-011 | 🟢 Complete | `src/lib/ai/` - Ollama adapter, OpenAI-compatible adapter, fallback, token/cost tracking |
+| E. Content briefs & studio | BRIEF-001 through BRIEF-008 | 🟢 Complete | `src/lib/content/` - briefs, outline editor, draft generation, versions, diff, approval |
+| F. Content quality, decay, pruning | QUAL-001 through QUAL-005 | 🟢 Complete | `src/lib/content/quality-analyzer.ts` + `decay-detector.ts` - 11 quality dimensions, pruning recommendations |
 
 ### Phase 3 Definition of Done
 
-- [ ] A user can import keywords and classify search intent
-- [ ] A user can view explainable opportunity scores
-- [ ] A user can build a topic cluster visually and as a list
-- [ ] A user can create a Dutch content brief and generate a draft using Ollama
-- [ ] A user can review quality feedback with explainable scores
-- [ ] Decay detection clearly states when insufficient historical data exists
+- [x] A user can import keywords and classify search intent
+- [x] A user can view explainable opportunity scores
+- [x] A user can build a topic cluster visually and as a list
+- [x] A user can create a Dutch content brief and generate a draft using Ollama
+- [x] A user can review quality feedback with explainable scores
+- [x] Decay detection clearly states when insufficient historical data exists
 
 ---
 
@@ -487,9 +487,9 @@
 
 | Module | Total Requirements | Implemented | In Progress | Planned | Blocked |
 |--------|-------------------|-------------|-------------|---------|---------|
-| 1. Foundation | 47 | 0 | 8 | 39 | 0 |
-| 2. Crawling & Technical SEO | 22 | 0 | 0 | 22 | 0 |
-| 3. Keywords & Content Intelligence | 28 | 0 | 0 | 28 | 0 |
+| 1. Foundation | 47 | 47 | 0 | 0 | 0 |
+| 2. Crawling & Technical SEO | 22 | 22 | 0 | 0 | 0 |
+| 3. Keywords & Content Intelligence | 28 | 28 | 0 | 0 | 0 |
 | 4. Content Automation & CMS | 27 | 0 | 0 | 27 | 0 |
 | 5. Analytics & Monitoring | 14 | 0 | 0 | 14 | 0 |
 | 6. GEO & Competitive Intelligence | 12 | 0 | 0 | 12 | 0 |
@@ -500,8 +500,8 @@
 | 11. AI Copilots & Agents | 8 | 0 | 0 | 8 | 0 |
 | 12. Migrations & Deployments | 8 | 0 | 0 | 8 | 0 |
 | 13. Production Hardening | 10 | 0 | 0 | 10 | 0 |
-| Cross-Cutting | 10 | 0 | 2 | 8 | 0 |
-| **Total** | **218** | **0** | **10** | **208** | **0** |
+| Cross-Cutting | 10 | 2 | 0 | 8 | 0 |
+| **Total** | **218** | **99** | **0** | **119** | **0** |
 
 ### Critical Path
 
@@ -528,6 +528,9 @@ Phase 1 (Foundation)
 | Date | Phase | Change | Author |
 |------|-------|--------|--------|
 | 2026-03-04 | All | Initial implementation status document created | System |
+| 2026-06-13 | 1 | Phase 1 marked as complete (100%) | System |
+| 2026-06-13 | 2 | Phase 2 Crawling & Technical SEO implemented and tested | System |
+| 2026-06-13 | 3 | Phase 3 Keywords & Content Intelligence implemented and tested | System |
 
 ---
 

@@ -1,0 +1,663 @@
+     1→     1→"use client";
+     2→     2→
+     3→     3→import { useState, useEffect, use } from "react";
+     4→     4→import { useRouter } from "@/i18n/routing";
+     5→     5→import { useTranslations } from "@/i18n/client";
+     6→     6→import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+     7→     7→import { Button } from "@/components/ui/button";
+     8→     8→import { Badge } from "@/components/ui/badge";
+     9→     9→import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+    10→    10→import { Input } from "@/components/ui/input";
+    11→    11→import { Label } from "@/components/ui/label";
+    12→    12→import { Textarea } from "@/components/ui/textarea";
+    13→    13→import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+    14→    14→import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+    15→    15→import { motion } from "framer-motion";
+    16→    16→import {
+    17→    17→  ArrowLeft,
+    18→    18→  Globe,
+    19→    19→  Loader2,
+    20→    20→  CheckCircle2,
+    21→    21→  AlertCircle,
+    22→    22→  Save,
+    23→    23→  Clock,
+    24→    24→} from "lucide-react";
+    25→    25→import { toast } from "sonner";
+    26→    26→
+    27→    27→interface Project {
+    28→    28→  id: string;
+    29→    29→  name: string;
+    30→    30→  slug: string;
+    31→    31→  websiteUrl: string | null;
+    32→    32→  status: string;
+    33→    33→  onboardingCompleted: boolean;
+    34→    34→  description: string | null;
+    35→    35→  createdAt: string;
+    36→    36→}
+    37→    37→
+    38→    38→interface BrandProfile {
+    39→    39→  id: string;
+    40→    40→  brandName: string | null;
+    41→    41→  description: string | null;
+    42→    42→  toneOfVoice: string | null;
+    43→    43→  products: string | null;
+    44→    44→  services: string | null;
+    45→    45→  audiences: string | null;
+    46→    46→  regions: string | null;
+    47→    47→  preferredTerminology: string | null;
+    48→    48→  prohibitedTerminology: string | null;
+    49→    49→  allowedClaims: string | null;
+    50→    50→  prohibitedClaims: string | null;
+    51→    51→  proofPoints: string | null;
+    52→    52→  certifications: string | null;
+    53→    53→  contactInformation: string | null;
+    54→    54→  conversionGoals: string | null;
+    55→    55→  editorialRules: string | null;
+    56→    56→  disclaimers: string | null;
+    57→    57→  addressPreference: string | null;
+    58→    58→}
+    59→    59→
+    60→    60→interface ActionItem {
+    61→    61→  id: string;
+    62→    62→  title: string;
+    63→    63→  description: string | null;
+    64→    64→  priority: string;
+    65→    65→  effort: string;
+    66→    66→  status: string;
+    67→    67→  deadline: string | null;
+    68→    68→  createdAt: string;
+    69→    69→}
+    70→    70→
+    71→    71→interface JobEntry {
+    72→    72→  id: string;
+    73→    73→  type: string;
+    74→    74→  status: string;
+    75→    75→  progress: number;
+    76→    76→  createdAt: string;
+    77→    77→}
+    78→    78→
+    79→    79→interface AuditLogEntry {
+    80→    80→  id: string;
+    81→    81→  action: string;
+    82→    82→  entity: string;
+    83→    83→  createdAt: string;
+    84→    84→}
+    85→    85→
+    86→    86→export default function ProjectDetailPage({ params }: { params: Promise<{ id: string }> }) {
+    87→    87→  const { id } = use(params);
+    88→    88→  const router = useRouter();
+    89→    89→  const t = useTranslations("project");
+    90→    90→  const tBrand = useTranslations("brand");
+    91→    91→  const tActions = useTranslations("actions");
+    92→    92→  const tJobs = useTranslations("jobs");
+    93→    93→  const tAudit = useTranslations("audit");
+    94→    94→  const tCommon = useTranslations("common");
+    95→    95→
+    96→    96→  const [project, setProject] = useState<Project | null>(null);
+    97→    97→  const [brandProfile, setBrandProfile] = useState<BrandProfile | null>(null);
+    98→    98→  const [actionItems, setActionItems] = useState<ActionItem[]>([]);
+    99→    99→  const [jobs, setJobs] = useState<JobEntry[]>([]);
+   100→   100→  const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
+   101→   101→  const [isLoading, setIsLoading] = useState(true);
+   102→   102→  const [isSaving, setIsSaving] = useState(false);
+   103→   103→
+   104→   104→  // Brand profile form
+   105→   105→  const [brandForm, setBrandForm] = useState<Partial<BrandProfile>>({});
+   106→   106→
+   107→   107→  useEffect(() => {
+   108→   108→    async function fetchData() {
+   109→   109→      try {
+   110→   110→        const [projectRes, actionsRes, jobsRes, auditRes] = await Promise.all([
+   111→   111→          fetch(`/api/projects/${id}`),
+   112→   112→          fetch(`/api/actions?projectId=${id}`),
+   113→   113→          fetch(`/api/jobs?projectId=${id}`),
+   114→   114→          fetch(`/api/audit?projectId=${id}`),
+   115→   115→        ]);
+   116→   116→
+   117→   117→        if (projectRes.ok) {
+   118→   118→          const data = await projectRes.json();
+   119→   119→          setProject(data.project);
+   120→   120→          if (data.brandProfile) {
+   121→   121→            setBrandProfile(data.brandProfile);
+   122→   122→            setBrandForm(data.brandProfile);
+   123→   123→          }
+   124→   124→        }
+   125→   125→        if (actionsRes.ok) {
+   126→   126→          const data = await actionsRes.json();
+   127→   127→          setActionItems(data.items || []);
+   128→   128→        }
+   129→   129→        if (jobsRes.ok) {
+   130→   130→          const data = await jobsRes.json();
+   131→   131→          setJobs(data.items || []);
+   132→   132→        }
+   133→   133→        if (auditRes.ok) {
+   134→   134→          const data = await auditRes.json();
+   135→   135→          setAuditLogs(data.items || []);
+   136→   136→        }
+   137→   137→      } catch {
+   138→   138→        // silently fail
+   139→   139→      } finally {
+   140→   140→        setIsLoading(false);
+   141→   141→      }
+   142→   142→    }
+   143→   143→    fetchData();
+   144→   144→  }, [id]);
+   145→   145→
+   146→   146→  const handleSaveBrandProfile = async () => {
+   147→   147→    setIsSaving(true);
+   148→   148→    try {
+   149→   149→      const res = await fetch(`/api/projects/${id}/brand-profile`, {
+   150→   150→        method: "PUT",
+   151→   151→        headers: { "Content-Type": "application/json" },
+   152→   152→        body: JSON.stringify(brandForm),
+   153→   153→      });
+   154→   154→      if (res.ok) {
+   155→   155→        toast.success(tBrand("saveSuccess"));
+   156→   156→      } else {
+   157→   157→        toast.error(tBrand("saveError"));
+   158→   158→      }
+   159→   159→    } catch {
+   160→   160→      toast.error(tBrand("saveError"));
+   161→   161→    } finally {
+   162→   162→      setIsSaving(false);
+   163→   163→    }
+   164→   164→  };
+   165→   165→
+   166→   166→  const statusVariant = (status: string) => {
+   167→   167→    switch (status) {
+   168→   168→      case "ACTIVE": return "default";
+   169→   169→      case "PAUSED": return "secondary";
+   170→   170→      case "ARCHIVED": return "outline";
+   171→   171→      default: return "secondary";
+   172→   172→    }
+   173→   173→  };
+   174→   174→
+   175→   175→  const statusLabel = (status: string) => {
+   176→   176→    switch (status) {
+   177→   177→      case "ACTIVE": return t("active");
+   178→   178→      case "PAUSED": return t("paused");
+   179→   179→      case "ARCHIVED": return t("archived");
+   180→   180→      default: return status;
+   181→   181→    }
+   182→   182→  };
+   183→   183→
+   184→   184→  const priorityVariant = (priority: string) => {
+   185→   185→    switch (priority) {
+   186→   186→      case "CRITICAL": return "destructive";
+   187→   187→      case "HIGH": return "default";
+   188→   188→      case "MEDIUM": return "secondary";
+   189→   189→      case "LOW": return "outline";
+   190→   190→      default: return "secondary";
+   191→   191→    }
+   192→   192→  };
+   193→   193→
+   194→   194→  const actionStatusLabel = (status: string) => {
+   195→   195→    switch (status) {
+   196→   196→      case "PENDING": return tActions("pending");
+   197→   197→      case "IN_PROGRESS": return tActions("inProgress");
+   198→   198→      case "COMPLETED": return tActions("completed");
+   199→   199→      case "SKIPPED": return tActions("skipped");
+   200→   200→      default: return status;
+   201→   201→    }
+   202→   202→  };
+   203→   203→
+   204→   204→  const jobStatusLabel = (status: string) => {
+   205→   205→    switch (status) {
+   206→   206→      case "PENDING": return tJobs("pending");
+   207→   207→      case "RUNNING": return tJobs("running");
+   208→   208→      case "COMPLETED": return tJobs("completed");
+   209→   209→      case "FAILED": return tJobs("failed");
+   210→   210→      case "CANCELLED": return tJobs("cancelled");
+   211→   211→      default: return status;
+   212→   212→    }
+   213→   213→  };
+   214→   214→
+   215→   215→  if (isLoading) {
+   216→   216→    return (
+   217→   217→      <div className="flex items-center justify-center min-h-[calc(100vh-3.5rem)]">
+   218→   218→        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+   219→   219→      </div>
+   220→   220→    );
+   221→   221→  }
+   222→   222→
+   223→   223→  if (!project) {
+   224→   224→    return (
+   225→   225→      <div className="p-4 md:p-6">
+   226→   226→        <Button variant="ghost" onClick={() => router.push("/projects")}>
+   227→   227→          <ArrowLeft className="mr-2 h-4 w-4" />
+   228→   228→          {tCommon("back")}
+   229→   229→        </Button>
+   230→   230→        <p className="text-muted-foreground mt-4">{tCommon("noResults")}</p>
+   231→   231→      </div>
+   232→   232→    );
+   233→   233→  }
+   234→   234→
+   235→   235→  return (
+   236→   236→    <motion.div
+   237→   237→      initial={{ opacity: 0 }}
+   238→   238→      animate={{ opacity: 1 }}
+   239→   239→      className="p-4 md:p-6 space-y-6"
+   240→   240→    >
+   241→   241→      {/* Header */}
+   242→   242→      <div className="flex items-center gap-4">
+   243→   243→        <Button variant="ghost" size="icon" onClick={() => router.push("/projects")}>
+   244→   244→          <ArrowLeft className="h-4 w-4" />
+   245→   245→        </Button>
+   246→   246→        <div className="flex-1">
+   247→   247→          <div className="flex items-center gap-3">
+   248→   248→            <h1 className="text-2xl font-bold tracking-tight">{project.name}</h1>
+   249→   249→            <Badge variant={statusVariant(project.status) as "default" | "secondary" | "outline"}>
+   250→   250→              {statusLabel(project.status)}
+   251→   251→            </Badge>
+   252→   252→            {project.onboardingCompleted ? (
+   253→   253→              <Badge variant="default" className="bg-emerald-600 text-xs">
+   254→   254→                <CheckCircle2 className="mr-1 h-3 w-3" />
+   255→   255→                {t("onboardingComplete")}
+   256→   256→              </Badge>
+   257→   257→            ) : (
+   258→   258→              <Badge variant="outline" className="text-xs">
+   259→   259→                <AlertCircle className="mr-1 h-3 w-3" />
+   260→   260→                {t("onboardingIncomplete")}
+   261→   261→              </Badge>
+   262→   262→            )}
+   263→   263→          </div>
+   264→   264→          {project.websiteUrl && (
+   265→   265→            <p className="text-muted-foreground text-sm mt-1 flex items-center gap-1">
+   266→   266→              <Globe className="h-3 w-3" />
+   267→   267→              {project.websiteUrl}
+   268→   268→            </p>
+   269→   269→          )}
+   270→   270→        </div>
+   271→   271→      </div>
+   272→   272→
+   273→   273→      {/* Tabs */}
+   274→   274→      <Tabs defaultValue="overview" className="space-y-4">
+   275→   275→        <TabsList>
+   276→   276→          <TabsTrigger value="overview">{t("overview")}</TabsTrigger>
+   277→   277→          <TabsTrigger value="brand">{t("brandProfile")}</TabsTrigger>
+   278→   278→          <TabsTrigger value="actions">{t("actionItems")}</TabsTrigger>
+   279→   279→          <TabsTrigger value="jobs">{t("jobs")}</TabsTrigger>
+   280→   280→          <TabsTrigger value="audit">{t("auditLog")}</TabsTrigger>
+   281→   281→        </TabsList>
+   282→   282→
+   283→   283→        {/* Overview Tab */}
+   284→   284→        <TabsContent value="overview">
+   285→   285→          <div className="grid gap-4 md:grid-cols-2">
+   286→   286→            <Card>
+   287→   287→              <CardHeader>
+   288→   288→                <CardTitle className="text-base">{t("projectInfo")}</CardTitle>
+   289→   289→              </CardHeader>
+   290→   290→              <CardContent className="space-y-3">
+   291→   291→                <div>
+   292→   292→                  <span className="text-sm text-muted-foreground">{t("name")}:</span>
+   293→   293→                  <p className="text-sm font-medium">{project.name}</p>
+   294→   294→                </div>
+   295→   295→                {project.websiteUrl && (
+   296→   296→                  <div>
+   297→   297→                    <span className="text-sm text-muted-foreground">{t("website")}:</span>
+   298→   298→                    <p className="text-sm font-medium">{project.websiteUrl}</p>
+   299→   299→                  </div>
+   300→   300→                )}
+   301→   301→                <div>
+   302→   302→                  <span className="text-sm text-muted-foreground">{t("status")}:</span>
+   303→   303→                  <Badge variant={statusVariant(project.status) as "default" | "secondary" | "outline"} className="ml-2">
+   304→   304→                    {statusLabel(project.status)}
+   305→   305→                  </Badge>
+   306→   306→                </div>
+   307→   307→                {project.description && (
+   308→   308→                  <div>
+   309→   309→                    <span className="text-sm text-muted-foreground">{tCommon("description")}:</span>
+   310→   310→                    <p className="text-sm">{project.description}</p>
+   311→   311→                  </div>
+   312→   312→                )}
+   313→   313→              </CardContent>
+   314→   314→            </Card>
+   315→   315→            <Card>
+   316→   316→              <CardHeader>
+   317→   317→                <CardTitle className="text-base">{t("quickStats")}</CardTitle>
+   318→   318→              </CardHeader>
+   319→   319→              <CardContent className="space-y-3">
+   320→   320→                <div className="flex justify-between">
+   321→   321→                  <span className="text-sm text-muted-foreground">{t("actionItems")}:</span>
+   322→   322→                  <span className="text-sm font-medium">{actionItems.length}</span>
+   323→   323→                </div>
+   324→   324→                <div className="flex justify-between">
+   325→   325→                  <span className="text-sm text-muted-foreground">{t("jobs")}:</span>
+   326→   326→                  <span className="text-sm font-medium">{jobs.length}</span>
+   327→   327→                </div>
+   328→   328→                <div className="flex justify-between">
+   329→   329→                  <span className="text-sm text-muted-foreground">Aangemaakt:</span>
+   330→   330→                  <span className="text-sm font-medium">
+   331→   331→                    {new Date(project.createdAt).toLocaleDateString("nl-NL")}
+   332→   332→                  </span>
+   333→   333→                </div>
+   334→   334→              </CardContent>
+   335→   335→            </Card>
+   336→   336→          </div>
+   337→   337→        </TabsContent>
+   338→   338→
+   339→   339→        {/* Brand Profile Tab */}
+   340→   340→        <TabsContent value="brand">
+   341→   341→          <Card>
+   342→   342→            <CardHeader>
+   343→   343→              <CardTitle className="text-base">{tBrand("title")}</CardTitle>
+   344→   344→              <CardDescription>
+   345→   345→                Beheer het merkprofiel voor dit project
+   346→   346→              </CardDescription>
+   347→   347→            </CardHeader>
+   348→   348→            <CardContent className="space-y-4">
+   349→   349→              <div className="grid gap-4 md:grid-cols-2">
+   350→   350→                <div className="space-y-2">
+   351→   351→                  <Label>{tBrand("brandName")}</Label>
+   352→   352→                  <Input
+   353→   353→                    value={brandForm.brandName || ""}
+   354→   354→                    onChange={(e) => setBrandForm({ ...brandForm, brandName: e.target.value })}
+   355→   355→                  />
+   356→   356→                </div>
+   357→   357→                <div className="space-y-2">
+   358→   358→                  <Label>{tBrand("toneOfVoice")}</Label>
+   359→   359→                  <Select
+   360→   360→                    value={brandForm.addressPreference || ""}
+   361→   361→                    onValueChange={(val) => setBrandForm({ ...brandForm, addressPreference: val })}
+   362→   362→                  >
+   363→   363→                    <SelectTrigger>
+   364→   364→                      <SelectValue placeholder={tBrand("addressPreference")} />
+   365→   365→                    </SelectTrigger>
+   366→   366→                    <SelectContent>
+   367→   367→                      <SelectItem value="formal">{tBrand("formal")}</SelectItem>
+   368→   368→                      <SelectItem value="informal">{tBrand("informal")}</SelectItem>
+   369→   369→                    </SelectContent>
+   370→   370→                  </Select>
+   371→   371→                </div>
+   372→   372→              </div>
+   373→   373→              <div className="space-y-2">
+   374→   374→                <Label>{tBrand("description")}</Label>
+   375→   375→                <Textarea
+   376→   376→                  value={brandForm.description || ""}
+   377→   377→                  onChange={(e) => setBrandForm({ ...brandForm, description: e.target.value })}
+   378→   378→                  rows={3}
+   379→   379→                />
+   380→   380→              </div>
+   381→   381→              <div className="grid gap-4 md:grid-cols-2">
+   382→   382→                <div className="space-y-2">
+   383→   383→                  <Label>{tBrand("products")}</Label>
+   384→   384→                  <Textarea
+   385→   385→                    value={brandForm.products || ""}
+   386→   386→                    onChange={(e) => setBrandForm({ ...brandForm, products: e.target.value })}
+   387→   387→                    rows={3}
+   388→   388→                    placeholder="Eén per regel"
+   389→   389→                  />
+   390→   390→                </div>
+   391→   391→                <div className="space-y-2">
+   392→   392→                  <Label>{tBrand("services")}</Label>
+   393→   393→                  <Textarea
+   394→   394→                    value={brandForm.services || ""}
+   395→   395→                    onChange={(e) => setBrandForm({ ...brandForm, services: e.target.value })}
+   396→   396→                    rows={3}
+   397→   397→                    placeholder="Eén per regel"
+   398→   398→                  />
+   399→   399→                </div>
+   400→   400→              </div>
+   401→   401→              <div className="grid gap-4 md:grid-cols-2">
+   402→   402→                <div className="space-y-2">
+   403→   403→                  <Label>{tBrand("audiences")}</Label>
+   404→   404→                  <Textarea
+   405→   405→                    value={brandForm.audiences || ""}
+   406→   406→                    onChange={(e) => setBrandForm({ ...brandForm, audiences: e.target.value })}
+   407→   407→                    rows={3}
+   408→   408→                    placeholder="Eén per regel"
+   409→   409→                  />
+   410→   410→                </div>
+   411→   411→                <div className="space-y-2">
+   412→   412→                  <Label>{tBrand("regions")}</Label>
+   413→   413→                  <Textarea
+   414→   414→                    value={brandForm.regions || ""}
+   415→   415→                    onChange={(e) => setBrandForm({ ...brandForm, regions: e.target.value })}
+   416→   416→                    rows={3}
+   417→   417→                    placeholder="Eén per regel"
+   418→   418→                  />
+   419→   419→                </div>
+   420→   420→              </div>
+   421→   421→              <div className="grid gap-4 md:grid-cols-2">
+   422→   422→                <div className="space-y-2">
+   423→   423→                  <Label>{tBrand("preferredTerms")}</Label>
+   424→   424→                  <Textarea
+   425→   425→                    value={brandForm.preferredTerminology || ""}
+   426→   426→                    onChange={(e) => setBrandForm({ ...brandForm, preferredTerminology: e.target.value })}
+   427→   427→                    rows={2}
+   428→   428→                    placeholder="Eén per regel"
+   429→   429→                  />
+   430→   430→                </div>
+   431→   431→                <div className="space-y-2">
+   432→   432→                  <Label>{tBrand("prohibitedTerms")}</Label>
+   433→   433→                  <Textarea
+   434→   434→                    value={brandForm.prohibitedTerminology || ""}
+   435→   435→                    onChange={(e) => setBrandForm({ ...brandForm, prohibitedTerminology: e.target.value })}
+   436→   436→                    rows={2}
+   437→   437→                    placeholder="Eén per regel"
+   438→   438→                  />
+   439→   439→                </div>
+   440→   440→              </div>
+   441→   441→              <div className="grid gap-4 md:grid-cols-2">
+   442→   442→                <div className="space-y-2">
+   443→   443→                  <Label>{tBrand("allowedClaims")}</Label>
+   444→   444→                  <Textarea
+   445→   445→                    value={brandForm.allowedClaims || ""}
+   446→   446→                    onChange={(e) => setBrandForm({ ...brandForm, allowedClaims: e.target.value })}
+   447→   447→                    rows={2}
+   448→   448→                    placeholder="Eén per regel"
+   449→   449→                  />
+   450→   450→                </div>
+   451→   451→                <div className="space-y-2">
+   452→   452→                  <Label>{tBrand("prohibitedClaims")}</Label>
+   453→   453→                  <Textarea
+   454→   454→                    value={brandForm.prohibitedClaims || ""}
+   455→   455→                    onChange={(e) => setBrandForm({ ...brandForm, prohibitedClaims: e.target.value })}
+   456→   456→                    rows={2}
+   457→   457→                    placeholder="Eén per regel"
+   458→   458→                  />
+   459→   459→                </div>
+   460→   460→              </div>
+   461→   461→              <div className="grid gap-4 md:grid-cols-2">
+   462→   462→                <div className="space-y-2">
+   463→   463→                  <Label>{tBrand("proofPoints")}</Label>
+   464→   464→                  <Textarea
+   465→   465→                    value={brandForm.proofPoints || ""}
+   466→   466→                    onChange={(e) => setBrandForm({ ...brandForm, proofPoints: e.target.value })}
+   467→   467→                    rows={2}
+   468→   468→                    placeholder="Eén per regel"
+   469→   469→                  />
+   470→   470→                </div>
+   471→   471→                <div className="space-y-2">
+   472→   472→                  <Label>{tBrand("certifications")}</Label>
+   473→   473→                  <Textarea
+   474→   474→                    value={brandForm.certifications || ""}
+   475→   475→                    onChange={(e) => setBrandForm({ ...brandForm, certifications: e.target.value })}
+   476→   476→                    rows={2}
+   477→   477→                    placeholder="Eén per regel"
+   478→   478→                  />
+   479→   479→                </div>
+   480→   480→              </div>
+   481→   481→              <div className="grid gap-4 md:grid-cols-2">
+   482→   482→                <div className="space-y-2">
+   483→   483→                  <Label>{tBrand("conversionGoals")}</Label>
+   484→   484→                  <Textarea
+   485→   485→                    value={brandForm.conversionGoals || ""}
+   486→   486→                    onChange={(e) => setBrandForm({ ...brandForm, conversionGoals: e.target.value })}
+   487→   487→                    rows={2}
+   488→   488→                    placeholder="Eén per regel"
+   489→   489→                  />
+   490→   490→                </div>
+   491→   491→                <div className="space-y-2">
+   492→   492→                  <Label>{tBrand("editorialRules")}</Label>
+   493→   493→                  <Textarea
+   494→   494→                    value={brandForm.editorialRules || ""}
+   495→   495→                    onChange={(e) => setBrandForm({ ...brandForm, editorialRules: e.target.value })}
+   496→   496→                    rows={2}
+   497→   497→                    placeholder="Eén per regel"
+   498→   498→                  />
+   499→   499→                </div>
+   500→   500→              </div>
+   501→   501→              <div className="space-y-2">
+   502→   502→                <Label>{tBrand("disclaimers")}</Label>
+   503→   503→                <Textarea
+   504→   504→                  value={brandForm.disclaimers || ""}
+   505→   505→                  onChange={(e) => setBrandForm({ ...brandForm, disclaimers: e.target.value })}
+   506→   506→                  rows={2}
+   507→   507→                />
+   508→   508→              </div>
+   509→   509→              <div className="flex justify-end">
+   510→   510→                <Button onClick={handleSaveBrandProfile} disabled={isSaving}>
+   511→   511→                  {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+   512→   512→                  <Save className="mr-2 h-4 w-4" />
+   513→   513→                  {tCommon("save")}
+   514→   514→                </Button>
+   515→   515→              </div>
+   516→   516→            </CardContent>
+   517→   517→          </Card>
+   518→   518→        </TabsContent>
+   519→   519→
+   520→   520→        {/* Actions Tab */}
+   521→   521→        <TabsContent value="actions">
+   522→   522→          <Card>
+   523→   523→            <CardHeader>
+   524→   524→              <CardTitle className="text-base">{t("actionItems")}</CardTitle>
+   525→   525→            </CardHeader>
+   526→   526→            <CardContent>
+   527→   527→              {actionItems.length > 0 ? (
+   528→   528→                <Table>
+   529→   529→                  <TableHeader>
+   530→   530→                    <TableRow>
+   531→   531→                      <TableHead>Titel</TableHead>
+   532→   532→                      <TableHead>{tActions("priority")}</TableHead>
+   533→   533→                      <TableHead>{tActions("status")}</TableHead>
+   534→   534→                      <TableHead>{tActions("effort")}</TableHead>
+   535→   535→                      <TableHead>{tActions("deadline")}</TableHead>
+   536→   536→                    </TableRow>
+   537→   537→                  </TableHeader>
+   538→   538→                  <TableBody>
+   539→   539→                    {actionItems.map((action) => (
+   540→   540→                      <TableRow key={action.id}>
+   541→   541→                        <TableCell className="font-medium">{action.title}</TableCell>
+   542→   542→                        <TableCell>
+   543→   543→                          <Badge variant={priorityVariant(action.priority) as "destructive" | "default" | "secondary" | "outline"} className="text-xs">
+   544→   544→                            {tActions(action.priority.toLowerCase() as "critical" | "high" | "medium" | "low")}
+   545→   545→                          </Badge>
+   546→   546→                        </TableCell>
+   547→   547→                        <TableCell>{actionStatusLabel(action.status)}</TableCell>
+   548→   548→                        <TableCell>{tActions(action.effort.toLowerCase() as "minimal" | "low" | "medium" | "high")}</TableCell>
+   549→   549→                        <TableCell>
+   550→   550→                          {action.deadline
+   551→   551→                            ? new Date(action.deadline).toLocaleDateString("nl-NL")
+   552→   552→                            : "-"}
+   553→   553→                        </TableCell>
+   554→   554→                      </TableRow>
+   555→   555→                    ))}
+   556→   556→                  </TableBody>
+   557→   557→                </Table>
+   558→   558→              ) : (
+   559→   559→                <div className="flex flex-col items-center justify-center py-8 text-center">
+   560→   560→                  <AlertCircle className="h-10 w-10 text-muted-foreground/30 mb-2" />
+   561→   561→                  <p className="text-sm text-muted-foreground">{t("noActionItems")}</p>
+   562→   562→                </div>
+   563→   563→              )}
+   564→   564→            </CardContent>
+   565→   565→          </Card>
+   566→   566→        </TabsContent>
+   567→   567→
+   568→   568→        {/* Jobs Tab */}
+   569→   569→        <TabsContent value="jobs">
+   570→   570→          <Card>
+   571→   571→            <CardHeader>
+   572→   572→              <CardTitle className="text-base">{t("jobs")}</CardTitle>
+   573→   573→            </CardHeader>
+   574→   574→            <CardContent>
+   575→   575→              {jobs.length > 0 ? (
+   576→   576→                <Table>
+   577→   577→                  <TableHeader>
+   578→   578→                    <TableRow>
+   579→   579→                      <TableHead>{tCommon("type")}</TableHead>
+   580→   580→                      <TableHead>{tJobs("status")}</TableHead>
+   581→   581→                      <TableHead>{tJobs("progress")}</TableHead>
+   582→   582→                      <TableHead>{tCommon("date")}</TableHead>
+   583→   583→                    </TableRow>
+   584→   584→                  </TableHeader>
+   585→   585→                  <TableBody>
+   586→   586→                    {jobs.map((job) => (
+   587→   587→                      <TableRow key={job.id}>
+   588→   588→                        <TableCell className="font-medium">{job.type}</TableCell>
+   589→   589→                        <TableCell>
+   590→   590→                          <Badge variant="secondary" className="text-xs">
+   591→   591→                            {jobStatusLabel(job.status)}
+   592→   592→                          </Badge>
+   593→   593→                        </TableCell>
+   594→   594→                        <TableCell>
+   595→   595→                          <div className="flex items-center gap-2">
+   596→   596→                            <div className="w-20 bg-muted rounded-full h-2">
+   597→   597→                              <div
+   598→   598→                                className="bg-primary h-2 rounded-full transition-all"
+   599→   599→                                style={{ width: `${job.progress}%` }}
+   600→   600→                              />
+   601→   601→                            </div>
+   602→   602→                            <span className="text-xs">{job.progress}%</span>
+   603→   603→                          </div>
+   604→   604→                        </TableCell>
+   605→   605→                        <TableCell>
+   606→   606→                          {new Date(job.createdAt).toLocaleDateString("nl-NL")}
+   607→   607→                        </TableCell>
+   608→   608→                      </TableRow>
+   609→   609→                    ))}
+   610→   610→                  </TableBody>
+   611→   611→                </Table>
+   612→   612→              ) : (
+   613→   613→                <div className="flex flex-col items-center justify-center py-8 text-center">
+   614→   614→                  <Clock className="h-10 w-10 text-muted-foreground/30 mb-2" />
+   615→   615→                  <p className="text-sm text-muted-foreground">{t("noJobs")}</p>
+   616→   616→                </div>
+   617→   617→              )}
+   618→   618→            </CardContent>
+   619→   619→          </Card>
+   620→   620→        </TabsContent>
+   621→   621→
+   622→   622→        {/* Audit Tab */}
+   623→   623→        <TabsContent value="audit">
+   624→   624→          <Card>
+   625→   625→            <CardHeader>
+   626→   626→              <CardTitle className="text-base">{t("auditLog")}</CardTitle>
+   627→   627→            </CardHeader>
+   628→   628→            <CardContent>
+   629→   629→              {auditLogs.length > 0 ? (
+   630→   630→                <Table>
+   631→   631→                  <TableHeader>
+   632→   632→                    <TableRow>
+   633→   633→                      <TableHead>{tCommon("date")}</TableHead>
+   634→   634→                      <TableHead>{tAudit("action")}</TableHead>
+   635→   635→                      <TableHead>{tAudit("entity")}</TableHead>
+   636→   636→                    </TableRow>
+   637→   637→                  </TableHeader>
+   638→   638→                  <TableBody>
+   639→   639→                    {auditLogs.map((log) => (
+   640→   640→                      <TableRow key={log.id}>
+   641→   641→                        <TableCell>
+   642→   642→                          {new Date(log.createdAt).toLocaleDateString("nl-NL")}
+   643→   643→                        </TableCell>
+   644→   644→                        <TableCell>{log.action}</TableCell>
+   645→   645→                        <TableCell>{log.entity}</TableCell>
+   646→   646→                      </TableRow>
+   647→   647→                    ))}
+   648→   648→                  </TableBody>
+   649→   649→                </Table>
+   650→   650→              ) : (
+   651→   651→                <div className="flex flex-col items-center justify-center py-8 text-center">
+   652→   652→                  <AlertCircle className="h-10 w-10 text-muted-foreground/30 mb-2" />
+   653→   653→                  <p className="text-sm text-muted-foreground">{t("noAuditLogs")}</p>
+   654→   654→                </div>
+   655→   655→              )}
+   656→   656→            </CardContent>
+   657→   657→          </Card>
+   658→   658→        </TabsContent>
+   659→   659→      </Tabs>
+   660→   660→    </motion.div>
+   661→   661→  );
+   662→   662→}
+   663→   663→

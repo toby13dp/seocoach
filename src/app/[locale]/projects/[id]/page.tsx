@@ -2,6 +2,7 @@
 
 import { useState, useEffect, use } from "react";
 import { useRouter } from "@/i18n/routing";
+import { Link } from "@/i18n/routing";
 import { useTranslations } from "@/i18n/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -21,6 +22,14 @@ import {
   AlertCircle,
   Save,
   Clock,
+  Search,
+  FileText,
+  AlertTriangle,
+  Tag,
+  GitBranch,
+  PenTool,
+  Cpu,
+  TrendingDown,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -333,6 +342,101 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
                 </div>
               </CardContent>
             </Card>
+          </div>
+
+          {/* Module Navigation */}
+          <div className="mt-6">
+            <h3 className="text-sm font-medium text-muted-foreground mb-3">Modules</h3>
+            <div className="grid gap-3 grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
+              <Link href={`/projects/${id}/crawls`}>
+                <Card className="hover:bg-accent/50 transition-colors cursor-pointer">
+                  <CardContent className="p-4 flex items-center gap-3">
+                    <Search className="h-5 w-5 text-emerald-600 shrink-0" />
+                    <div>
+                      <p className="text-sm font-medium">Crawls</p>
+                      <p className="text-xs text-muted-foreground">Website scannen</p>
+                    </div>
+                  </CardContent>
+                </Card>
+              </Link>
+              <Link href={`/projects/${id}/inventory`}>
+                <Card className="hover:bg-accent/50 transition-colors cursor-pointer">
+                  <CardContent className="p-4 flex items-center gap-3">
+                    <FileText className="h-5 w-5 text-blue-600 shrink-0" />
+                    <div>
+                      <p className="text-sm font-medium">Inventaris</p>
+                      <p className="text-xs text-muted-foreground">Pagina-overzicht</p>
+                    </div>
+                  </CardContent>
+                </Card>
+              </Link>
+              <Link href={`/projects/${id}/issues`}>
+                <Card className="hover:bg-accent/50 transition-colors cursor-pointer">
+                  <CardContent className="p-4 flex items-center gap-3">
+                    <AlertTriangle className="h-5 w-5 text-orange-600 shrink-0" />
+                    <div>
+                      <p className="text-sm font-medium">Technische problemen</p>
+                      <p className="text-xs text-muted-foreground">SEO-aanbevelingen</p>
+                    </div>
+                  </CardContent>
+                </Card>
+              </Link>
+              <Link href={`/projects/${id}/keywords`}>
+                <Card className="hover:bg-accent/50 transition-colors cursor-pointer">
+                  <CardContent className="p-4 flex items-center gap-3">
+                    <Tag className="h-5 w-5 text-purple-600 shrink-0" />
+                    <div>
+                      <p className="text-sm font-medium">Trefwoorden</p>
+                      <p className="text-xs text-muted-foreground">Zoekwoordbeheer</p>
+                    </div>
+                  </CardContent>
+                </Card>
+              </Link>
+              <Link href={`/projects/${id}/topics`}>
+                <Card className="hover:bg-accent/50 transition-colors cursor-pointer">
+                  <CardContent className="p-4 flex items-center gap-3">
+                    <GitBranch className="h-5 w-5 text-teal-600 shrink-0" />
+                    <div>
+                      <p className="text-sm font-medium">Onderwerpen</p>
+                      <p className="text-xs text-muted-foreground">Clusters & structuur</p>
+                    </div>
+                  </CardContent>
+                </Card>
+              </Link>
+              <Link href={`/projects/${id}/briefs`}>
+                <Card className="hover:bg-accent/50 transition-colors cursor-pointer">
+                  <CardContent className="p-4 flex items-center gap-3">
+                    <PenTool className="h-5 w-5 text-rose-600 shrink-0" />
+                    <div>
+                      <p className="text-sm font-medium">Contentstudio</p>
+                      <p className="text-xs text-muted-foreground">Briefs & concepten</p>
+                    </div>
+                  </CardContent>
+                </Card>
+              </Link>
+              <Link href={`/projects/${id}/ai-providers`}>
+                <Card className="hover:bg-accent/50 transition-colors cursor-pointer">
+                  <CardContent className="p-4 flex items-center gap-3">
+                    <Cpu className="h-5 w-5 text-indigo-600 shrink-0" />
+                    <div>
+                      <p className="text-sm font-medium">AI-instellingen</p>
+                      <p className="text-xs text-muted-foreground">Providers & modellen</p>
+                    </div>
+                  </CardContent>
+                </Card>
+              </Link>
+              <Link href={`/projects/${id}/decay`}>
+                <Card className="hover:bg-accent/50 transition-colors cursor-pointer">
+                  <CardContent className="p-4 flex items-center gap-3">
+                    <TrendingDown className="h-5 w-5 text-red-600 shrink-0" />
+                    <div>
+                      <p className="text-sm font-medium">Contentverval</p>
+                      <p className="text-xs text-muted-foreground">Snoei-aanbevelingen</p>
+                    </div>
+                  </CardContent>
+                </Card>
+              </Link>
+            </div>
           </div>
         </TabsContent>
 

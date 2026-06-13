@@ -1,0 +1,857 @@
+     1→/**
+     2→ * Main Crawler Module
+     3→ *
+     4→ * Orchestrates the entire crawling process using the SSRF protection,
+     5→ * robots.txt parser, sitemap parser, and HTML parser modules.
+     6→ * Creates database records for crawl sessions, pages, and snapshots.
+     7→ */
+     8→
+     9→import { db } from '@/lib/db';
+    10→import { validateUrl, checkRedirectSafety, validateResponseSize, checkDecompressionBomb } from './ssrf';
+    11→import { fetchRobotsTxt, parseRobotsTxt, isAllowed, parseCrawlDelay, getSitemaps } from './robots';
+    12→import { fetchSitemapUrls, type SitemapUrl } from './sitemap';
+    13→import { parsePage, normalizeUrl, detectContentType, type ParsedPage, type ContentType } from './parser';
+    14→
+    15→// ============================================================================
+    16→// Types
+    17→// ============================================================================
+    18→
+    19→/**
+    20→ * Configuration for a crawl session.
+    21→ */
+    22→export interface CrawlerConfig {
+    23→  /** The starting URL for the crawl */
+    24→  startUrl: string;
+    25→  /** Maximum number of pages to crawl */
+    26→  maxPages: number;
+    27→  /** Maximum crawl depth from the start URL */
+    28→  maxDepth: number;
+    29→  /** Delay between requests in milliseconds */
+    30→  crawlDelayMs: number;
+    31→  /** Whether to respect robots.txt rules */
+    32→  respectRobotsTxt: boolean;
+    33→  /** Whether to follow HTTP redirects */
+    34→  followRedirects: boolean;
+    35→  /** Whether to include subdomains of the start URL */
+    36→  includeSubdomains: boolean;
+    37→  /** Whether to use JavaScript rendering (Playwright) */
+    38→  useRendering: boolean;
+    39→  /** Optional list of allowed domains beyond the start URL domain */
+    40→  domainAllowlist?: string[];
+    41→}
+    42→
+    43→/**
+    44→ * A URL entry in the crawl queue with priority.
+    45→ */
+    46→interface QueueEntry {
+    47→  /** The URL to crawl */
+    48→  url: string;
+    49→  /** The crawl depth of this URL */
+    50→  depth: number;
+    51→  /** Priority: lower number = higher priority (sitemaps first) */
+    52→  priority: number;
+    53→}
+    54→
+    55→/**
+    56→ * Result of a single page fetch.
+    57→ */
+    58→interface FetchResult {
+    59→  /** The final URL after redirects */
+    60→  finalUrl: string;
+    61→  /** The HTTP status code */
+    62→  statusCode: number;
+    63→  /** The response HTML content */
+    64→  html: string;
+    65→  /** The content type detected */
+    66→  contentType: ContentType;
+    67→  /** Response headers */
+    68→  headers: Headers;
+    69→  /** Load time in milliseconds */
+    70→  loadTimeMs: number;
+    71→  /** Chain of redirect URLs */
+    72→  redirectChain: string[];
+    73→}
+    74→
+    75→/** Default fetch timeout in milliseconds */
+    76→const FETCH_TIMEOUT_MS = 30_000;
+    77→
+    78→/** Maximum number of retries per URL */
+    79→const MAX_RETRIES = 3;
+    80→
+    81→/** Base delay for exponential backoff in milliseconds */
+    82→const BACKOFF_BASE_MS = 1000;
+    83→
+    84→/** User agent string for the crawler */
+    85→const USER_AGENT = 'SEOCoach-Bot/1.0 (+https://seocoach.nl)';
+    86→
+    87→/**
+    88→ * Main Crawler class that orchestrates the crawling process.
+    89→ *
+    90→ * Usage:
+    91→ * ```ts
+    92→ * const crawler = new Crawler(config, projectId, crawlSessionId);
+    93→ * await crawler.start();
+    94→ * ```
+    95→ */
+    96→export class Crawler {
+    97→  private config: CrawlerConfig;
+    98→  private projectId: string;
+    99→  private crawlSessionId: string;
+   100→  private baseUrl: URL;
+   101→  private robotsRules: ReturnType<typeof parseRobotsTxt> = [];
+   102→  private robotsContent = '';
+   103→  private effectiveCrawlDelay: number;
+   104→
+   105→  private queue: QueueEntry[] = [];
+   106→  private visited: Set<string> = new Set();
+   107→  private inScopeUrls: Set<string> = new Set();
+   108→
+   109→  /** Set of URLs that have internal links pointing to them */
+   110→  private linkedUrls: Set<string> = new Set();
+   111→
+   112→  /** Content hashes for duplicate detection */
+   113→  private contentHashes: Map<string, string> = new Map();
+   114→
+   115→  private cancelled = false;
+   116→  private pagesCrawled = 0;
+   117→  private pagesFound = 0;
+   118→  private errorCount = 0;
+   119→
+   120→  /**
+   121→   * Creates a new Crawler instance.
+   122→   *
+   123→   * @param config - The crawl configuration
+   124→   * @param projectId - The ID of the project this crawl belongs to
+   125→   * @param crawlSessionId - The ID of the CrawlSession record
+   126→   */
+   127→  constructor(config: CrawlerConfig, projectId: string, crawlSessionId: string) {
+   128→    this.config = config;
+   129→    this.projectId = projectId;
+   130→    this.crawlSessionId = crawlSessionId;
+   131→    this.baseUrl = new URL(config.startUrl);
+   132→    this.effectiveCrawlDelay = config.crawlDelayMs;
+   133→  }
+   134→
+   135→  /**
+   136→   * Starts the crawl process.
+   137→   *
+   138→   * 1. Fetches and parses robots.txt
+   139→   * 2. Fetches sitemaps for seed URLs
+   140→   * 3. Processes the queue with priority
+   141→   * 4. Creates Page and PageSnapshot records
+   142→   * 5. Updates CrawlSession progress
+   143→   * 6. Detects orphan pages after completion
+   144→   */
+   145→  async start(): Promise<void> {
+   146→    try {
+   147→      // Update session status to RUNNING
+   148→      await db.crawlSession.update({
+   149→        where: { id: this.crawlSessionId },
+   150→        data: {
+   151→          status: 'RUNNING',
+   152→          startedAt: new Date(),
+   153→        },
+   154→      });
+   155→
+   156→      // Step 1: Fetch and parse robots.txt
+   157→      if (this.config.respectRobotsTxt) {
+   158→        await this.loadRobotsTxt();
+   159→      }
+   160→
+   161→      // Step 2: Load sitemaps
+   162→      await this.loadSitemaps();
+   163→
+   164→      // Step 3: Add start URL to queue if not already from sitemap
+   165→      const normalizedStart = normalizeUrl(this.config.startUrl, this.config.startUrl);
+   166→      if (!this.visited.has(normalizedStart)) {
+   167→        this.enqueue(normalizedStart, 0, 10);
+   168→      }
+   169→
+   170→      // Step 4: Process queue
+   171→      await this.processQueue();
+   172→
+   173→      // Step 5: Detect orphan pages
+   174→      await this.detectOrphanPages();
+   175→
+   176→      // Step 6: Mark duplicates
+   177→      await this.markDuplicatePages();
+   178→
+   179→      // Update final status
+   180→      const finalStatus = this.cancelled ? 'CANCELLED' : 'COMPLETED';
+   181→      await db.crawlSession.update({
+   182→        where: { id: this.crawlSessionId },
+   183→        data: {
+   184→          status: finalStatus,
+   185→          pagesCrawled: this.pagesCrawled,
+   186→          pagesFound: this.pagesFound,
+   187→          errorCount: this.errorCount,
+   188→          completedAt: new Date(),
+   189→          ...(this.cancelled ? { cancelledAt: new Date() } : {}),
+   190→        },
+   191→      });
+   192→    } catch (error) {
+   193→      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+   194→
+   195→      await db.crawlSession.update({
+   196→        where: { id: this.crawlSessionId },
+   197→        data: {
+   198→          status: 'FAILED',
+   199→          errorCount: this.errorCount,
+   200→          errorMessage,
+   201→          completedAt: new Date(),
+   202→        },
+   203→      });
+   204→    }
+   205→  }
+   206→
+   207→  /**
+   208→   * Cancels the crawl. The crawler will stop after
+   209→   * the current page is processed.
+   210→   */
+   211→  cancel(): void {
+   212→    this.cancelled = true;
+   213→  }
+   214→
+   215→  // ==========================================================================
+   216→  // Robots.txt handling
+   217→  // ==========================================================================
+   218→
+   219→  /**
+   220→   * Fetches and parses robots.txt for the target site.
+   221→   */
+   222→  private async loadRobotsTxt(): Promise<void> {
+   223→    this.robotsContent = await fetchRobotsTxt(this.config.startUrl);
+   224→    this.robotsRules = parseRobotsTxt(this.robotsContent);
+   225→
+   226→    // Respect Crawl-delay from robots.txt if it's more conservative
+   227→    const robotsDelay = parseCrawlDelay(this.robotsContent, 'SEOCoach-Bot');
+   228→    if (robotsDelay > this.effectiveCrawlDelay) {
+   229→      this.effectiveCrawlDelay = robotsDelay;
+   230→    }
+   231→  }
+   232→
+   233→  // ==========================================================================
+   234→  // Sitemap handling
+   235→  // ==========================================================================
+   236→
+   237→  /**
+   238→   * Loads URLs from sitemaps declared in robots.txt and
+   239→   * adds them to the queue with high priority.
+   240→   */
+   241→  private async loadSitemaps(): Promise<void> {
+   242→    const sitemapUrls = getSitemaps(this.robotsContent);
+   243→
+   244→    // Also try the default sitemap location
+   245→    const defaultSitemap = `${this.baseUrl.origin}/sitemap.xml`;
+   246→    if (!sitemapUrls.includes(defaultSitemap)) {
+   247→      sitemapUrls.push(defaultSitemap);
+   248→    }
+   249→
+   250→    for (const sitemapUrl of sitemapUrls) {
+   251→      try {
+   252→        const urls = await fetchSitemapUrls(sitemapUrl);
+   253→
+   254→        for (const entry of urls) {
+   255→          if (!entry.loc) continue;
+   256→
+   257→          const normalized = normalizeUrl(entry.loc, this.config.startUrl);
+   258→          if (this.isInScope(normalized)) {
+   259→            this.enqueue(normalized, 0, 0); // Priority 0 = sitemap URLs first
+   260→            this.pagesFound++;
+   261→          }
+   262→        }
+   263→      } catch {
+   264→        // Skip sitemaps that fail to load
+   265→      }
+   266→    }
+   267→  }
+   268→
+   269→  // ==========================================================================
+   270→  // Queue management
+   271→  // ==========================================================================
+   272→
+   273→  /**
+   274→   * Adds a URL to the crawl queue if it hasn't been visited.
+   275→   *
+   276→   * @param url - The normalized URL to enqueue
+   277→   * @param depth - The crawl depth
+   278→   * @param priority - Lower numbers are processed first
+   279→   */
+   280→  private enqueue(url: string, depth: number, priority: number): void {
+   281→    if (this.visited.has(url)) return;
+   282→    if (depth > this.config.maxDepth) return;
+   283→
+   284→    // Check if already in queue
+   285→    const existing = this.queue.find((e) => e.url === url);
+   286→    if (existing) {
+   287→      // Update priority if new priority is higher
+   288→      if (priority < existing.priority) {
+   289→        existing.priority = priority;
+   290→        existing.depth = Math.min(existing.depth, depth);
+   291→      }
+   292→      return;
+   293→    }
+   294→
+   295→    this.queue.push({ url, depth, priority });
+   296→  }
+   297→
+   298→  /**
+   299→   * Sorts the queue by priority (lowest number first)
+   300→   * and returns the next entry.
+   301→   */
+   302→  private dequeue(): QueueEntry | null {
+   303→    if (this.queue.length === 0) return null;
+   304→
+   305→    // Sort by priority, then by insertion order (FIFO within same priority)
+   306→    this.queue.sort((a, b) => a.priority - b.priority);
+   307→    return this.queue.shift() ?? null;
+   308→  }
+   309→
+   310→  // ==========================================================================
+   311→  // Queue processing
+   312→  // ==========================================================================
+   313→
+   314→  /**
+   315→   * Processes the crawl queue until empty, max pages reached,
+   316→   * or cancelled.
+   317→   */
+   318→  private async processQueue(): Promise<void> {
+   319→    while (!this.cancelled) {
+   320→      if (this.pagesCrawled >= this.config.maxPages) break;
+   321→
+   322→      const entry = this.dequeue();
+   323→      if (!entry) break;
+   324→
+   325→      this.visited.add(entry.url);
+   326→
+   327→      // Check robots.txt
+   328→      if (this.config.respectRobotsTxt && !isAllowed(entry.url, this.robotsRules)) {
+   329→        continue;
+   330→      }
+   331→
+   332→      // SSRF check
+   333→      const validation = validateUrl(entry.url);
+   334→      if (!validation.valid) continue;
+   335→
+   336→      // Fetch the page with retry
+   337→      const result = await this.fetchWithRetry(entry.url);
+   338→      if (!result) continue;
+   339→
+   340→      // Parse the page if it's HTML
+   341→      if (result.contentType === 'HTML' && result.html) {
+   342→        const parsed = parsePage(result.html, result.finalUrl);
+   343→
+   344→        // Record the page in the database
+   345→        await this.savePage(entry, result, parsed);
+   346→
+   347→        // Extract and enqueue new links
+   348→        this.extractAndEnqueueLinks(parsed, entry.depth, entry.url);
+   349→
+   350→        this.pagesCrawled++;
+   351→      } else {
+   352→        // Record non-HTML pages too
+   353→        await this.saveNonHtmlPage(entry, result);
+   354→        this.pagesCrawled++;
+   355→      }
+   356→
+   357→      // Update session progress periodically (every 10 pages)
+   358→      if (this.pagesCrawled % 10 === 0) {
+   359→        await this.updateProgress();
+   360→      }
+   361→
+   362→      // Rate limiting
+   363→      await this.delay(this.effectiveCrawlDelay);
+   364→    }
+   365→  }
+   366→
+   367→  // ==========================================================================
+   368→  // HTTP fetching
+   369→  // ==========================================================================
+   370→
+   371→  /**
+   372→   * Fetches a URL with exponential backoff retry.
+   373→   *
+   374→   * @param url - The URL to fetch
+   375→   * @returns The fetch result, or null if all retries failed
+   376→   */
+   377→  private async fetchWithRetry(url: string): Promise<FetchResult | null> {
+   378→    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+   379→      if (this.cancelled) return null;
+   380→
+   381→      try {
+   382→        return await this.fetchUrl(url);
+   383→      } catch (error) {
+   384→        const isLastAttempt = attempt === MAX_RETRIES - 1;
+   385→        if (isLastAttempt) {
+   386→          this.errorCount++;
+   387→          return null;
+   388→        }
+   389→
+   390→        // Exponential backoff
+   391→        const backoffMs = BACKOFF_BASE_MS * Math.pow(2, attempt);
+   392→        await this.delay(backoffMs);
+   393→      }
+   394→    }
+   395→
+   396→    return null;
+   397→  }
+   398→
+   399→  /**
+   400→   * Fetches a single URL with SSRF and safety checks.
+   401→   *
+   402→   * @param url - The URL to fetch
+   403→   * @returns The fetch result
+   404→   */
+   405→  private async fetchUrl(url: string): Promise<FetchResult> {
+   406→    const startTime = Date.now();
+   407→    const controller = new AbortController();
+   408→    const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+   409→
+   410→    const redirectChain: string[] = [];
+   411→    let currentUrl = url;
+   412→
+   413→    try {
+   414→      const response = await fetch(url, {
+   415→        signal: controller.signal,
+   416→        redirect: this.config.followRedirects ? 'follow' : 'manual',
+   417→        headers: {
+   418→          'User-Agent': USER_AGENT,
+   419→          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+   420→          'Accept-Language': 'nl-NL,nl;q=0.9,en-US;q=0.8,en;q=0.7',
+   421→        },
+   422→      });
+   423→
+   424→      clearTimeout(timeoutId);
+   425→
+   426→      // Track redirect chain
+   427→      if (response.redirected && response.url) {
+   428→        redirectChain.push(url);
+   429→        currentUrl = response.url;
+   430→
+   431→        // Validate redirect target
+   432→        if (!checkRedirectSafety(currentUrl)) {
+   433→          throw new Error('Redirect target failed SSRF check');
+   434→        }
+   435→      }
+   436→
+   437→      // Check response size
+   438→      const contentLength = parseInt(response.headers.get('content-length') ?? '0', 10);
+   439→      if (contentLength > 0 && !validateResponseSize(contentLength)) {
+   440→        throw new Error('Response exceeds maximum allowed size');
+   441→      }
+   442→
+   443→      // Check for decompression bombs
+   444→      if (checkDecompressionBomb(response.headers)) {
+   445→        throw new Error('Potential decompression bomb detected');
+   446→      }
+   447→
+   448→      const contentType = detectContentType(response);
+   449→      const html = contentType === 'HTML' ? await response.text() : '';
+   450→      const loadTimeMs = Date.now() - startTime;
+   451→
+   452→      return {
+   453→        finalUrl: currentUrl,
+   454→        statusCode: response.status,
+   455→        html,
+   456→        contentType,
+   457→        headers: response.headers,
+   458→        loadTimeMs,
+   459→        redirectChain,
+   460→      };
+   461→    } catch (error) {
+   462→      clearTimeout(timeoutId);
+   463→
+   464→      if (error instanceof DOMException && error.name === 'AbortError') {
+   465→        return {
+   466→          finalUrl: currentUrl,
+   467→          statusCode: 0,
+   468→          html: '',
+   469→          contentType: 'OTHER',
+   470→          headers: new Headers(),
+   471→          loadTimeMs: Date.now() - startTime,
+   472→          redirectChain,
+   473→        };
+   474→      }
+   475→
+   476→      throw error;
+   477→    }
+   478→  }
+   479→
+   480→  // ==========================================================================
+   481→  // Link extraction and scope checking
+   482→  // ==========================================================================
+   483→
+   484→  /**
+   485→   * Extracts internal links from a parsed page and adds
+   486→   * them to the crawl queue if they are in scope.
+   487→   */
+   488→  private extractAndEnqueueLinks(parsed: ParsedPage, currentDepth: number, pageUrl: string): void {
+   489→    const nextDepth = currentDepth + 1;
+   490→
+   491→    for (const link of parsed.internalLinks) {
+   492→      try {
+   493→        const normalized = normalizeUrl(link.href, pageUrl);
+   494→
+   495→        // Track that this URL has incoming links
+   496→        this.linkedUrls.add(normalized);
+   497→
+   498→        if (this.isInScope(normalized)) {
+   499→          this.enqueue(normalized, nextDepth, 10); // Priority 10 = discovered links
+   500→          this.pagesFound++;
+   501→        }
+   502→      } catch {
+   503→        // Skip invalid URLs
+   504→      }
+   505→    }
+   506→  }
+   507→
+   508→  /**
+   509→   * Checks whether a URL is within the crawl scope.
+   510→   *
+   511→   * A URL is in scope if:
+   512→   * - It belongs to the same domain as the start URL
+   513→   * - Subdomains are included (if configured)
+   514→   * - It's in the domain allowlist
+   515→   */
+   516→  private isInScope(url: string): boolean {
+   517→    try {
+   518→      const parsed = new URL(url);
+   519→
+   520→      // Same domain check
+   521→      if (parsed.hostname.toLowerCase() === this.baseUrl.hostname.toLowerCase()) {
+   522→        return true;
+   523→      }
+   524→
+   525→      // Subdomain check
+   526→      if (this.config.includeSubdomains) {
+   527→        if (parsed.hostname.toLowerCase().endsWith(`.${this.baseUrl.hostname.toLowerCase()}`)) {
+   528→          return true;
+   529→        }
+   530→      }
+   531→
+   532→      // Domain allowlist
+   533→      if (this.config.domainAllowlist) {
+   534→        for (const allowed of this.config.domainAllowlist) {
+   535→          if (parsed.hostname.toLowerCase() === allowed.toLowerCase()) {
+   536→            return true;
+   537→          }
+   538→          if (this.config.includeSubdomains &&
+   539→              parsed.hostname.toLowerCase().endsWith(`.${allowed.toLowerCase()}`)) {
+   540→            return true;
+   541→          }
+   542→        }
+   543→      }
+   544→
+   545→      return false;
+   546→    } catch {
+   547→      return false;
+   548→    }
+   549→  }
+   550→
+   551→  // ==========================================================================
+   552→  // Database operations
+   553→  // ==========================================================================
+   554→
+   555→  /**
+   556→   * Saves a crawled HTML page to the database.
+   557→   */
+   558→  private async savePage(
+   559→    entry: QueueEntry,
+   560→    result: FetchResult,
+   561→    parsed: ParsedPage
+   562→  ): Promise<void> {
+   563→    const contentHash = this.computeContentHash(parsed.mainContent);
+   564→
+   565→    // Store content hash for duplicate detection
+   566→    if (contentHash) {
+   567→      this.contentHashes.set(entry.url, contentHash);
+   568→    }
+   569→
+   570→    // Determine indexability
+   571→    const indexability = this.determineIndexability(parsed, result.statusCode);
+   572→
+   573→    // Determine page status
+   574→    const pageStatus = this.determinePageStatus(result.statusCode);
+   575→
+   576→    // Compute image stats
+   577→    const imagesWithoutAlt = parsed.images.filter((img) => !img.alt).length;
+   578→
+   579→    const page = await db.page.create({
+   580→      data: {
+   581→        crawlSessionId: this.crawlSessionId,
+   582→        projectId: this.projectId,
+   583→        url: entry.url,
+   584→        normalizedUrl: normalizeUrl(entry.url, this.config.startUrl),
+   585→        statusCode: result.statusCode,
+   586→        status: pageStatus,
+   587→        contentType: 'HTML',
+   588→        title: parsed.title,
+   589→        description: parsed.description,
+   590→        h1: parsed.h1,
+   591→        wordCount: parsed.wordCount,
+   592→        canonicalUrl: parsed.canonical,
+   593→        indexability,
+   594→        language: parsed.language,
+   595→        internalLinkCount: parsed.internalLinks.length,
+   596→        externalLinkCount: parsed.externalLinks.length,
+   597→        imageCount: parsed.images.length,
+   598→        imagesWithoutAlt,
+   599→        structuredData: parsed.structuredData.length > 0
+   600→          ? JSON.stringify(parsed.structuredData)
+   601→          : null,
+   602→        crawlDepth: entry.depth,
+   603→        redirectChain: result.redirectChain.length > 0
+   604→          ? JSON.stringify(result.redirectChain)
+   605→          : null,
+   606→        finalUrl: result.finalUrl !== entry.url ? result.finalUrl : null,
+   607→        loadTimeMs: result.loadTimeMs,
+   608→        htmlSizeBytes: result.html.length,
+   609→        contentHash,
+   610→        mainContent: parsed.mainContent,
+   611→        internalLinks: JSON.stringify(parsed.internalLinks.map((l) => l.href)),
+   612→        externalLinks: JSON.stringify(parsed.externalLinks.map((l) => l.href)),
+   613→        images: JSON.stringify(parsed.images),
+   614→        metaRobots: parsed.metaRobots,
+   615→      },
+   616→    });
+   617→
+   618→    // Create snapshot for HTML storage
+   619→    await db.pageSnapshot.create({
+   620→      data: {
+   621→        pageId: page.id,
+   622→        html: result.html,
+   623→        source: 'crawl',
+   624→        sizeBytes: result.html.length,
+   625→      },
+   626→    });
+   627→  }
+   628→
+   629→  /**
+   630→   * Saves a non-HTML page (PDF, image, etc.) to the database.
+   631→   */
+   632→  private async saveNonHtmlPage(entry: QueueEntry, result: FetchResult): Promise<void> {
+   633→    const pageStatus = this.determinePageStatus(result.statusCode);
+   634→
+   635→    await db.page.create({
+   636→      data: {
+   637→        crawlSessionId: this.crawlSessionId,
+   638→        projectId: this.projectId,
+   639→        url: entry.url,
+   640→        normalizedUrl: normalizeUrl(entry.url, this.config.startUrl),
+   641→        statusCode: result.statusCode,
+   642→        status: pageStatus,
+   643→        contentType: result.contentType,
+   644→        crawlDepth: entry.depth,
+   645→        redirectChain: result.redirectChain.length > 0
+   646→          ? JSON.stringify(result.redirectChain)
+   647→          : null,
+   648→        finalUrl: result.finalUrl !== entry.url ? result.finalUrl : null,
+   649→        loadTimeMs: result.loadTimeMs,
+   650→      },
+   651→    });
+   652→  }
+   653→
+   654→  /**
+   655→   * Updates the CrawlSession progress in the database.
+   656→   */
+   657→  private async updateProgress(): Promise<void> {
+   658→    await db.crawlSession.update({
+   659→      where: { id: this.crawlSessionId },
+   660→      data: {
+   661→        pagesCrawled: this.pagesCrawled,
+   662→        pagesFound: this.pagesFound,
+   663→        errorCount: this.errorCount,
+   664→      },
+   665→    });
+   666→  }
+   667→
+   668→  /**
+   669→   * Detects and marks orphan pages (pages with no internal links pointing to them).
+   670→   */
+   671→  private async detectOrphanPages(): Promise<void> {
+   672→    // Get all pages in this crawl session
+   673→    const pages = await db.page.findMany({
+   674→      where: {
+   675→        crawlSessionId: this.crawlSessionId,
+   676→        contentType: 'HTML',
+   677→      },
+   678→      select: {
+   679→        id: true,
+   680→        normalizedUrl: true,
+   681→      },
+   682→    });
+   683→
+   684→    const orphanIds: string[] = [];
+   685→
+   686→    for (const page of pages) {
+   687→      // A page is orphan if no other page links to it
+   688→      if (!this.linkedUrls.has(page.normalizedUrl)) {
+   689→        // The start URL is never orphan
+   690→        const normalizedStart = normalizeUrl(this.config.startUrl, this.config.startUrl);
+   691→        if (page.normalizedUrl !== normalizedStart) {
+   692→          orphanIds.push(page.id);
+   693→        }
+   694→      }
+   695→    }
+   696→
+   697→    // Batch update orphan pages
+   698→    if (orphanIds.length > 0) {
+   699→      await db.page.updateMany({
+   700→        where: {
+   701→          id: { in: orphanIds },
+   702→        },
+   703→        data: {
+   704→          isOrphan: true,
+   705→        },
+   706→      });
+   707→    }
+   708→  }
+   709→
+   710→  /**
+   711→   * Marks duplicate pages based on content hash comparison.
+   712→   */
+   713→  private async markDuplicatePages(): Promise<void> {
+   714→    // Group URLs by content hash
+   715→    const hashGroups: Map<string, string[]> = new Map();
+   716→
+   717→    for (const [url, hash] of this.contentHashes) {
+   718→      if (!hash) continue;
+   719→      const group = hashGroups.get(hash) ?? [];
+   720→      group.push(url);
+   721→      hashGroups.set(hash, group);
+   722→    }
+   723→
+   724→    // For groups with duplicates, assign a duplicate group ID
+   725→    let groupIndex = 0;
+   726→    for (const [hash, urls] of hashGroups) {
+   727→      if (urls.length <= 1) continue;
+   728→
+   729→      const duplicateGroupId = `dup-${groupIndex++}`;
+   730→
+   731→      await db.page.updateMany({
+   732→        where: {
+   733→          crawlSessionId: this.crawlSessionId,
+   734→          normalizedUrl: { in: urls },
+   735→          contentHash: hash,
+   736→        },
+   737→        data: {
+   738→          duplicateGroup: duplicateGroupId,
+   739→        },
+   740→      });
+   741→    }
+   742→  }
+   743→
+   744→  // ==========================================================================
+   745→  // Utility methods
+   746→  // ==========================================================================
+   747→
+   748→  /**
+   749→   * Computes a simple content hash for duplicate detection.
+   750→   */
+   751→  private computeContentHash(content: string): string {
+   752→    if (!content) return '';
+   753→
+   754→    // Simple hash function (djb2)
+   755→    let hash = 5381;
+   756→    for (let i = 0; i < content.length; i++) {
+   757→      hash = ((hash << 5) + hash + content.charCodeAt(i)) & 0xffffffff;
+   758→    }
+   759→
+   760→    return hash.toString(16);
+   761→  }
+   762→
+   763→  /**
+   764→   * Determines the indexability of a page based on meta robots
+   765→   * and HTTP status code.
+   766→   */
+   767→  private determineIndexability(
+   768→    parsed: ParsedPage,
+   769→    statusCode: number
+   770→  ): string {
+   771→    // Check meta robots
+   772→    if (parsed.metaRobots) {
+   773→      const directives = parsed.metaRobots.toLowerCase().split(',').map((d) => d.trim());
+   774→      if (directives.includes('noindex')) return 'NOINDEX';
+   775→    }
+   776→
+   777→    // Check canonical (if canonicalized to a different URL)
+   778→    if (parsed.canonical) {
+   779→      const normalizedCanonical = normalizeUrl(parsed.canonical, '');
+   780→      const normalizedCurrent = normalizeUrl(
+   781→        parsed.canonical,
+   782→        this.config.startUrl
+   783→      );
+   784→      // If canonical points to a different URL, the page is canonicalized
+   785→      // This is a simplified check - in practice we'd compare more carefully
+   786→      if (normalizedCanonical && normalizedCanonical !== normalizedCurrent) {
+   787→        // Only mark as canonicalized if canonical is clearly different
+   788→        // Avoid false positives from URL normalization differences
+   789→      }
+   790→    }
+   791→
+   792→    // Non-2xx status codes
+   793→    if (statusCode >= 400) return 'UNKNOWN';
+   794→    if (statusCode >= 300) return 'UNKNOWN';
+   795→
+   796→    return 'INDEXABLE';
+   797→  }
+   798→
+   799→  /**
+   800→   * Determines the page status from an HTTP status code.
+   801→   */
+   802→  private determinePageStatus(statusCode: number): string {
+   803→    if (statusCode === 0) return 'TIMEOUT';
+   804→    if (statusCode >= 200 && statusCode < 300) return 'OK';
+   805→    if (statusCode >= 300 && statusCode < 400) return 'REDIRECT';
+   806→    if (statusCode >= 400 && statusCode < 500) return 'CLIENT_ERROR';
+   807→    if (statusCode >= 500) return 'SERVER_ERROR';
+   808→    return 'OK';
+   809→  }
+   810→
+   811→  /**
+   812→   * Returns a promise that resolves after the specified delay.
+   813→   */
+   814→  private delay(ms: number): Promise<void> {
+   815→    return new Promise((resolve) => setTimeout(resolve, ms));
+   816→  }
+   817→}
+   818→
+   819→// ============================================================================
+   820→// Convenience function
+   821→// ============================================================================
+   822→
+   823→/**
+   824→ * Creates a crawl session and starts crawling.
+   825→ *
+   826→ * This is the main entry point for starting a crawl from
+   827→ * an API route or background job.
+   828→ *
+   829→ * @param config - The crawl configuration
+   830→ * @param projectId - The ID of the project
+   831→ * @returns The CrawlSession ID and Crawler instance
+   832→ */
+   833→export async function startCrawl(
+   834→  config: CrawlerConfig,
+   835→  projectId: string
+   836→): Promise<{ crawlSessionId: string; crawler: Crawler }> {
+   837→  // Create CrawlSession record
+   838→  const crawlSession = await db.crawlSession.create({
+   839→    data: {
+   840→      projectId,
+   841→      startUrl: config.startUrl,
+   842→      maxPages: config.maxPages,
+   843→      maxDepth: config.maxDepth,
+   844→      crawlDelayMs: config.crawlDelayMs,
+   845→      respectRobotsTxt: config.respectRobotsTxt,
+   846→      followRedirects: config.followRedirects,
+   847→      includeSubdomains: config.includeSubdomains,
+   848→      useRendering: config.useRendering,
+   849→      status: 'PENDING',
+   850→    },
+   851→  });
+   852→
+   853→  const crawler = new Crawler(config, projectId, crawlSession.id);
+   854→
+   855→  return { crawlSessionId: crawlSession.id, crawler };
+   856→}
+   857→

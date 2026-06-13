@@ -1,0 +1,586 @@
+
+📦 SSRF Protection Tests
+
+  ✓ isPrivateIP blocks 10.0.0.1 (RFC 1918)
+  ✓ isPrivateIP blocks 172.16.0.1 (RFC 1918)
+  ✓ isPrivateIP blocks 172.31.255.255 (RFC 1918 upper)
+  ✓ isPrivateIP blocks 192.168.1.1 (RFC 1918)
+  ✓ isPrivateIP blocks 127.0.0.1 (loopback)
+  ✓ isPrivateIP blocks 0.0.0.0 (current network)
+  ✓ isPrivateIP blocks 169.254.169.254 (link-local)
+  ✓ isPrivateIP blocks 169.254.0.1 (link-local)
+  ✓ isPrivateIP allows 8.8.8.8 (Google DNS)
+  ✓ isPrivateIP allows 1.1.1.1 (Cloudflare)
+  ✓ isPrivateIP allows 142.250.80.46 (public)
+  ✓ isPrivateIP allows 172.15.0.1 (just outside 172.16 range)
+  ✓ isPrivateIP allows 172.32.0.1 (just outside 172.31 range)
+  ✓ isPrivateIP blocks ::1 (IPv6 loopback)
+  ✓ isPrivateIP blocks fc00::1 (IPv6 unique-local)
+  ✓ isPrivateIP blocks fd00::1 (IPv6 unique-local fd)
+  ✓ isPrivateIP blocks fe80::1 (IPv6 link-local)
+  ✓ isPrivateIP allows 2001:4860:4860::8888 (Google DNS IPv6)
+  ✓ isCloudMetadata blocks 169.254.169.254
+  ✓ isCloudMetadata allows normal URL
+  ✓ isCloudMetadata returns true for invalid URL
+  ✓ isAllowedProtocol allows http
+  ✓ isAllowedProtocol allows https
+  ✓ isAllowedProtocol blocks ftp
+  ✓ isAllowedProtocol blocks javascript:
+  ✓ isAllowedProtocol blocks data:
+  ✓ isAllowedProtocol blocks file:
+  ✓ validateUrl accepts valid https URL
+  ✓ validateUrl rejects private IP
+  ✓ validateUrl rejects localhost
+  ✓ validateUrl rejects non-HTTP protocol
+  ✓ validateUrl rejects .local TLD
+  ✓ validateUrl rejects .internal TLD
+  ✓ validateUrl rejects URLs with credentials
+  ✓ validateUrl rejects empty string
+  ✓ validateUrl rejects invalid URL format
+  ✓ checkRedirectSafety blocks redirect to private IP
+  ✓ checkRedirectSafety allows redirect to public URL
+  ✓ checkRedirectSafety blocks redirect to localhost
+  ✓ validateResponseSize accepts 1MB response
+  ✓ validateResponseSize accepts exactly 10MB
+  ✓ validateResponseSize rejects > 10MB
+  ✓ validateResponseSize rejects negative size
+  ✓ validateResponseSize rejects NaN
+  ✓ validateResponseSize accepts 0
+
+  Results: 45 passed, 0 failed
+
+📦 Robots.txt Parser Tests
+
+  ✓ parseRobotsTxt parses basic Disallow rule
+  ✓ parseRobotsTxt parses basic Allow rule
+  ✓ parseRobotsTxt parses multiple rules for same agent
+  ✓ isAllowed handles wildcard * in path
+  ✓ isAllowed handles wildcard * in middle of path
+  ✓ isAllowed handles $ anchor
+  ✓ isAllowed matches specific user-agent
+  ✓ isAllowed falls back to wildcard when specific agent not matched
+  ✓ parseCrawlDelay extracts crawl delay for wildcard agent
+  ✓ parseCrawlDelay extracts crawl delay for specific agent
+  ✓ parseCrawlDelay falls back to wildcard delay
+  ✓ parseCrawlDelay returns default when no delay specified
+  ✓ parseCrawlDelay caps at max 60 seconds
+  ✓ getSitemaps extracts sitemap URLs
+  ✓ getSitemaps returns empty array for no sitemaps
+  ✓ getSitemaps handles empty content
+  ✓ isAllowed returns true when no rules exist
+  ✓ isAllowed returns true for path with no matching rule
+  ✓ isAllowed with empty Disallow means allow everything
+  ✓ parseRobotsTxt ignores comments
+  ✓ isAllowed uses longest-match strategy
+
+  Results: 21 passed, 0 failed
+
+📦 Sitemap Parser Tests
+
+  ✓ parseSitemapXml extracts URLs from basic sitemap
+  ✓ parseSitemapXml extracts lastmod
+  ✓ parseSitemapXml extracts changefreq
+  ✓ parseSitemapXml extracts priority
+  ✓ parseSitemapXml extracts all fields together
+  ✓ parseSitemapXml ignores invalid priority values
+  ✓ parseSitemapIndex extracts child sitemap URLs
+  ✓ parseSitemapIndex returns empty for regular sitemap
+  ✓ parseSitemapXml handles malformed XML gracefully
+  ✓ parseSitemapXml handles XML with unclosed tags
+  ✓ parseSitemapXml returns empty for completely invalid input
+  ✓ parseSitemapXml handles empty urlset
+  ✓ parseSitemapXml handles empty string
+  ✓ parseSitemapXml handles null-like input
+  ✓ parseSitemapIndex handles empty string
+  ✓ parseSitemapXml skips URL entries without loc
+
+  Results: 16 passed, 0 failed
+
+📦 HTML Parser Tests
+
+  ✓ parsePage extracts title
+  ✓ parsePage extracts meta description
+  ✓ parsePage extracts h1
+  ✓ parsePage returns null title when missing
+  ✓ parsePage returns null description when missing
+  ✓ parsePage extracts canonical URL
+  ✓ parsePage returns null canonical when missing
+  ✓ parsePage extracts meta robots noindex
+  ✓ parsePage returns null meta robots when missing
+  ✓ parsePage extracts JSON-LD structured data
+  ✓ parsePage extracts multiple JSON-LD blocks
+  ✓ parsePage handles malformed JSON-LD gracefully
+  ✓ parsePage extracts internal links
+  ✓ parsePage extracts external links
+  ✓ parsePage detects nofollow links
+  ✓ parsePage skips javascript: and mailto: links
+  ✓ parsePage extracts images with alt text
+  ✓ parsePage handles images without alt text
+  ✓ normalizeUrl lowercases hostname
+  ✓ normalizeUrl removes fragment
+  ✓ normalizeUrl sorts query parameters
+  ✓ normalizeUrl resolves relative URLs
+  ✓ detectContentType detects HTML
+  ✓ detectContentType detects PDF from content-type
+  ✓ detectContentType detects IMAGE from content-type
+  ✓ detectContentType detects PDF from URL extension with generic content type
+  ✓ detectContentType returns OTHER for octet-stream with non-video URL
+  ✓ parsePage handles empty HTML
+  ✓ parsePage handles malformed HTML gracefully
+  ✓ parsePage handles invalid URL
+  ✓ extractMainContent extracts content from <main> tag
+  ✓ extractMainContent extracts content from <article> tag
+  ✓ extractMainContent removes nav and footer
+  ✓ extractMainContent returns empty for empty input
+  ✓ parsePage extracts language from html lang attribute
+  ✓ parsePage returns null language when missing
+  ✓ parsePage counts words in main content
+
+  Results: 37 passed, 0 failed
+
+📦 SEO Rule Engine Tests
+
+  ✓ Well-formed page produces no meta issues
+  ✓ Well-formed page produces no status code issues
+  ✓ Well-formed page produces no thin content issue
+  ✓ Missing title page finds meta-missing-title issue
+  ✓ Missing title issue has ERROR severity
+  ✓ 404 page finds status-4xx issue
+  ✓ 404 page issue has ERROR severity
+  ✓ 500 page finds status-5xx issue
+  ✓ Thin content page finds content-thin issue
+  ✓ Thin content issue has WARNING severity
+  ✓ Rule engine severity levels include all expected values
+  ✓ All issues have Dutch explanations
+  ✓ Issue Dutch explanations contain Dutch words
+  ✓ Rule categories include expected categories
+  ✓ getRulesByCategory returns only rules in that category
+  ✓ Cross-page rules detect duplicate titles
+  ✓ Cross-page rules do not flag unique titles
+  ✓ Disable rule prevents it from running
+  ✓ Re-enable rule allows it to run again
+  ✓ isRuleEnabled returns correct state
+  ✓ runRule executes a specific rule by ID
+  ✓ runRule returns null for unknown rule ID
+  ✓ getRuleEngine returns singleton instance
+  ✓ All issues have recommended actions
+
+  Results: 24 passed, 0 failed
+
+📦 Intent Classification Tests
+
+  ✓ "fiets kopen" → TRANSACTIONAL
+  ✓ "beste laptop bestellen" → TRANSACTIONAL
+  ✓ "goedkoop schoenen" → TRANSACTIONAL
+  ✓ "beste fiets review" → COMMERCIAL_INVESTIGATION
+  ✓ "laptop vergelijk" → COMMERCIAL_INVESTIGATION
+  ✓ "iphone vs samsung" → COMMERCIAL_INVESTIGATION or BRANDED (brand names boost)
+  ✓ "hoe fiets repareren" → INFORMATIONAL
+  ✓ "wat is seo" → INFORMATIONAL
+  ✓ "waarom content marketing belangrijk" → INFORMATIONAL or BRANDED (marketing is a brand match)
+  ✓ "fietsenwinkel amsterdam" → LOCAL
+  ✓ "restaurant in de buurt" → LOCAL
+  ✓ "tandarts dichtbij" → LOCAL
+  ✓ "coolblue" → BRANDED
+  ✓ "bol.com retour" → BRANDED
+  ✓ "mantel fietsen" → BRANDED (or UNKNOWN if brand not in list)
+  ✓ "fietsenwinkel login" → NAVIGATIONAL
+  ✓ "inloggen rabobank" → NAVIGATIONAL
+  ✓ Unknown keywords default to INFORMATIONAL
+  ✓ Transaction keywords have reasonable confidence
+  ✓ Empty keyword returns UNKNOWN with 0 confidence
+  ✓ TRANSACTIONAL maps to DECISION funnel stage
+  ✓ INFORMATIONAL maps to AWARENESS funnel stage
+  ✓ COMMERCIAL_INVESTIGATION maps to CONSIDERATION
+  ✓ LOCAL maps to CONSIDERATION
+  ✓ Reasoning is in Dutch for TRANSACTIONAL
+  ✓ Reasoning is in Dutch for INFORMATIONAL
+  ✓ Reasoning is in Dutch for LOCAL
+  ✓ classifyIntentBatch classifies multiple keywords
+
+  Results: 28 passed, 0 failed
+
+📦 Opportunity Scorer Tests
+
+  ✓ High volume + low difficulty produces high total score
+  ✓ Position 11-20 yields high currentRankScore
+  ✓ Position 15 yields 95 currentRankScore (sweet spot)
+  ✓ Position 11-13 yields 95 currentRankScore
+  ✓ Top 3 position yields lower currentRankScore
+  ✓ Position 1 yields 35 currentRankScore
+  ✓ Zero volume yields zero volumeScore
+  ✓ Null volume yields zero volumeScore
+  ✓ All component scores are between 0 and 100
+  ✓ Total score is approximately weighted average of components
+  ✓ TRANSACTIONAL intent yields 95 intentScore
+  ✓ INFORMATIONAL intent yields 40 intentScore
+  ✓ NAVIGATIONAL intent yields 30 intentScore
+  ✓ DECISION funnel yields 95 funnelScore
+  ✓ AWARENESS funnel yields 35 funnelScore
+  ✓ Low difficulty (10) yields high difficultyScore
+  ✓ High difficulty (90) yields low difficultyScore
+  ✓ Null difficulty yields neutral 50 difficultyScore
+  ✓ getDefaultWeights returns valid weights
+  ✓ Default weights sum to 1.0
+  ✓ validateWeights accepts valid default weights
+  ✓ validateWeights rejects weights that do not sum to 1
+  ✓ validateWeights rejects negative weights
+  ✓ calculateScoreDetails returns full trace
+  ✓ Calculation trace steps are in Dutch
+  ✓ Calculation trace explanations are in Dutch
+  ✓ Calculation trace summary is in Dutch
+  ✓ Calculation trace has weights for each step
+  ✓ Relevance score increases when keyword matches brand name
+
+  Results: 29 passed, 0 failed
+
+📦 AI Provider Layer Tests
+
+  ✓ OllamaAdapter instantiates with config
+  ✓ OllamaAdapter is an object with generate method
+  ✓ OllamaAdapter uses correct base URL
+  ✓ OpenAICompatibleAdapter instantiates with config
+  ✓ OpenAICompatibleAdapter is an object with generate method
+[OpenAICompatibleAdapter] No API key configured for provider "OpenAI GPT-4o". Most OpenAI-compatible endpoints require authentication.
+  ✓ OpenAICompatibleAdapter warns without API key
+  ✓ ProviderManager class exists and can be instantiated
+  ✓ Fallback generate method exists on ProviderManager
+  ✓ Fallback generate returns error response when no providers available
+  ✓ Ollama config has zero costPerToken
+  ✓ Ollama provider cost is always zero
+  ✓ OpenAI provider can have non-zero costPerToken
+  ✓ AIPrivacySettings has required fields
+  ✓ Default privacy settings are conservative
+  ✓ AIGenerateRequest has correct structure
+  ✓ AIGenerateRequest supports jsonMode
+  ✓ AIGenerateResponse has expected structure
+  ✓ OLLAMA type config creates OllamaAdapter
+  ✓ OPENAI_COMPATIBLE type config creates OpenAICompatibleAdapter
+
+  Results: 19 passed, 0 failed
+
+📦 Content Quality Analysis Tests
+
+  ✓ getQualityDimensions returns 11 dimensions
+  ✓ All dimensions have valid names
+  ✓ All dimension scores default to 0
+  ✓ All dimension scores are within 0-100 range (default)
+  ✓ Quality dimensions have weights that sum to 1.0
+  ✓ All dimensions have Dutch names
+  ✓ Dutch names contain expected Dutch words
+  ✓ All dimensions have explanations
+  ✓ Explanations are in Dutch (contain Dutch language markers)
+  ✓ All dimensions have recommendations array
+  ✓ intentScore dimension exists with correct Dutch name
+  ✓ eeatScore dimension exists with E-E-A-T in name
+  ✓ readabilityScore dimension exists
+  ✓ geoReadinessScore dimension exists (GEO = Generative Engine Optimization)
+  ✓ conversionScore dimension exists
+  ✓ No duplicate dimension names
+  ✓ No duplicate Dutch names
+
+  Results: 17 passed, 0 failed
+═══════════════════════════════════════════
+  SEOCoach Test Suite
+═══════════════════════════════════════════
+
+📦 SSRF Protection Tests
+
+  ✓ isPrivateIP blocks 10.0.0.1 (RFC 1918)
+  ✓ isPrivateIP blocks 172.16.0.1 (RFC 1918)
+  ✓ isPrivateIP blocks 172.31.255.255 (RFC 1918 upper)
+  ✓ isPrivateIP blocks 192.168.1.1 (RFC 1918)
+  ✓ isPrivateIP blocks 127.0.0.1 (loopback)
+  ✓ isPrivateIP blocks 0.0.0.0 (current network)
+  ✓ isPrivateIP blocks 169.254.169.254 (link-local)
+  ✓ isPrivateIP blocks 169.254.0.1 (link-local)
+  ✓ isPrivateIP allows 8.8.8.8 (Google DNS)
+  ✓ isPrivateIP allows 1.1.1.1 (Cloudflare)
+  ✓ isPrivateIP allows 142.250.80.46 (public)
+  ✓ isPrivateIP allows 172.15.0.1 (just outside 172.16 range)
+  ✓ isPrivateIP allows 172.32.0.1 (just outside 172.31 range)
+  ✓ isPrivateIP blocks ::1 (IPv6 loopback)
+  ✓ isPrivateIP blocks fc00::1 (IPv6 unique-local)
+  ✓ isPrivateIP blocks fd00::1 (IPv6 unique-local fd)
+  ✓ isPrivateIP blocks fe80::1 (IPv6 link-local)
+  ✓ isPrivateIP allows 2001:4860:4860::8888 (Google DNS IPv6)
+  ✓ isCloudMetadata blocks 169.254.169.254
+  ✓ isCloudMetadata allows normal URL
+  ✓ isCloudMetadata returns true for invalid URL
+  ✓ isAllowedProtocol allows http
+  ✓ isAllowedProtocol allows https
+  ✓ isAllowedProtocol blocks ftp
+  ✓ isAllowedProtocol blocks javascript:
+  ✓ isAllowedProtocol blocks data:
+  ✓ isAllowedProtocol blocks file:
+  ✓ validateUrl accepts valid https URL
+  ✓ validateUrl rejects private IP
+  ✓ validateUrl rejects localhost
+  ✓ validateUrl rejects non-HTTP protocol
+  ✓ validateUrl rejects .local TLD
+  ✓ validateUrl rejects .internal TLD
+  ✓ validateUrl rejects URLs with credentials
+  ✓ validateUrl rejects empty string
+  ✓ validateUrl rejects invalid URL format
+  ✓ checkRedirectSafety blocks redirect to private IP
+  ✓ checkRedirectSafety allows redirect to public URL
+  ✓ checkRedirectSafety blocks redirect to localhost
+  ✓ validateResponseSize accepts 1MB response
+  ✓ validateResponseSize accepts exactly 10MB
+  ✓ validateResponseSize rejects > 10MB
+  ✓ validateResponseSize rejects negative size
+  ✓ validateResponseSize rejects NaN
+  ✓ validateResponseSize accepts 0
+
+  Results: 45 passed, 0 failed
+
+📦 Robots.txt Parser Tests
+
+  ✓ parseRobotsTxt parses basic Disallow rule
+  ✓ parseRobotsTxt parses basic Allow rule
+  ✓ parseRobotsTxt parses multiple rules for same agent
+  ✓ isAllowed handles wildcard * in path
+  ✓ isAllowed handles wildcard * in middle of path
+  ✓ isAllowed handles $ anchor
+  ✓ isAllowed matches specific user-agent
+  ✓ isAllowed falls back to wildcard when specific agent not matched
+  ✓ parseCrawlDelay extracts crawl delay for wildcard agent
+  ✓ parseCrawlDelay extracts crawl delay for specific agent
+  ✓ parseCrawlDelay falls back to wildcard delay
+  ✓ parseCrawlDelay returns default when no delay specified
+  ✓ parseCrawlDelay caps at max 60 seconds
+  ✓ getSitemaps extracts sitemap URLs
+  ✓ getSitemaps returns empty array for no sitemaps
+  ✓ getSitemaps handles empty content
+  ✓ isAllowed returns true when no rules exist
+  ✓ isAllowed returns true for path with no matching rule
+  ✓ isAllowed with empty Disallow means allow everything
+  ✓ parseRobotsTxt ignores comments
+  ✓ isAllowed uses longest-match strategy
+
+  Results: 21 passed, 0 failed
+
+📦 Sitemap Parser Tests
+
+  ✓ parseSitemapXml extracts URLs from basic sitemap
+  ✓ parseSitemapXml extracts lastmod
+  ✓ parseSitemapXml extracts changefreq
+  ✓ parseSitemapXml extracts priority
+  ✓ parseSitemapXml extracts all fields together
+  ✓ parseSitemapXml ignores invalid priority values
+  ✓ parseSitemapIndex extracts child sitemap URLs
+  ✓ parseSitemapIndex returns empty for regular sitemap
+  ✓ parseSitemapXml handles malformed XML gracefully
+  ✓ parseSitemapXml handles XML with unclosed tags
+  ✓ parseSitemapXml returns empty for completely invalid input
+  ✓ parseSitemapXml handles empty urlset
+  ✓ parseSitemapXml handles empty string
+  ✓ parseSitemapXml handles null-like input
+  ✓ parseSitemapIndex handles empty string
+  ✓ parseSitemapXml skips URL entries without loc
+
+  Results: 16 passed, 0 failed
+
+📦 HTML Parser Tests
+
+  ✓ parsePage extracts title
+  ✓ parsePage extracts meta description
+  ✓ parsePage extracts h1
+  ✓ parsePage returns null title when missing
+  ✓ parsePage returns null description when missing
+  ✓ parsePage extracts canonical URL
+  ✓ parsePage returns null canonical when missing
+  ✓ parsePage extracts meta robots noindex
+  ✓ parsePage returns null meta robots when missing
+  ✓ parsePage extracts JSON-LD structured data
+  ✓ parsePage extracts multiple JSON-LD blocks
+  ✓ parsePage handles malformed JSON-LD gracefully
+  ✓ parsePage extracts internal links
+  ✓ parsePage extracts external links
+  ✓ parsePage detects nofollow links
+  ✓ parsePage skips javascript: and mailto: links
+  ✓ parsePage extracts images with alt text
+  ✓ parsePage handles images without alt text
+  ✓ normalizeUrl lowercases hostname
+  ✓ normalizeUrl removes fragment
+  ✓ normalizeUrl sorts query parameters
+  ✓ normalizeUrl resolves relative URLs
+  ✓ detectContentType detects HTML
+  ✓ detectContentType detects PDF from content-type
+  ✓ detectContentType detects IMAGE from content-type
+  ✓ detectContentType detects PDF from URL extension with generic content type
+  ✓ detectContentType returns OTHER for octet-stream with non-video URL
+  ✓ parsePage handles empty HTML
+  ✓ parsePage handles malformed HTML gracefully
+  ✓ parsePage handles invalid URL
+  ✓ extractMainContent extracts content from <main> tag
+  ✓ extractMainContent extracts content from <article> tag
+  ✓ extractMainContent removes nav and footer
+  ✓ extractMainContent returns empty for empty input
+  ✓ parsePage extracts language from html lang attribute
+  ✓ parsePage returns null language when missing
+  ✓ parsePage counts words in main content
+
+  Results: 37 passed, 0 failed
+
+📦 SEO Rule Engine Tests
+
+  ✓ Well-formed page produces no meta issues
+  ✓ Well-formed page produces no status code issues
+  ✓ Well-formed page produces no thin content issue
+  ✓ Missing title page finds meta-missing-title issue
+  ✓ Missing title issue has ERROR severity
+  ✓ 404 page finds status-4xx issue
+  ✓ 404 page issue has ERROR severity
+  ✓ 500 page finds status-5xx issue
+  ✓ Thin content page finds content-thin issue
+  ✓ Thin content issue has WARNING severity
+  ✓ Rule engine severity levels include all expected values
+  ✓ All issues have Dutch explanations
+  ✓ Issue Dutch explanations contain Dutch words
+  ✓ Rule categories include expected categories
+  ✓ getRulesByCategory returns only rules in that category
+  ✓ Cross-page rules detect duplicate titles
+  ✓ Cross-page rules do not flag unique titles
+  ✓ Disable rule prevents it from running
+  ✓ Re-enable rule allows it to run again
+  ✓ isRuleEnabled returns correct state
+  ✓ runRule executes a specific rule by ID
+  ✓ runRule returns null for unknown rule ID
+  ✓ getRuleEngine returns singleton instance
+  ✓ All issues have recommended actions
+
+  Results: 24 passed, 0 failed
+
+📦 Intent Classification Tests
+
+  ✓ "fiets kopen" → TRANSACTIONAL
+  ✓ "beste laptop bestellen" → TRANSACTIONAL
+  ✓ "goedkoop schoenen" → TRANSACTIONAL
+  ✓ "beste fiets review" → COMMERCIAL_INVESTIGATION
+  ✓ "laptop vergelijk" → COMMERCIAL_INVESTIGATION
+  ✓ "iphone vs samsung" → COMMERCIAL_INVESTIGATION or BRANDED (brand names boost)
+  ✓ "hoe fiets repareren" → INFORMATIONAL
+  ✓ "wat is seo" → INFORMATIONAL
+  ✓ "waarom content marketing belangrijk" → INFORMATIONAL or BRANDED (marketing is a brand match)
+  ✓ "fietsenwinkel amsterdam" → LOCAL
+  ✓ "restaurant in de buurt" → LOCAL
+  ✓ "tandarts dichtbij" → LOCAL
+  ✓ "coolblue" → BRANDED
+  ✓ "bol.com retour" → BRANDED
+  ✓ "mantel fietsen" → BRANDED (or UNKNOWN if brand not in list)
+  ✓ "fietsenwinkel login" → NAVIGATIONAL
+  ✓ "inloggen rabobank" → NAVIGATIONAL
+  ✓ Unknown keywords default to INFORMATIONAL
+  ✓ Transaction keywords have reasonable confidence
+  ✓ Empty keyword returns UNKNOWN with 0 confidence
+  ✓ TRANSACTIONAL maps to DECISION funnel stage
+  ✓ INFORMATIONAL maps to AWARENESS funnel stage
+  ✓ COMMERCIAL_INVESTIGATION maps to CONSIDERATION
+  ✓ LOCAL maps to CONSIDERATION
+  ✓ Reasoning is in Dutch for TRANSACTIONAL
+  ✓ Reasoning is in Dutch for INFORMATIONAL
+  ✓ Reasoning is in Dutch for LOCAL
+  ✓ classifyIntentBatch classifies multiple keywords
+
+  Results: 28 passed, 0 failed
+
+📦 Opportunity Scorer Tests
+
+  ✓ High volume + low difficulty produces high total score
+  ✓ Position 11-20 yields high currentRankScore
+  ✓ Position 15 yields 95 currentRankScore (sweet spot)
+  ✓ Position 11-13 yields 95 currentRankScore
+  ✓ Top 3 position yields lower currentRankScore
+  ✓ Position 1 yields 35 currentRankScore
+  ✓ Zero volume yields zero volumeScore
+  ✓ Null volume yields zero volumeScore
+  ✓ All component scores are between 0 and 100
+  ✓ Total score is approximately weighted average of components
+  ✓ TRANSACTIONAL intent yields 95 intentScore
+  ✓ INFORMATIONAL intent yields 40 intentScore
+  ✓ NAVIGATIONAL intent yields 30 intentScore
+  ✓ DECISION funnel yields 95 funnelScore
+  ✓ AWARENESS funnel yields 35 funnelScore
+  ✓ Low difficulty (10) yields high difficultyScore
+  ✓ High difficulty (90) yields low difficultyScore
+  ✓ Null difficulty yields neutral 50 difficultyScore
+  ✓ getDefaultWeights returns valid weights
+  ✓ Default weights sum to 1.0
+  ✓ validateWeights accepts valid default weights
+  ✓ validateWeights rejects weights that do not sum to 1
+  ✓ validateWeights rejects negative weights
+  ✓ calculateScoreDetails returns full trace
+  ✓ Calculation trace steps are in Dutch
+  ✓ Calculation trace explanations are in Dutch
+  ✓ Calculation trace summary is in Dutch
+  ✓ Calculation trace has weights for each step
+  ✓ Relevance score increases when keyword matches brand name
+
+  Results: 29 passed, 0 failed
+
+📦 AI Provider Layer Tests
+
+  ✓ OllamaAdapter instantiates with config
+  ✓ OllamaAdapter is an object with generate method
+  ✓ OllamaAdapter uses correct base URL
+  ✓ OpenAICompatibleAdapter instantiates with config
+  ✓ OpenAICompatibleAdapter is an object with generate method
+[OpenAICompatibleAdapter] No API key configured for provider "OpenAI GPT-4o". Most OpenAI-compatible endpoints require authentication.
+  ✓ OpenAICompatibleAdapter warns without API key
+  ✓ ProviderManager class exists and can be instantiated
+  ✓ Fallback generate method exists on ProviderManager
+  ✓ Fallback generate returns error response when no providers available
+  ✓ Ollama config has zero costPerToken
+  ✓ Ollama provider cost is always zero
+  ✓ OpenAI provider can have non-zero costPerToken
+  ✓ AIPrivacySettings has required fields
+  ✓ Default privacy settings are conservative
+  ✓ AIGenerateRequest has correct structure
+  ✓ AIGenerateRequest supports jsonMode
+  ✓ AIGenerateResponse has expected structure
+  ✓ OLLAMA type config creates OllamaAdapter
+  ✓ OPENAI_COMPATIBLE type config creates OpenAICompatibleAdapter
+
+  Results: 19 passed, 0 failed
+
+📦 Content Quality Analysis Tests
+
+  ✓ getQualityDimensions returns 11 dimensions
+  ✓ All dimensions have valid names
+  ✓ All dimension scores default to 0
+  ✓ All dimension scores are within 0-100 range (default)
+  ✓ Quality dimensions have weights that sum to 1.0
+  ✓ All dimensions have Dutch names
+  ✓ Dutch names contain expected Dutch words
+  ✓ All dimensions have explanations
+  ✓ Explanations are in Dutch (contain Dutch language markers)
+  ✓ All dimensions have recommendations array
+  ✓ intentScore dimension exists with correct Dutch name
+  ✓ eeatScore dimension exists with E-E-A-T in name
+  ✓ readabilityScore dimension exists
+  ✓ geoReadinessScore dimension exists (GEO = Generative Engine Optimization)
+  ✓ conversionScore dimension exists
+  ✓ No duplicate dimension names
+  ✓ No duplicate Dutch names
+
+  Results: 17 passed, 0 failed
+
+═══════════════════════════════════════════
+  Test Suite Summary
+═══════════════════════════════════════════
+  Total suites: 9
+
+  Done. See per-suite results above.
+═══════════════════════════════════════════
+
+prisma:query SELECT `main`.`projects`.`id`, `main`.`projects`.`settings` FROM `main`.`projects` WHERE `main`.`projects`.`id` IN (?,?) LIMIT ? OFFSET ?
+prisma:query SELECT `main`.`ai_providers`.`id`, `main`.`ai_providers`.`projectId`, `main`.`ai_providers`.`name`, `main`.`ai_providers`.`type`, `main`.`ai_providers`.`baseUrl`, `main`.`ai_providers`.`apiKey`, `main`.`ai_providers`.`defaultModel`, `main`.`ai_providers`.`isActive`, `main`.`ai_providers`.`isDefault`, `main`.`ai_providers`.`maxTokens`, `main`.`ai_providers`.`temperature`, `main`.`ai_providers`.`timeout`, `main`.`ai_providers`.`retryAttempts`, `main`.`ai_providers`.`privacySettings`, `main`.`ai_providers`.`costPerToken`, `main`.`ai_providers`.`deletedAt`, `main`.`ai_providers`.`createdAt`, `main`.`ai_providers`.`updatedAt` FROM `main`.`ai_providers` WHERE (`main`.`ai_providers`.`projectId` = ? AND `main`.`ai_providers`.`isActive` = ? AND `main`.`ai_providers`.`deletedAt` IS NULL) ORDER BY `main`.`ai_providers`.`isDefault` DESC, `main`.`ai_providers`.`type` ASC, `main`.`ai_providers`.`createdAt` ASC LIMIT ? OFFSET ?
+prisma:query SELECT `main`.`ai_providers`.`id`, `main`.`ai_providers`.`projectId`, `main`.`ai_providers`.`name`, `main`.`ai_providers`.`type`, `main`.`ai_providers`.`baseUrl`, `main`.`ai_providers`.`apiKey`, `main`.`ai_providers`.`defaultModel`, `main`.`ai_providers`.`isActive`, `main`.`ai_providers`.`isDefault`, `main`.`ai_providers`.`maxTokens`, `main`.`ai_providers`.`temperature`, `main`.`ai_providers`.`timeout`, `main`.`ai_providers`.`retryAttempts`, `main`.`ai_providers`.`privacySettings`, `main`.`ai_providers`.`costPerToken`, `main`.`ai_providers`.`deletedAt`, `main`.`ai_providers`.`createdAt`, `main`.`ai_providers`.`updatedAt` FROM `main`.`ai_providers` WHERE (`main`.`ai_providers`.`projectId` = ? AND `main`.`ai_providers`.`isActive` = ? AND `main`.`ai_providers`.`deletedAt` IS NULL) ORDER BY `main`.`ai_providers`.`isDefault` DESC, `main`.`ai_providers`.`type` ASC, `main`.`ai_providers`.`createdAt` ASC LIMIT ? OFFSET ?
+prisma:query SELECT `main`.`ai_providers`.`id`, `main`.`ai_providers`.`projectId`, `main`.`ai_providers`.`name`, `main`.`ai_providers`.`type`, `main`.`ai_providers`.`baseUrl`, `main`.`ai_providers`.`apiKey`, `main`.`ai_providers`.`defaultModel`, `main`.`ai_providers`.`isActive`, `main`.`ai_providers`.`isDefault`, `main`.`ai_providers`.`maxTokens`, `main`.`ai_providers`.`temperature`, `main`.`ai_providers`.`timeout`, `main`.`ai_providers`.`retryAttempts`, `main`.`ai_providers`.`privacySettings`, `main`.`ai_providers`.`costPerToken`, `main`.`ai_providers`.`deletedAt`, `main`.`ai_providers`.`createdAt`, `main`.`ai_providers`.`updatedAt` FROM `main`.`ai_providers` WHERE (`main`.`ai_providers`.`projectId` = ? AND `main`.`ai_providers`.`isDefault` = ? AND `main`.`ai_providers`.`isActive` = ? AND `main`.`ai_providers`.`deletedAt` IS NULL) LIMIT ? OFFSET ?
+prisma:query SELECT `main`.`ai_providers`.`id`, `main`.`ai_providers`.`projectId`, `main`.`ai_providers`.`name`, `main`.`ai_providers`.`type`, `main`.`ai_providers`.`baseUrl`, `main`.`ai_providers`.`apiKey`, `main`.`ai_providers`.`defaultModel`, `main`.`ai_providers`.`isActive`, `main`.`ai_providers`.`isDefault`, `main`.`ai_providers`.`maxTokens`, `main`.`ai_providers`.`temperature`, `main`.`ai_providers`.`timeout`, `main`.`ai_providers`.`retryAttempts`, `main`.`ai_providers`.`privacySettings`, `main`.`ai_providers`.`costPerToken`, `main`.`ai_providers`.`deletedAt`, `main`.`ai_providers`.`createdAt`, `main`.`ai_providers`.`updatedAt` FROM `main`.`ai_providers` WHERE (`main`.`ai_providers`.`projectId` = ? AND `main`.`ai_providers`.`isDefault` = ? AND `main`.`ai_providers`.`isActive` = ? AND `main`.`ai_providers`.`deletedAt` IS NULL) LIMIT ? OFFSET ?
+prisma:query SELECT `main`.`ai_providers`.`id`, `main`.`ai_providers`.`projectId`, `main`.`ai_providers`.`name`, `main`.`ai_providers`.`type`, `main`.`ai_providers`.`baseUrl`, `main`.`ai_providers`.`apiKey`, `main`.`ai_providers`.`defaultModel`, `main`.`ai_providers`.`isActive`, `main`.`ai_providers`.`isDefault`, `main`.`ai_providers`.`maxTokens`, `main`.`ai_providers`.`temperature`, `main`.`ai_providers`.`timeout`, `main`.`ai_providers`.`retryAttempts`, `main`.`ai_providers`.`privacySettings`, `main`.`ai_providers`.`costPerToken`, `main`.`ai_providers`.`deletedAt`, `main`.`ai_providers`.`createdAt`, `main`.`ai_providers`.`updatedAt` FROM `main`.`ai_providers` WHERE (`main`.`ai_providers`.`projectId` = ? AND `main`.`ai_providers`.`type` = ? AND `main`.`ai_providers`.`isActive` = ? AND `main`.`ai_providers`.`deletedAt` IS NULL) ORDER BY `main`.`ai_providers`.`createdAt` ASC LIMIT ? OFFSET ?
+prisma:query SELECT `main`.`ai_providers`.`id`, `main`.`ai_providers`.`projectId`, `main`.`ai_providers`.`name`, `main`.`ai_providers`.`type`, `main`.`ai_providers`.`baseUrl`, `main`.`ai_providers`.`apiKey`, `main`.`ai_providers`.`defaultModel`, `main`.`ai_providers`.`isActive`, `main`.`ai_providers`.`isDefault`, `main`.`ai_providers`.`maxTokens`, `main`.`ai_providers`.`temperature`, `main`.`ai_providers`.`timeout`, `main`.`ai_providers`.`retryAttempts`, `main`.`ai_providers`.`privacySettings`, `main`.`ai_providers`.`costPerToken`, `main`.`ai_providers`.`deletedAt`, `main`.`ai_providers`.`createdAt`, `main`.`ai_providers`.`updatedAt` FROM `main`.`ai_providers` WHERE (`main`.`ai_providers`.`projectId` = ? AND `main`.`ai_providers`.`type` = ? AND `main`.`ai_providers`.`isActive` = ? AND `main`.`ai_providers`.`deletedAt` IS NULL) ORDER BY `main`.`ai_providers`.`createdAt` ASC LIMIT ? OFFSET ?
+prisma:query SELECT `main`.`ai_providers`.`id`, `main`.`ai_providers`.`projectId`, `main`.`ai_providers`.`name`, `main`.`ai_providers`.`type`, `main`.`ai_providers`.`baseUrl`, `main`.`ai_providers`.`apiKey`, `main`.`ai_providers`.`defaultModel`, `main`.`ai_providers`.`isActive`, `main`.`ai_providers`.`isDefault`, `main`.`ai_providers`.`maxTokens`, `main`.`ai_providers`.`temperature`, `main`.`ai_providers`.`timeout`, `main`.`ai_providers`.`retryAttempts`, `main`.`ai_providers`.`privacySettings`, `main`.`ai_providers`.`costPerToken`, `main`.`ai_providers`.`deletedAt`, `main`.`ai_providers`.`createdAt`, `main`.`ai_providers`.`updatedAt` FROM `main`.`ai_providers` WHERE (`main`.`ai_providers`.`projectId` = ? AND `main`.`ai_providers`.`isActive` = ? AND `main`.`ai_providers`.`deletedAt` IS NULL) ORDER BY `main`.`ai_providers`.`createdAt` ASC LIMIT ? OFFSET ?
+prisma:query SELECT `main`.`ai_providers`.`id`, `main`.`ai_providers`.`projectId`, `main`.`ai_providers`.`name`, `main`.`ai_providers`.`type`, `main`.`ai_providers`.`baseUrl`, `main`.`ai_providers`.`apiKey`, `main`.`ai_providers`.`defaultModel`, `main`.`ai_providers`.`isActive`, `main`.`ai_providers`.`isDefault`, `main`.`ai_providers`.`maxTokens`, `main`.`ai_providers`.`temperature`, `main`.`ai_providers`.`timeout`, `main`.`ai_providers`.`retryAttempts`, `main`.`ai_providers`.`privacySettings`, `main`.`ai_providers`.`costPerToken`, `main`.`ai_providers`.`deletedAt`, `main`.`ai_providers`.`createdAt`, `main`.`ai_providers`.`updatedAt` FROM `main`.`ai_providers` WHERE (`main`.`ai_providers`.`projectId` = ? AND `main`.`ai_providers`.`isActive` = ? AND `main`.`ai_providers`.`deletedAt` IS NULL) ORDER BY `main`.`ai_providers`.`createdAt` ASC LIMIT ? OFFSET ?
+prisma:query INSERT INTO `main`.`ai_providers` (`id`, `projectId`, `name`, `type`, `baseUrl`, `defaultModel`, `isActive`, `isDefault`, `maxTokens`, `temperature`, `timeout`, `retryAttempts`, `privacySettings`, `costPerToken`, `createdAt`, `updatedAt`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING `id` AS `id`, `projectId` AS `projectId`, `name` AS `name`, `type` AS `type`, `baseUrl` AS `baseUrl`, `apiKey` AS `apiKey`, `defaultModel` AS `defaultModel`, `isActive` AS `isActive`, `isDefault` AS `isDefault`, `maxTokens` AS `maxTokens`, `temperature` AS `temperature`, `timeout` AS `timeout`, `retryAttempts` AS `retryAttempts`, `privacySettings` AS `privacySettings`, `costPerToken` AS `costPerToken`, `deletedAt` AS `deletedAt`, `createdAt` AS `createdAt`, `updatedAt` AS `updatedAt`

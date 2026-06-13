@@ -1,5 +1,5 @@
 // ============================================================================
-// Prisma Schema — AI-Driven SEO Automation Platform (Phase 1)
+// Prisma Schema — AI-Driven SEO Automation Platform (Phase 1-3)
 // ============================================================================
 
 generator client {
@@ -71,6 +71,89 @@ enum PermissionCategory {
   MANAGE_INTEGRATIONS
   MANAGE_PUBLISHING
   VIEW_REPORTS
+}
+
+enum CrawlStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+  CANCELLED
+  PAUSED
+}
+
+enum PageStatus {
+  OK
+  REDIRECT
+  CLIENT_ERROR
+  SERVER_ERROR
+  BLOCKED
+  TIMEOUT
+}
+
+enum Indexability {
+  INDEXABLE
+  NOINDEX
+  BLOCKED_ROBOTS
+  CANONICALIZED
+  BLOCKED_META
+  UNKNOWN
+}
+
+enum ContentType {
+  HTML
+  PDF
+  IMAGE
+  VIDEO
+  OTHER
+}
+
+enum IssueSeverity {
+  INFO
+  WARNING
+  ERROR
+  CRITICAL
+}
+
+enum SearchIntent {
+  INFORMATIONAL
+  NAVIGATIONAL
+  TRANSACTIONAL
+  COMMERCIAL_INVESTIGATION
+  LOCAL
+  BRANDED
+  UNKNOWN
+}
+
+enum FunnelStage {
+  AWARENESS
+  CONSIDERATION
+  DECISION
+  RETENTION
+  UNKNOWN
+}
+
+enum PruningAction {
+  KEEP
+  IMPROVE
+  MERGE
+  REDIRECT
+  NOINDEX
+  REMOVE
+}
+
+enum ContentApprovalStatus {
+  DRAFT
+  IN_REVIEW
+  APPROVED
+  PUBLISHED
+  ARCHIVED
+}
+
+enum AIProviderType {
+  OLLAMA
+  OPENAI_COMPATIBLE
+  CUSTOM
 }
 
 // ============================================================================
@@ -282,6 +365,12 @@ model Project {
   jobs         Job[]
   auditLogs    AuditLog[]
   actionItems  ActionItem[]
+  crawlSessions CrawlSession[]
+  pages         Page[]
+  keywords      Keyword[]
+  topics        Topic[]
+  aiProviders   AIProvider[]
+  contentBriefs ContentBrief[]
 
   @@unique([organizationId, slug])
   @@index([organizationId])
@@ -520,4 +609,536 @@ model UserSettings {
 
   @@index([userId])
   @@map("user_settings")
+}
+
+// ============================================================================
+// Phase 2: Crawling & Technical SEO
+// ============================================================================
+
+model CrawlSession {
+  id                String      @id @default(uuid())
+  projectId         String
+  status            CrawlStatus @default(PENDING)
+  startUrl          String
+  maxPages          Int         @default(500)
+  maxDepth          Int         @default(10)
+  crawlDelayMs      Int         @default(1000)
+  respectRobotsTxt  Boolean     @default(true)
+  followRedirects   Boolean     @default(true)
+  includeSubdomains Boolean     @default(false)
+  useRendering      Boolean     @default(false)
+  pagesCrawled      Int         @default(0)
+  pagesFound        Int         @default(0)
+  issuesFound       Int         @default(0)
+  errorCount        Int         @default(0)
+  errorMessage      String?
+  startedAt         DateTime?
+  completedAt       DateTime?
+  cancelledAt       DateTime?
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  pages   Page[]
+  issues  TechnicalIssue[]
+
+  @@index([projectId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("crawl_sessions")
+}
+
+model Page {
+  id                String       @id @default(uuid())
+  crawlSessionId    String
+  projectId         String
+  url               String
+  normalizedUrl     String
+  statusCode        Int?
+  status            PageStatus   @default(OK)
+  contentType       ContentType  @default(HTML)
+  title             String?
+  description       String?
+  h1                String?
+  wordCount         Int          @default(0)
+  canonicalUrl      String?
+  indexability       Indexability @default(INDEXABLE)
+  language          String?
+  publicationDate   DateTime?
+  modificationDate  DateTime?
+  internalLinkCount Int          @default(0)
+  externalLinkCount Int          @default(0)
+  imageCount        Int          @default(0)
+  imagesWithoutAlt  Int          @default(0)
+  structuredData    String? // JSON
+  crawlDepth        Int          @default(0)
+  isOrphan          Boolean      @default(false)
+  redirectChain     String? // JSON array of URLs
+  finalUrl          String?
+  loadTimeMs        Int?
+  htmlSizeBytes     Int?
+  contentHash       String?
+  mainContent       String?
+  internalLinks     String? // JSON array
+  externalLinks     String? // JSON array
+  images            String? // JSON array
+  duplicateGroup    String?
+  similarityScore   Float?
+  conversionElements String? // JSON
+  metaRobots        String?
+  renderDiffDetected Boolean    @default(false)
+  deletedAt         DateTime?
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  crawlSession   CrawlSession      @relation(fields: [crawlSessionId], references: [id], onDelete: Cascade)
+  project        Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  snapshots      PageSnapshot[]
+  issues         TechnicalIssue[]
+  renderedComparison RenderedComparison?
+  keywordPages   KeywordPage[]
+
+  @@unique([crawlSessionId, normalizedUrl])
+  @@index([projectId])
+  @@index([crawlSessionId])
+  @@index([statusCode])
+  @@index([indexability])
+  @@index([contentType])
+  @@index([crawlDepth])
+  @@index([duplicateGroup])
+  @@index([contentHash])
+  @@index([deletedAt])
+  @@map("pages")
+}
+
+model PageSnapshot {
+  id         String   @id @default(uuid())
+  pageId     String
+  html       String
+  source     String   @default("crawl") // crawl, render
+  sizeBytes  Int?
+  createdAt  DateTime @default(now())
+
+  page Page @relation(fields: [pageId], references: [id], onDelete: Cascade)
+
+  @@index([pageId])
+  @@index([source])
+  @@map("page_snapshots")
+}
+
+model TechnicalIssue {
+  id                String         @id @default(uuid())
+  projectId         String
+  pageId            String?
+  crawlSessionId    String
+  ruleId            String
+  ruleName          String
+  dutchExplanation  String
+  technicalDetails  String?
+  evidence          String? // JSON
+  severity          IssueSeverity  @default(WARNING)
+  priority          ActionPriority @default(MEDIUM)
+  impact            String?
+  effort            ActionEffort   @default(MEDIUM)
+  affectedUrls      String? // JSON array
+  recommendedAction String?
+  autoFixAvailable  Boolean        @default(false)
+  confidence        Float          @default(1.0)
+  dismissed         Boolean        @default(false)
+  dismissedBy       String?
+  dismissedAt       DateTime?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  page          Page?         @relation(fields: [pageId], references: [id], onDelete: SetNull)
+  crawlSession  CrawlSession  @relation(fields: [crawlSessionId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([crawlSessionId])
+  @@index([ruleId])
+  @@index([severity])
+  @@index([priority])
+  @@index([dismissed])
+  @@index([createdAt])
+  @@map("technical_issues")
+}
+
+model RenderedComparison {
+  id                 String   @id @default(uuid())
+  pageId             String   @unique
+  textDiff           String? // JSON diff
+  linkDiff           String? // JSON diff
+  canonicalDiff      String? // JSON diff
+  robotsDiff         String? // JSON diff
+  structuredDataDiff String? // JSON diff
+  headingDiff        String? // JSON diff
+  navigationDiff     String? // JSON diff
+  hasSignificantDiff Boolean  @default(false)
+  summary            String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  page Page @relation(fields: [pageId], references: [id], onDelete: Cascade)
+
+  @@index([hasSignificantDiff])
+  @@map("rendered_comparisons")
+}
+
+// ============================================================================
+// Phase 3: Keywords & Content Intelligence
+// ============================================================================
+
+model Keyword {
+  id              String       @id @default(uuid())
+  projectId       String
+  keyword         String
+  searchIntent    SearchIntent @default(UNKNOWN)
+  funnelStage     FunnelStage  @default(UNKNOWN)
+  searchVolume    Int?
+  difficulty      Float?
+  cpc             Float?
+  currentRanking  Int?
+  currentUrl      String?
+  groupId         String?
+  personaMapping  String?
+  productMapping  String?
+  serviceMapping  String?
+  locationMapping String?
+  seasonality     String? // JSON
+  tags            String? // JSON array
+  notes           String?
+  source          String       @default("manual") // manual, csv, ai
+  deletedAt       DateTime?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  project      Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  opportunity  OpportunityScore?
+  keywordPages KeywordPage[]
+  topicKeywords TopicKeyword[]
+  contentBriefs ContentBrief[]
+
+  @@index([projectId])
+  @@index([searchIntent])
+  @@index([funnelStage])
+  @@index([groupId])
+  @@index([keyword])
+  @@index([deletedAt])
+  @@map("keywords")
+}
+
+model KeywordPage {
+  id        String  @id @default(uuid())
+  keywordId String
+  pageId    String
+  relevance Float   @default(0)
+
+  keyword Keyword @relation(fields: [keywordId], references: [id], onDelete: Cascade)
+  page    Page    @relation(fields: [pageId], references: [id], onDelete: Cascade)
+
+  @@unique([keywordId, pageId])
+  @@index([keywordId])
+  @@index([pageId])
+  @@map("keyword_pages")
+}
+
+model OpportunityScore {
+  id                  String   @id @default(uuid())
+  keywordId           String   @unique
+  totalScore          Float    @default(0)
+  volumeScore         Float    @default(0)
+  difficultyScore     Float    @default(0)
+  relevanceScore      Float    @default(0)
+  currentRankScore    Float    @default(0)
+  intentScore         Float    @default(0)
+  funnelScore         Float    @default(0)
+  competitionScore    Float    @default(0)
+  calculationDetails  String? // JSON - full calculation trace
+  weightsVersion      String   @default("1.0")
+  calculatedAt        DateTime @default(now())
+
+  keyword Keyword @relation(fields: [keywordId], references: [id], onDelete: Cascade)
+
+  @@index([totalScore])
+  @@map("opportunity_scores")
+}
+
+model Topic {
+  id             String    @id @default(uuid())
+  projectId      String
+  name           String
+  description    String?
+  clusterId      String?
+  isPillar       Boolean   @default(false)
+  pillarPageId   String?
+  suggestedUrl   String?
+  searchIntent   SearchIntent @default(UNKNOWN)
+  funnelStage    FunnelStage  @default(UNKNOWN)
+  conversionGoal String?
+  priority       ActionPriority @default(MEDIUM)
+  impact         String?
+  effort         ActionEffort   @default(MEDIUM)
+  sortOrder      Int       @default(0)
+  deletedAt      DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  project      Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  cluster      TopicCluster? @relation(fields: [clusterId], references: [id], onDelete: SetNull)
+  topicKeywords TopicKeyword[]
+  outgoingRelations TopicRelation[] @relation("FromTopic")
+  incomingRelations TopicRelation[] @relation("ToTopic")
+  contentBriefs ContentBrief[]
+
+  @@index([projectId])
+  @@index([clusterId])
+  @@index([isPillar])
+  @@index([deletedAt])
+  @@map("topics")
+}
+
+model TopicCluster {
+  id          String   @id @default(uuid())
+  projectId   String
+  name        String
+  description String?
+  deletedAt   DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  topics Topic[]
+
+  @@index([projectId])
+  @@index([deletedAt])
+  @@map("topic_clusters")
+}
+
+model TopicKeyword {
+  id        String  @id @default(uuid())
+  topicId   String
+  keywordId String
+
+  topic   Topic   @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  keyword Keyword @relation(fields: [keywordId], references: [id], onDelete: Cascade)
+
+  @@unique([topicId, keywordId])
+  @@index([topicId])
+  @@index([keywordId])
+  @@map("topic_keywords")
+}
+
+model TopicRelation {
+  id          String   @id @default(uuid())
+  fromTopicId String
+  toTopicId   String
+  relationType String  @default("supports") // supports, contradicts, related
+  label       String?
+
+  fromTopic Topic @relation("FromTopic", fields: [fromTopicId], references: [id], onDelete: Cascade)
+  toTopic   Topic @relation("ToTopic", fields: [toTopicId], references: [id], onDelete: Cascade)
+
+  @@unique([fromTopicId, toTopicId, relationType])
+  @@index([fromTopicId])
+  @@index([toTopicId])
+  @@map("topic_relations")
+}
+
+// ============================================================================
+// Phase 3: AI Provider Layer
+// ============================================================================
+
+model AIProvider {
+  id              String         @id @default(uuid())
+  projectId       String
+  name            String
+  type            AIProviderType @default(OLLAMA)
+  baseUrl         String
+  apiKey          String? // encrypted at rest
+  defaultModel    String?
+  isActive        Boolean        @default(true)
+  isDefault       Boolean        @default(false)
+  maxTokens       Int            @default(4096)
+  temperature     Float          @default(0.7)
+  timeout         Int            @default(60000)
+  retryAttempts   Int            @default(3)
+  privacySettings String? // JSON
+  costPerToken    Float          @default(0) // zero for local providers
+  deletedAt       DateTime?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  project  Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  callLogs AICallLog[]
+  promptTemplates PromptTemplate[]
+
+  @@index([projectId])
+  @@index([type])
+  @@index([isActive])
+  @@index([deletedAt])
+  @@map("ai_providers")
+}
+
+model AICallLog {
+  id              String    @id @default(uuid())
+  providerId      String
+  projectId       String
+  model           String
+  promptTemplateId String?
+  inputTokens     Int       @default(0)
+  outputTokens    Int       @default(0)
+  totalTokens     Int       @default(0)
+  cost            Float     @default(0)
+  durationMs      Int       @default(0)
+  success         Boolean   @default(true)
+  errorMessage    String?
+  purpose         String? // brief, draft, quality, intent, etc.
+  createdAt       DateTime  @default(now())
+
+  provider      AIProvider     @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  promptTemplate PromptTemplate? @relation(fields: [promptTemplateId], references: [id], onDelete: SetNull)
+
+  @@index([providerId])
+  @@index([projectId])
+  @@index([purpose])
+  @@index([createdAt])
+  @@map("ai_call_logs")
+}
+
+model PromptTemplate {
+  id          String   @id @default(uuid())
+  providerId  String
+  name        String
+  description String?
+  template    String
+  version     String   @default("1.0")
+  variables   String? // JSON array of variable names
+  category    String? // brief, draft, quality, intent, etc.
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  provider AIProvider  @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  callLogs AICallLog[]
+
+  @@unique([providerId, name, version])
+  @@index([providerId])
+  @@index([category])
+  @@index([isActive])
+  @@map("prompt_templates")
+}
+
+// ============================================================================
+// Phase 3: Content Briefs & Studio
+// ============================================================================
+
+model ContentBrief {
+  id                String              @id @default(uuid())
+  projectId         String
+  keywordId         String?
+  topicId           String?
+  title             String
+  targetKeyword     String?
+  secondaryKeywords String? // JSON array
+  searchIntent      SearchIntent        @default(UNKNOWN)
+  funnelStage       FunnelStage         @default(UNKNOWN)
+  outline           String? // JSON outline structure
+  sources           String? // JSON array of source URLs
+  brandProfileUsed  Boolean             @default(true)
+  internalPages     String? // JSON array of page IDs to link to
+  targetWordCount   Int?
+  targetAudience    String?
+  toneOfVoice       String?
+  approvalStatus    ContentApprovalStatus @default(DRAFT)
+  approvedBy        String?
+  approvedAt        DateTime?
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  project  Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  keyword  Keyword?         @relation(fields: [keywordId], references: [id], onDelete: SetNull)
+  topic    Topic?           @relation(fields: [topicId], references: [id], onDelete: SetNull)
+  versions ContentVersion[]
+
+  @@index([projectId])
+  @@index([keywordId])
+  @@index([topicId])
+  @@index([approvalStatus])
+  @@index([createdAt])
+  @@map("content_briefs")
+}
+
+model ContentVersion {
+  id            String    @id @default(uuid())
+  briefId       String
+  version       Int       @default(1)
+  content       String
+  wordCount     Int       @default(0)
+  changeSummary String?
+  aiGenerated   Boolean   @default(false)
+  aiProviderId  String?
+  aiModel       String?
+  promptTemplateId String?
+  claimMarkers  String? // JSON array of claim markers
+  diffFromPrev  String? // JSON diff
+  createdBy     String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  brief ContentBrief @relation(fields: [briefId], references: [id], onDelete: Cascade)
+
+  @@unique([briefId, version])
+  @@index([briefId])
+  @@index([version])
+  @@map("content_versions")
+}
+
+model ContentQuality {
+  id                   String   @id @default(uuid())
+  contentVersionId     String   @unique
+  intentScore          Float    @default(0)
+  coverageScore        Float    @default(0)
+  readabilityScore     Float    @default(0)
+  originalityScore     Float    @default(0)
+  brandConsistencyScore Float   @default(0)
+  eeatScore            Float    @default(0)
+  internalLinkScore    Float    @default(0)
+  entityScore          Float    @default(0)
+  conversionScore      Float    @default(0)
+  geoReadinessScore    Float    @default(0)
+  publicationReadinessScore Float @default(0)
+  overallScore         Float    @default(0)
+  details              String? // JSON with detailed analysis per dimension
+  recommendations      String? // JSON array of recommendations
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@index([overallScore])
+  @@map("content_quality")
+}
+
+model ContentDecay {
+  id             String        @id @default(uuid())
+  projectId      String
+  pageId         String?
+  url            String
+  currentPage    Int           @default(1)
+  previousPage   Int?
+  currentClicks  Int?
+  previousClicks Int?
+  currentImpressions Int?
+  previousImpressions Int?
+  decayPercentage Float        @default(0)
+  pruningAction  PruningAction @default(KEEP)
+  riskAnalysis   String? // JSON
+  recommendations String? // JSON
+  dataAvailable  Boolean       @default(false)
+  dataNote       String?
+  detectedAt     DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  @@index([projectId])
+  @@index([pageId])
+  @@index([pruningAction])
+  @@index([detectedAt])
+  @@map("content_decay")
 }
