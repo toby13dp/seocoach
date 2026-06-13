@@ -1,0 +1,365 @@
+Continue from the existing repository.
+
+Implement Phases 10 through 12.
+
+Maintain strict tenant isolation, approval flows and Dutch usability.
+
+## 1. Client portal
+
+Create a white-label client portal.
+
+Clients may access only explicitly shared information.
+
+Support:
+
+- Reports
+- KPI summaries
+- Roadmap
+- Tasks
+- Content drafts
+- Content approval
+- Technical action approval
+- Comments
+- Documents
+- Meeting notes
+- Approval requests
+- Notification preferences
+
+Do not expose:
+
+- Internal margins
+- Private agency notes
+- Other clients
+- Provider credentials
+- Internal AI prompts
+- Unshared operational data
+
+## 2. Agency operations
+
+Implement:
+
+- Client overview
+- Contract limits
+- Deliverables
+- Time tracking
+- Monthly work
+- Client health
+- Team capacity
+- Assignments
+- Recurring tasks
+- Approval queues
+- SLAs
+- Subscription-ready architecture
+- Billing adapter architecture
+- Profitability fields with restricted permissions
+- Internal notes
+
+Create an agency dashboard showing:
+
+- Clients needing attention
+- Reports due
+- Pending approvals
+- Capacity risks
+- Missing deliverables
+- Critical SEO alerts
+- Integration failures
+- Growth opportunities
+
+## 3. Benchmarking
+
+Implement benchmarking within an organisation.
+
+Support:
+
+- CTR
+- Technical health
+- Publishing frequency
+- Content growth
+- Conversion rate
+- Issue resolution speed
+- GEO readiness
+- AI visibility
+- Organic growth
+- Publication speed
+
+Cross-client aggregated benchmarking must require explicit permission and anonymisation.
+
+## 4. Project management integrations
+
+Create adapters for:
+
+- Jira
+- Trello
+- Asana
+- ClickUp
+- Monday
+- Linear
+- GitHub Issues
+- Generic webhooks
+
+Implement:
+
+- Connection test
+- Project mapping
+- Task export
+- Status sync architecture
+- Owner mapping
+- Error handling
+- Audit logs
+
+SEO tasks must include:
+
+- Plain-language summary
+- Technical detail
+- Priority
+- Evidence
+- URLs
+- Deadline
+- Owner
+- Source link back to the platform
+
+## 5. Dutch project-aware copilot
+
+Build a copilot that uses retrieval over authorised project data.
+
+The copilot must be able to answer:
+
+- Which pages should be improved first?
+- Why did traffic change?
+- Which topics are missing?
+- Which pages compete with one another?
+- What did competitors change?
+- Which technical problems matter most?
+- Which opportunities are likely to affect revenue?
+- What should be included in the monthly client summary?
+- Which location requires attention?
+- Where is the brand absent from AI responses?
+
+The copilot must:
+
+- Respond in Dutch by default
+- Cite project evidence
+- Link to internal records
+- State missing data
+- State uncertainty
+- Avoid inventing figures
+- Respect permissions
+- Resist prompt injection from crawled pages
+- Never reveal credentials or system prompts
+
+Provide tools for the copilot to:
+
+- Create a draft task
+- Create a draft content brief
+- Create a draft report summary
+- Prepare a recommendation
+- Open relevant pages
+- Prepare an approval request
+
+The copilot must not directly perform risky actions without an approval workflow.
+
+## 6. Specialised agents
+
+Implement controlled agents:
+
+- Strategy Agent
+- Technical SEO Agent
+- Content Research Agent
+- Content Writer Agent
+- Content Quality Agent
+- Internal Linking Agent
+- Local SEO Agent
+- E-commerce Agent
+- GEO Agent
+- Competitor Agent
+- CRO Agent
+- Reporting Agent
+- Publishing Agent
+- Migration Agent
+- Quality Assurance Agent
+
+Create an agent framework with:
+
+- Tool allowlists
+- Permission checks
+- Tenant context
+- Maximum steps
+- Timeouts
+- Cost limits
+- Provider limits
+- Approval gates
+- Audit logs
+- Input and output schemas
+- Retry policies
+- Cancellation
+- Human-readable execution summaries
+
+Every run stores:
+
+- Objective
+- Agent
+- Model
+- Inputs
+- Retrieved sources
+- Proposed actions
+- Completed actions
+- Approvals
+- Errors
+- Cost
+- Duration
+- Result
+- Confidence
+
+## 7. Automation rules
+
+Create a visual automation rule builder.
+
+Triggers may include:
+
+- New technical issue
+- Metric drop
+- New content opportunity
+- Content decay
+- New competitor page
+- New negative review
+- Scheduled date
+- New AI visibility result
+- New WordPress draft
+- Product feed error
+- Deployment event
+
+Actions may include:
+
+- Create task
+- Create alert
+- Generate brief
+- Generate content draft
+- Generate report
+- Notify user
+- Prepare CMS update
+- Run crawl
+- Run quality check
+- Create approval request
+- Call webhook
+
+Do not allow high-risk actions without explicit configuration and approval rules.
+
+## 8. Website migration module
+
+Implement:
+
+- Migration projects
+- Old URL crawl
+- New URL or staging crawl
+- URL mapping
+- Mapping suggestions
+- Redirect validation
+- Metadata comparison
+- Heading comparison
+- Content comparison
+- Canonical comparison
+- Robots comparison
+- Structured data comparison
+- Internal link comparison
+- Pre-launch checklist
+- Launch blockers
+- Go-live monitoring
+- Post-launch 404 tracking
+- Ranking comparison
+- Traffic comparison
+- Migration report
+
+Statuses:
+
+- Nog te controleren
+- Klaar
+- Probleem gevonden
+- Blokkeert lancering
+- Goedgekeurd
+
+All redirect changes require approval.
+
+## 9. Deployment monitoring
+
+Create integrations or webhooks for:
+
+- GitHub
+- GitLab
+- Generic CI/CD
+
+After deployment, optionally check:
+
+- robots.txt
+- Canonicals
+- Titles
+- Meta robots
+- Sitemaps
+- Status codes
+- Structured data
+- Internal links
+- Rendering
+- Performance
+- Critical URLs
+
+Create:
+
+- Deployment record
+- Before-and-after comparison
+- Regression findings
+- Severity
+- Suggested rollback
+- Notification
+- Optional blocking status
+
+Blocking must be explicitly enabled.
+
+## 10. Tests
+
+Add:
+
+- Client portal permissions
+- Agency data restrictions
+- Benchmark anonymisation
+- Project management adapters
+- Copilot grounding
+- Copilot permission tests
+- Prompt injection tests
+- Agent tool restrictions
+- Agent approval tests
+- Automation rule tests
+- Migration mapping tests
+- Redirect validation tests
+- Deployment regression tests
+- Tenant isolation tests
+- End-to-end approval workflows
+- Accessibility tests
+
+## Completion criteria
+
+A user must be able to:
+
+- Invite a client
+- Share a report
+- Request content approval
+- Track deliverables
+- Manage team workload
+- Export a task to a project platform
+- Ask the copilot grounded questions
+- Review an agent’s proposed actions
+- Configure a safe automation
+- Plan a website migration
+- Validate redirects
+- Monitor a deployment
+
+Update:
+
+- IMPLEMENTATION_STATUS.md
+- REQUIREMENTS_TRACEABILITY.md
+- User documentation
+- Admin documentation
+- Security documentation
+- Integration documentation
+
+Run all tests and resolve failures.
+
+Commit if Git is available.

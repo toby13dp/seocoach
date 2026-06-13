@@ -1,0 +1,434 @@
+Read and treat the following repository documents as binding:
+
+- PROJECT_CHARTER.md
+- PRODUCT_REQUIREMENTS.md
+- UX_PRINCIPLES.md
+- REQUIREMENTS_TRACEABILITY.md
+- IMPLEMENTATION_STATUS.md
+
+Do not remove or weaken requirements.
+
+Your task is to design the complete technical and UX architecture before broad implementation.
+
+## 1. Architecture
+
+Create a production-oriented monorepo architecture.
+
+Recommended structure:
+
+apps/
+  web/
+  api/
+  worker/
+  scheduler/
+
+packages/
+  ui/
+  config/
+  types/
+  i18n/
+  seo-rules/
+  ai-core/
+  integrations/
+  reporting/
+  testing/
+
+infrastructure/
+  docker/
+  proxy/
+  monitoring/
+  backups/
+
+docs/
+  architecture/
+  decisions/
+  integrations/
+  user-guide/
+  admin-guide/
+
+You may improve this structure when justified.
+
+Define:
+
+- Frontend architecture
+- Backend architecture
+- Worker architecture
+- Scheduling architecture
+- Database architecture
+- Object storage architecture
+- AI provider architecture
+- Integration adapter architecture
+- Event and job architecture
+- Reporting architecture
+- Audit architecture
+- Permission architecture
+- Internationalisation architecture
+- Observability architecture
+
+## 2. Technology choices
+
+Use:
+
+Frontend:
+- Next.js
+- React
+- TypeScript
+- Strict TypeScript
+- Accessible component primitives
+- Responsive design
+- Dutch localisation
+- Server components only where appropriate
+- Client components only where interaction requires them
+
+Backend:
+- Python
+- FastAPI
+- SQLAlchemy
+- Alembic
+- Pydantic
+- PostgreSQL
+- Redis
+
+Jobs:
+- Select Celery, Dramatiq or RQ
+- Explain the choice in an architecture decision record
+
+Storage:
+- MinIO-compatible object storage
+- Local fallback for development
+
+AI:
+- Provider-neutral interfaces
+- Ollama first
+- OpenAI-compatible endpoints
+- Optional external providers
+
+Testing:
+- Frontend unit tests
+- Backend unit tests
+- API integration tests
+- End-to-end tests
+- Accessibility tests
+- Tenant isolation tests
+
+## 3. UX architecture
+
+Design UX for non-technical users.
+
+Create:
+
+- Information architecture
+- Main navigation
+- Project navigation
+- Role-specific dashboards
+- Guided onboarding
+- Central “Mijn belangrijkste acties” page
+- Simple, detailed and technical views
+- Global command or search interface
+- Help and explanation patterns
+- Empty states
+- Error states
+- Loading states
+- Approval flows
+- Automation controls
+- Undo and rollback flows
+
+Define the dashboard for:
+
+- Entrepreneur
+- Marketing employee
+- SEO specialist
+- Content editor
+- E-commerce manager
+- Agency owner
+- Client
+- Developer
+
+## 4. Design principles
+
+Use:
+
+- One primary action per screen
+- Plain Dutch language
+- Visible progress
+- Safe defaults
+- Explainable scores
+- Contextual help
+- Consistent priority labels
+- Consistent status labels
+- No unexplained acronyms
+- Minimal initial configuration
+- Advanced settings behind optional controls
+
+Do not create dense enterprise screens as the default experience.
+
+## 5. Data model
+
+Create a complete entity relationship design.
+
+For every entity define:
+
+- Purpose
+- Tenant ownership
+- Project ownership
+- Primary key
+- Important fields
+- Relationships
+- Indexes
+- Unique constraints
+- Retention implications
+- Audit requirements
+- Soft-delete behaviour
+
+Pay special attention to:
+
+- Tenant isolation
+- Time-series metrics
+- Page snapshots
+- AI runs
+- Report snapshots
+- Versioned content
+- CMS publication history
+- Scheduled jobs
+- Approval state
+- Agent runs
+- Rollback data
+
+## 6. Integration architecture
+
+Create a shared adapter contract for integrations.
+
+Required adapter categories:
+
+- CMS
+- E-commerce
+- Search performance
+- Analytics
+- Rank tracking
+- SERP data
+- Backlink data
+- Business profiles
+- Reviews
+- AI providers
+- Project management
+- Object storage
+- Email and webhook notifications
+
+Each adapter must support:
+
+- Connection test
+- Capability discovery
+- Authentication status
+- Sync status
+- Error reporting
+- Rate limit handling
+- Retry handling
+- Revocation
+- Secret masking
+- Tenant isolation
+
+## 7. Background jobs
+
+Define reliable jobs for:
+
+- Crawls
+- Rendering
+- Search Console sync
+- Analytics sync
+- Competitor checks
+- GEO tests
+- Content generation
+- Content analysis
+- Report generation
+- PDF generation
+- CMS publishing
+- Notifications
+- Scheduled reports
+- Review sync
+- Feed analysis
+- Log analysis
+- Forecasting
+- Deployment checks
+
+Jobs must support:
+
+- Idempotency
+- Progress
+- Cancellation
+- Retries
+- Dead-letter handling
+- Logs
+- Tenant context
+- User-visible status
+
+## 8. Security design
+
+Create a threat model for:
+
+- Tenant data leakage
+- Broken access control
+- SSRF during crawling
+- Malicious HTML
+- Credential theft
+- Prompt injection
+- Unsafe AI actions
+- File upload abuse
+- Webhook abuse
+- CMS publishing abuse
+- Report link exposure
+- Cross-site scripting
+- CSRF
+- SQL injection
+- Job poisoning
+- Internal network scanning
+
+Create architecture decision records for major security choices.
+
+## 9. Implementation plan
+
+Break the project into phases:
+
+Phase 1:
+- Foundation
+- Authentication
+- Multi-tenancy
+- RBAC
+- Projects
+- Brand profiles
+- Jobs
+- Audit logs
+- Basic dashboard
+- Dutch i18n
+
+Phase 2:
+- Crawling
+- Technical SEO
+- Content inventory
+- Page snapshots
+- Issues
+- Rendering
+
+Phase 3:
+- Keywords
+- Intent
+- Topic clusters
+- AI content studio
+- Quality analysis
+- Content decay
+- Content pruning
+
+Phase 4:
+- Internal links
+- Structured data
+- WordPress
+- WooCommerce
+- Programmatic SEO
+- Publishing and rollback
+
+Phase 5:
+- Search Console
+- Analytics
+- Monitoring
+- Alerts
+- Roadmaps
+- White-label reporting
+
+Phase 6:
+- GEO
+- AI visibility
+- Competitors
+- Trends
+- Digital PR
+
+Phase 7:
+- Local SEO
+- Google Business Profile
+- Reviews
+- Reputation
+
+Phase 8:
+- E-commerce SEO
+- Product feeds
+- Revenue prioritisation
+
+Phase 9:
+- CRO
+- Experiments
+- First-party analytics
+- Behaviour analysis
+- Forecasting
+- Budget planning
+
+Phase 10:
+- Client portal
+- Agency management
+- Benchmarking
+- Project management integrations
+
+Phase 11:
+- Copilot
+- Specialised agents
+- Controlled automation
+
+Phase 12:
+- Migrations
+- Deployment monitoring
+
+Phase 13:
+- Production hardening
+- Security audit
+- Performance
+- Accessibility
+- Documentation
+- Backup and restore
+
+For every phase define:
+
+- User stories
+- Technical tasks
+- Dependencies
+- Tests
+- Definition of done
+- Risks
+- Migration requirements
+- Demo scenario
+
+## 10. Deliverables
+
+Create or update:
+
+- ARCHITECTURE.md
+- UX_PRINCIPLES.md
+- DATA_MODEL.md
+- API_DESIGN.md
+- JOB_ARCHITECTURE.md
+- INTEGRATION_ARCHITECTURE.md
+- SECURITY.md
+- IMPLEMENTATION_PLAN.md
+- REQUIREMENTS_TRACEABILITY.md
+- IMPLEMENTATION_STATUS.md
+- docs/decisions/*.md
+
+Then create the initial monorepo scaffold.
+
+The scaffold must include:
+
+- Package management
+- Formatting
+- Linting
+- Type checking
+- Python dependency management
+- Docker Compose
+- PostgreSQL
+- Redis
+- Object storage
+- API health endpoint
+- Web health page
+- Worker health mechanism
+- Environment example
+- CI starter workflow
+- Basic tests
+
+Run all available checks and resolve failures.
+
+Commit the result if Git is available.

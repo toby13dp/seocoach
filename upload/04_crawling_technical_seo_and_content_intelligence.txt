@@ -1,0 +1,332 @@
+Continue from the existing repository and implement Phases 2 and 3.
+
+Read all project documentation before changing the architecture.
+
+Keep the application usable for non-technical Dutch users.
+
+## Part A: Safe crawler
+
+Implement a production-oriented crawler with:
+
+- Domain allowlists
+- robots.txt support
+- Crawl delay
+- Configurable rate limiting
+- Maximum page limits
+- Crawl depth limits
+- URL normalisation
+- Sitemap discovery
+- XML sitemap parsing
+- Redirect handling
+- Duplicate URL handling
+- HTML parsing
+- Canonical detection
+- Meta robots detection
+- Language detection
+- Internal and external link extraction
+- Image extraction
+- Structured data extraction
+- Main content extraction
+- Crawl progress
+- Cancellation
+- Retry handling
+- Crawl history
+- Page snapshots
+
+Protect against:
+
+- SSRF
+- Internal IP addresses
+- Localhost
+- Cloud metadata endpoints
+- Non-HTTP protocols
+- Redirects to private networks
+- Excessively large responses
+- Decompression bombs
+- Malicious HTML
+
+Add a Playwright rendering mode for selected pages.
+
+Do not render every page by default.
+
+## Part B: Content inventory
+
+Create a searchable page inventory with:
+
+- Filters
+- Sorting
+- Pagination
+- Bulk selection
+- Saved views
+- Export
+
+Store and show:
+
+- URL
+- Status
+- Title
+- Description
+- H1
+- Word count
+- Canonical
+- Indexability
+- Content type
+- Language
+- Publication date
+- Modification date
+- Internal links
+- External links
+- Images
+- Alt text
+- Structured data
+- Duplicate similarity
+- Crawl depth
+- Conversion elements
+
+Provide simple and technical page detail views.
+
+## Part C: Technical SEO rule engine
+
+Create an extensible rule engine.
+
+Implement rules for:
+
+- 4xx and 5xx pages
+- Redirect chains
+- Redirect loops
+- Missing canonical
+- Conflicting canonical
+- Canonical to error page
+- Noindex conflicts
+- robots.txt blocking
+- Sitemap conflicts
+- Missing title
+- Duplicate title
+- Weak or unclear title
+- Missing description
+- Duplicate description
+- Missing H1
+- Multiple conflicting H1 elements
+- Heading structure
+- Broken internal links
+- Broken external links
+- Orphan pages
+- Deep pages
+- Missing image alt text
+- Oversized images
+- Mixed content
+- HTTPS problems
+- Structured data parsing errors
+- Hreflang errors
+- Pagination issues
+- Thin content
+- Duplicate content
+- Near-duplicate content
+- Shadow content
+- Staging URLs
+- Parameter explosion
+- Faceted navigation risks
+- JavaScript rendering differences
+
+Every issue needs:
+
+- Dutch plain-language explanation
+- Technical details
+- Evidence
+- Severity
+- Priority
+- Impact
+- Effort
+- Affected URLs
+- Recommended action
+- Possible automatic fix
+- Confidence
+
+## Part D: Source versus rendered analysis
+
+Implement comparisons for:
+
+- Text content
+- Internal links
+- Canonical
+- Robots directives
+- Structured data
+- Headings
+- Navigation
+
+Highlight meaningful differences.
+
+## Part E: Keyword and intent data
+
+Implement:
+
+- Manual keyword entry
+- CSV import
+- Search query storage
+- Keyword grouping
+- Search intent classification
+- Funnel classification
+- Persona mapping
+- Product and service mapping
+- Location mapping
+- Seasonality fields
+
+AI classification must use provider-neutral structured output.
+
+Provide non-AI fallback rules.
+
+## Part F: Opportunity scoring
+
+Implement an explainable score.
+
+Store each score component separately.
+
+Allow administrators to configure weights.
+
+Show the calculation in Dutch.
+
+Never hide score factors in a black box.
+
+## Part G: Topic clusters
+
+Implement:
+
+- Topics
+- Clusters
+- Pillar pages
+- Supporting pages
+- Relations
+- Suggested URLs
+- Search intent
+- Funnel stage
+- Conversion goal
+- Priority
+- Impact
+- Effort
+
+Create:
+
+- Visual graph
+- Accessible list view
+- Drag-and-drop editing
+- Relationship editing
+
+## Part H: AI provider layer
+
+Implement:
+
+- Ollama adapter
+- Generic OpenAI-compatible adapter
+- Provider interface
+- Model discovery where possible
+- Connection test
+- Structured output
+- Retry
+- Timeout
+- Token tracking
+- Cost tracking
+- Local-provider zero-cost handling
+- Provider fallback
+- Privacy settings
+- Audit log
+- Prompt template versions
+
+Do not require an external paid provider.
+
+## Part I: Content briefs and content studio foundation
+
+Implement:
+
+- Content opportunities
+- Content briefs
+- Outline editor
+- Source selection
+- Brand profile injection
+- Internal page selection
+- Prompt versioning
+- Draft generation
+- Content versions
+- Diff view
+- Approval states
+- Claim markers
+- Quality check architecture
+
+Support Dutch content generation.
+
+## Part J: Content quality, decay and pruning
+
+Implement quality analysis for:
+
+- Intent
+- Coverage
+- Readability
+- Originality
+- Brand consistency
+- E-E-A-T signals
+- Internal links
+- Entities
+- Conversion strength
+- GEO readiness
+- Publication readiness
+
+Implement decay detection architecture using available historical data.
+
+When historical data is unavailable, clearly state that no trend can yet be calculated.
+
+Implement pruning recommendations:
+
+- Keep
+- Improve
+- Merge
+- Redirect
+- Noindex
+- Remove
+
+Require risk analysis before destructive recommendations.
+
+## Tests
+
+Add:
+
+- Crawler unit tests
+- robots.txt tests
+- SSRF tests
+- Sitemap tests
+- Parser tests
+- Rule engine tests
+- Snapshot tests
+- Render comparison tests
+- Keyword import tests
+- Intent classification tests
+- Opportunity score tests
+- Topic cluster tests
+- AI adapter tests
+- Content version tests
+- Tenant isolation tests
+- End-to-end crawl and audit test
+
+## Completion requirements
+
+A user must be able to:
+
+- Start a crawl
+- Monitor progress
+- View crawled pages
+- Understand technical issues
+- Open technical details optionally
+- Import keywords
+- Classify search intent
+- View explainable opportunities
+- Build a topic cluster
+- Create a Dutch content brief
+- Generate a draft using Ollama
+- Review quality feedback
+- View content versions
+
+Update all relevant documentation and traceability files.
+
+Run all tests and quality checks.
+
+Resolve failures before completing the phase.
+
+Commit if Git is available.

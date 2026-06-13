@@ -1,0 +1,2025 @@
+You are a senior product architect, UX designer, full-stack engineer, AI engineer, SEO specialist, data engineer, security engineer and DevOps engineer.
+
+We are building a production-ready, AI-driven SEO automation platform for entrepreneurs, marketers, e-commerce businesses and SEO agencies.
+
+The platform combines:
+
+- SEO research
+- Long-tail keyword discovery
+- Search intent analysis
+- Technical SEO
+- Content strategy
+- AI content generation
+- Content optimisation
+- Topic clusters
+- Internal linking
+- WordPress publishing
+- WooCommerce publishing
+- Programmatic SEO
+- Local SEO
+- E-commerce SEO
+- GEO and AI search visibility
+- Competitor intelligence
+- Digital PR and authority analysis
+- Review and reputation management
+- Conversion optimisation
+- Analytics
+- Monitoring and alerts
+- SEO forecasting
+- Budget planning
+- White-label reporting
+- Client portals
+- Agency operations
+- AI copilots
+- Specialised AI agents
+- Website migrations
+- Deployment regression monitoring
+
+The platform must be technically advanced but simple and non-technical for end users.
+
+Create and maintain the following documents:
+
+- PROJECT_CHARTER.md
+- PRODUCT_REQUIREMENTS.md
+- UX_PRINCIPLES.md
+- REQUIREMENTS_TRACEABILITY.md
+- IMPLEMENTATION_STATUS.md
+- ARCHITECTURE.md
+- SECURITY.md
+- docs/decisions/
+- docs/integrations/
+- docs/user-guide/
+- docs/admin-guide/
+
+Do not silently remove, simplify or ignore requirements.
+
+When a requirement cannot yet be implemented, record it in IMPLEMENTATION_STATUS.md with:
+
+- Current status
+- Reason
+- Dependencies
+- Planned implementation phase
+- Temporary fallback
+- User-visible limitation
+
+## 1. Language requirements
+
+The technical specification, source code, function names, class names, API routes, database models, code comments and developer documentation must be written in English.
+
+All user-facing functionality must be available in Dutch by default.
+
+Support:
+
+- nl-NL
+- nl-BE
+
+User-facing Dutch content includes:
+
+- Navigation
+- Onboarding
+- Dashboards
+- Buttons
+- Forms
+- Notifications
+- Alerts
+- Error messages
+- Reports
+- Help text
+- SEO recommendations
+- Generated SEO content
+- Client portal content
+- AI copilot responses
+
+Build internationalisation into the application from the beginning.
+
+Do not hardcode Dutch interface strings directly inside components.
+
+## 2. Usability is a hard product requirement
+
+The application must remain understandable to people without technical SEO knowledge.
+
+Every analysis should answer:
+
+1. What happened?
+2. Why does it matter?
+3. What should the user do?
+4. Can the platform handle it automatically?
+5. Is approval required?
+
+Do not show unexplained scores.
+
+Every score must include:
+
+- Meaning
+- Contributing factors
+- Evidence
+- Confidence
+- Recommended action
+
+Use progressive disclosure with three levels:
+
+1. Simple
+   - Short explanation
+   - Business impact
+   - Recommended action
+
+2. Detailed
+   - Metrics
+   - Affected pages
+   - Trends
+   - Supporting evidence
+
+3. Technical
+   - Raw headers
+   - HTML
+   - API responses
+   - Logs
+   - Diagnostic details
+
+The simple view must be the default.
+
+Provide guided workflows for:
+
+- Adding a website
+- Connecting a CMS
+- Connecting analytics
+- Running the first audit
+- Creating content
+- Publishing content
+- Adding competitors
+- Running GEO visibility tests
+- Creating reports
+- Configuring automation
+- Migrating a website
+
+Use safe default settings.
+
+Advanced configuration must remain optional.
+
+## 3. Automation levels
+
+Support five automation levels:
+
+1. Analyse only
+2. Generate recommendations
+3. Prepare drafts
+4. Execute after approval
+5. Automatically execute within explicit rules
+
+New projects must default to level 2 or 3.
+
+The following actions must never run automatically unless explicitly enabled:
+
+- Publishing content
+- Deleting content
+- Creating redirects
+- Changing canonicals
+- Changing robots directives
+- Changing structured data
+- Modifying product information
+- Responding publicly to reviews
+- Sending outreach messages
+- Applying migration mappings
+- Blocking deployments
+
+All automated changes require:
+
+- Preview
+- Explanation
+- Audit trail
+- Previous value
+- New value
+- Rollback where technically possible
+
+## 4. Free and self-hosted operation
+
+The core platform must work without mandatory paid services.
+
+Use open-source and self-hosted components where practical.
+
+Preferred stack:
+
+Frontend:
+- Next.js
+- React
+- TypeScript
+- Accessible component architecture
+- Responsive design
+- Light and dark appearance
+- WCAG 2.1 AA as a minimum target
+
+Backend:
+- Python
+- FastAPI
+- Pydantic
+- SQLAlchemy
+- Alembic
+- PostgreSQL
+- Redis
+- A reliable background job system
+
+AI:
+- Ollama
+- OpenAI-compatible local inference endpoints
+- Provider abstraction for optional commercial providers
+
+Infrastructure:
+- Docker Compose
+- MinIO or local object storage
+- Reverse proxy configuration
+- Health checks
+- Development and production profiles
+
+Optional providers may include:
+
+- OpenAI
+- Google Gemini
+- Anthropic
+- Mistral
+- Google Search Console
+- Google Analytics
+- Google Business Profile
+- PageSpeed Insights
+- Rank tracking services
+- Backlink providers
+- Heatmap services
+- Project management platforms
+
+When an external provider is unavailable:
+
+- Do not crash
+- Explain the missing capability
+- Offer CSV import or manual entry where possible
+- Never fabricate missing data
+
+## 5. Safety and ethical data collection
+
+Do not implement unauthorised scraping of search engines, AI platforms or protected services.
+
+For search rankings and SERP data, use:
+
+- Official APIs
+- Licensed provider APIs
+- User-provided exports
+- CSV imports
+- Manual records
+
+For AI visibility, clearly distinguish between:
+
+- GEO readiness
+- Externally measured AI visibility
+- User-provided AI responses
+- API-based AI visibility tests
+- Local simulations
+
+A local simulation must never be presented as evidence that a brand is actually visible in ChatGPT, Gemini or another external AI platform.
+
+Always label simulations clearly.
+
+Public website crawling must respect:
+
+- robots.txt
+- Rate limits
+- Crawl delays
+- Domain restrictions
+- Legal and contractual restrictions
+- User-configured allowlists
+
+## 6. Multi-tenant platform
+
+Support:
+
+- Users
+- Organisations
+- Agencies
+- Clients
+- Multiple projects
+- Multiple websites
+- Multiple locations
+- Multiple countries
+- Multiple languages
+- Teams
+- Roles
+- Permissions
+- White-label profiles
+
+Required roles:
+
+- Platform administrator
+- Organisation owner
+- Agency owner
+- SEO manager
+- Content manager
+- Editor
+- Developer
+- Client
+- Read-only user
+
+Implement strict tenant isolation.
+
+Users must never gain access to another tenant’s:
+
+- Projects
+- Integrations
+- Credentials
+- Reports
+- Content
+- Analytics
+- AI data
+- Client information
+
+## 7. Onboarding
+
+Create a simple onboarding wizard.
+
+Step 1: Company profile
+- Company name
+- Website
+- Business type
+- Country
+- Language
+- Products
+- Services
+- Target audiences
+- Important regions
+
+Step 2: Goals
+- More website visitors
+- More enquiries
+- More sales
+- Better local visibility
+- Promote a new service
+- Improve AI search visibility
+- Beat competitors
+- Resolve technical SEO issues
+
+Step 3: Integrations
+- WordPress
+- WooCommerce
+- Search Console
+- Analytics
+- Google Business Profile
+- First-party analytics
+- CSV imports
+
+Step 4: Initial scan
+- Website crawl
+- Technical audit
+- Content inventory
+- Internal link analysis
+- Initial keyword classification
+- GEO readiness assessment
+- Competitor scan
+
+Step 5: Initial recommendations
+- Overall health
+- Three largest opportunities
+- Three most important issues
+- Recommended 30-day plan
+- Suggested safe automations
+
+## 8. Brand profile
+
+Each project must have a BrandProfile containing:
+
+- Brand name
+- Brand description
+- Products
+- Services
+- Target audiences
+- Regions
+- Tone of voice
+- Formal or informal address
+- Preferred terminology
+- Prohibited terminology
+- Allowed claims
+- Prohibited claims
+- Proof points
+- Certifications
+- Contact details
+- Conversion goals
+- Editorial rules
+- Content guidelines
+- Legal disclaimers
+- nl-NL or nl-BE preference
+
+## 9. Automatic SEO strategy
+
+Generate:
+
+- 30-day strategy
+- 90-day strategy
+- Annual roadmap
+- Quick wins
+- Strategic initiatives
+- Content priorities
+- Technical priorities
+- GEO priorities
+- Local SEO priorities
+- E-commerce priorities
+- Expected effort
+- Business impact
+- Dependencies
+
+Base the strategy on:
+
+- Business goals
+- Products
+- Services
+- Audiences
+- Regions
+- Search performance
+- Website quality
+- Competitors
+- Available capacity
+- Revenue potential
+- Margins when provided
+- Seasonality
+- Historical results
+
+## 10. Long-tail SEO and search intent
+
+Accept data from:
+
+- Search Console
+- Existing website content
+- Manual keywords
+- CSV files
+- Internal site search
+- Customer questions
+- Support questions
+- Reviews
+- WooCommerce products
+- WooCommerce categories
+- AI-generated suggestions
+- Licensed SERP providers
+
+Classify queries by:
+
+- Informational intent
+- Commercial intent
+- Transactional intent
+- Navigational intent
+- Local intent
+- Comparison intent
+- Problem-oriented intent
+- Solution-oriented intent
+- Funnel stage
+- Persona
+- Product
+- Service
+- Location
+- Season
+- Question type
+
+Create an explainable Opportunity Score using:
+
+- Business relevance
+- Impressions
+- Current position
+- CTR potential
+- Conversion potential
+- Commercial value
+- Existing content quality
+- Competitive difficulty
+- Effort
+- Topical authority gap
+- Strategic priority
+
+## 11. Customer journeys and personas
+
+Support customer journey stages:
+
+- Problem recognition
+- Research
+- Comparison
+- Supplier selection
+- Purchase or enquiry
+- Product usage
+- Support
+- Repeat purchase
+
+Map:
+
+- Questions
+- Keywords
+- Pages
+- Objections
+- Conversion goals
+- Trust signals
+- Missing content
+- Existing content
+
+Avoid collecting unnecessary sensitive personal attributes.
+
+## 12. Crawling and content inventory
+
+Collect per page:
+
+- URL
+- HTTP status
+- Redirects
+- Title
+- Meta description
+- H1
+- Headings
+- Main content
+- Word count
+- Canonical
+- Robots directives
+- Indexability
+- Structured data
+- Internal links
+- External links
+- Images
+- Alt text
+- Content type
+- Search intent
+- Language
+- Publication date
+- Modification date
+- Conversion elements
+- Duplicate score
+- Similarity cluster
+- Search Console metrics
+- Analytics metrics
+- Conversion metrics
+- Revenue metrics
+
+Detect:
+
+- Thin content
+- Duplicate content
+- Near-duplicate content
+- Shadow content
+- Orphan pages
+- Outdated content
+- Keyword cannibalisation
+- Missing topics
+- Missing conversion actions
+- Weak internal linking
+- High-impression low-CTR pages
+- Declining pages
+- Merge opportunities
+- Redirect opportunities
+- Removal opportunities
+
+## 13. Technical SEO
+
+Analyse:
+
+- HTTP status codes
+- Redirect chains
+- Redirect loops
+- Canonicals
+- robots.txt
+- Meta robots
+- XML sitemaps
+- Indexability
+- Titles
+- Meta descriptions
+- Heading structure
+- Duplicate content
+- Thin content
+- Broken links
+- Orphan pages
+- Crawl depth
+- Pagination
+- Hreflang
+- Structured data
+- Open Graph
+- Image alt text
+- Large images
+- Mobile usability
+- Core Web Vitals
+- JavaScript dependency
+- URL structure
+- Query parameters
+- Faceted navigation
+- Staging pages
+- Accidental noindex
+- Sitemap conflicts
+- Canonical conflicts
+- HTTPS
+- Mixed content
+- Page speed
+- Rendering issues
+
+Each issue must include:
+
+- Plain-language title
+- Explanation
+- Business impact
+- SEO impact
+- Severity
+- Priority
+- Evidence
+- Affected pages
+- Recommended solution
+- Estimated effort
+- Automatic fix availability
+- Technical details
+
+## 14. JavaScript SEO
+
+Compare source HTML with rendered HTML.
+
+Detect:
+
+- Missing rendered content
+- Missing source links
+- Client-side-only navigation
+- JavaScript redirects
+- Hydration issues
+- Lazy-loaded content
+- Canonicals created after rendering
+- Structured data created after rendering
+- Non-crawlable navigation
+- Content requiring user interaction
+
+## 15. Server log analysis
+
+Support uploaded or connected server logs.
+
+Analyse:
+
+- Search bot activity
+- Crawl frequency
+- Crawl waste
+- Frequently crawled error URLs
+- Important pages rarely crawled
+- Parameter crawling
+- Faceted URLs
+- Status codes seen by bots
+- Differences between sitemap URLs and crawler behaviour
+
+## 16. Topic clusters and site structure
+
+Support:
+
+- Pillar pages
+- Category hubs
+- Service hubs
+- Product hubs
+- Location hubs
+- Question-driven articles
+- Comparison pages
+- Glossary pages
+- How-to pages
+- FAQ content
+- AI answer pages
+- Knowledge bases
+- Integration pages
+- Industry pages
+
+For each proposed page include:
+
+- Title
+- URL
+- Audience
+- Search intent
+- Primary topic
+- Secondary topics
+- Funnel stage
+- Conversion goal
+- Required internal links
+- Priority
+- Impact
+- Effort
+- Status
+
+Provide:
+
+- Visual cluster map
+- Drag-and-drop editing
+- Simple list view
+
+Detect:
+
+- Missing hubs
+- Excessive click depth
+- Weakly linked pages
+- Conflicting pages
+- Similar location pages
+- Clusters without a commercial path
+
+## 17. Programmatic SEO
+
+Support templates such as:
+
+- Service plus location
+- Product plus use case
+- Product plus audience
+- Product plus feature
+- Category plus feature
+- Industry plus service
+- Integration plus platform
+- Comparison pages
+- Glossary templates
+
+Require unique user value.
+
+Implement:
+
+- Uniqueness validation
+- Minimum information threshold
+- Duplicate detection
+- Cannibalisation detection
+- Variable validation
+- Sample preview
+- Bulk preview
+- Publication limits
+- Approval workflow
+- Rollback
+- Automatic rejection of low-value pages
+
+Do not create doorway pages.
+
+## 18. AI content studio
+
+Support:
+
+- Articles
+- AI answer posts
+- Service pages
+- Location pages
+- Category pages
+- Product descriptions
+- Comparison pages
+- FAQ sections
+- Glossary pages
+- How-to content
+- Pillar pages
+- Landing pages
+- Meta titles
+- Meta descriptions
+- CTAs
+- Introductions
+- Structured-data content
+- Content briefs
+- Review responses
+- Google Business Profile posts
+- Digital PR briefs
+- Outreach drafts
+
+Workflow:
+
+1. Choose an opportunity
+2. Choose a content type
+3. Generate a brief
+4. Review the outline
+5. Generate a draft
+6. Review facts and quality
+7. Apply improvements
+8. View publication preview
+9. Save as draft, schedule or publish after approval
+
+Always use:
+
+- BrandProfile
+- Target audience
+- Tone of voice
+- nl-NL or nl-BE
+- Existing content
+- Internal sources
+- Conversion goal
+- Prohibited claims
+- Search intent
+- Unique business information
+
+Mark unverified claims.
+
+## 19. Content quality
+
+Score separately:
+
+- Search intent match
+- Information coverage
+- Readability
+- Originality
+- Brand consistency
+- Experience
+- Expertise
+- Authority
+- Trust
+- Internal linking
+- Entity coverage
+- Conversion strength
+- GEO readiness
+- Publication readiness
+
+Do not reward length by itself.
+
+Provide actionable feedback.
+
+## 20. Content decay and pruning
+
+Detect content decline through:
+
+- Ranking drops
+- Click drops
+- Impression drops
+- CTR drops
+- Conversion drops
+- Old dates
+- Outdated facts
+- New competitors
+- Intent shifts
+- Broken sources
+- Missing subtopics
+
+Create:
+
+- Update brief
+- Outdated passage list
+- New section suggestions
+- Revised draft
+- Before-and-after comparison
+
+For pruning, recommend:
+
+- Keep
+- Improve
+- Merge
+- Redirect
+- Noindex
+- Remove
+
+Use:
+
+- Traffic
+- Rankings
+- Links
+- Conversions
+- Search intent
+- Quality
+- Overlap
+- Historical value
+- Internal links
+- Removal risk
+
+## 21. E-E-A-T and trust
+
+Analyse:
+
+- Author profiles
+- Author expertise
+- Company information
+- Contact information
+- About page
+- Sources
+- Certifications
+- Experience evidence
+- Case studies
+- Reviews
+- Publication dates
+- Update dates
+- Editorial policy
+- Privacy policy
+- Returns policy
+- Terms
+- Complaint procedure
+- Disclaimers
+
+Never invent expertise, reviews or certifications.
+
+## 22. Internal linking
+
+Generate suggestions using:
+
+- Semantic similarity
+- Topic clusters
+- Page authority signals
+- Orphan pages
+- Weakly linked pages
+- Broken links
+- Existing anchors
+- Cannibalisation risks
+
+Each suggestion includes:
+
+- Source page
+- Target page
+- Anchor text
+- Suggested location
+- Reason
+- Expected impact
+- Confidence
+- Conflicts
+
+Support:
+
+- Preview
+- Diff
+- Bulk approval
+- WordPress publishing
+- Rollback
+
+## 23. Structured data
+
+Support:
+
+- Organization
+- LocalBusiness
+- Product
+- Offer
+- Review
+- BreadcrumbList
+- Article
+- FAQPage
+- HowTo
+- Person
+- Event
+- JobPosting
+- Service
+- WebSite
+- WebPage
+
+Provide:
+
+- Visual form
+- Validation
+- Required-field checks
+- Content consistency checks
+- JSON-LD generation
+- CMS publishing
+
+Never fabricate ratings, reviews, prices or availability.
+
+## 24. SERP analysis
+
+Use only licensed APIs, official sources or imports.
+
+Analyse:
+
+- Content types
+- Search intent
+- SERP features
+- Local results
+- Shopping results
+- Videos
+- Forums
+- Comparison sites
+- Related questions
+- Competitor domains
+- Heading patterns
+- Topic coverage
+- Intent changes
+
+Never copy competitor content.
+
+## 25. WordPress and WooCommerce
+
+WordPress:
+
+- Retrieve pages and posts
+- Retrieve categories and tags
+- Create drafts
+- Update drafts
+- Preview
+- Schedule
+- Publish
+- Set slug
+- Set excerpt
+- Set author
+- Set featured image
+- Set SEO metadata
+- Support SEO plugin adapters
+- Record publication versions
+- Support rollback metadata
+
+WooCommerce:
+
+- Products
+- Categories
+- Variations
+- Product descriptions
+- Short descriptions
+- Category content
+- Inventory status
+- Out-of-stock products
+- Seasonal products
+- Product metadata
+- Reviews
+- Revenue signals
+- Margin data when supplied
+- Cross-sell content
+- Internal links
+
+Use official REST APIs.
+
+## 26. E-commerce SEO and product feeds
+
+Analyse:
+
+- Product titles
+- Product descriptions
+- Category pages
+- Product variations
+- Filters
+- Faceted navigation
+- Canonicals
+- Out-of-stock handling
+- Seasonal handling
+- Product schema
+- Internal links
+- Reviews
+- Images
+- Revenue by landing page
+- Conversion by category
+- SEO opportunity by margin
+
+Support feed analysis for:
+
+- Google Merchant Center
+- Meta catalogues
+- Comparison sites
+- Marketplaces
+- Affiliate feeds
+
+Validate:
+
+- Titles
+- Descriptions
+- Product types
+- Categories
+- GTIN
+- Inventory
+- Prices
+- Images
+- Rejections
+- Missing attributes
+- Website inconsistencies
+
+## 27. International SEO
+
+Support:
+
+- nl-NL
+- nl-BE
+- Extensible languages
+- Hreflang
+- Country structures
+- Language structures
+- Local search intent
+- Local keyword mapping
+- Translation workflows
+- Terminology lists
+- Translation memory
+- Local tone of voice
+- Cross-language duplication checks
+- Local CMS publishing
+- International reporting
+
+Do not assume literal translation matches local search intent.
+
+## 28. Local SEO
+
+Support:
+
+- Multiple locations
+- Location pages
+- Local keywords
+- Region clusters
+- NAP consistency
+- Opening hours
+- Local structured data
+- Local competitors
+- Review analysis
+- Local performance
+- Location comparisons
+- Local content planning
+- Local rank imports
+- Google Business Profile integration
+
+## 29. Google Business Profile
+
+Use official integrations.
+
+Where available support:
+
+- Business information checks
+- Category analysis
+- Opening hours
+- Post drafting
+- Photo planning
+- Review import
+- Review response drafting
+- Performance data
+- Location comparison
+- Local search questions
+
+Public responses require approval by default.
+
+## 30. Reputation management
+
+Accept reviews from:
+
+- Google
+- Trustpilot through permitted integrations or import
+- WooCommerce
+- The user’s website
+- CSV
+- Surveys
+- Support data
+
+Analyse:
+
+- Sentiment
+- Compliments
+- Complaints
+- Product problems
+- Service problems
+- Repeated themes
+- Competitor comparisons
+- FAQ opportunities
+- Content opportunities
+- Trust signals
+
+## 31. GEO and AI visibility
+
+Separate two products:
+
+A. GEO readiness
+
+Analyse:
+
+- Direct answers
+- Concise answer blocks
+- Definitions
+- Entities
+- Semantic coverage
+- Organisation information
+- Author information
+- Sources
+- Dates
+- Structured data
+- FAQs
+- Expertise
+- Citable facts
+- Unique information
+- Crawlability
+- Indexability
+- Brand consistency
+
+B. Measured AI visibility
+
+Support:
+
+- Manual input
+- CSV
+- Permitted APIs
+- Uploaded responses
+- Screenshots
+- Local simulations
+
+Store:
+
+- Platform
+- Model
+- Date
+- Prompt
+- Country
+- Language
+- Response
+- Mentioned brands
+- Mentioned URLs
+- Citations
+- Order
+- Sentiment
+- Correctness
+- Competitors
+- Method
+- Evidence
+- Confidence
+
+Measure:
+
+- Share of AI Voice
+- Brand mentions
+- Source mentions
+- Position in answer
+- Competitor mentions
+- Sentiment
+- Accuracy
+- Question coverage
+- Funnel-stage coverage
+- Country and language coverage
+
+Create AI prompt discovery and reusable prompt clusters.
+
+## 32. Competitor intelligence
+
+Track public changes:
+
+- New pages
+- Removed pages
+- Titles
+- Headings
+- Topics
+- Services
+- Categories
+- Locations
+- Structured data
+- Internal links
+- Publishing frequency
+- Public prices
+- Positioning
+
+Create a movement feed containing:
+
+- Date
+- Competitor
+- Change
+- URL
+- Summary
+- Potential impact
+- Recommended response
+- Evidence
+
+Never invent traffic or revenue.
+
+## 33. Digital PR and authority
+
+Support through providers and imports:
+
+- Backlinks
+- New links
+- Lost links
+- Link quality
+- Link gaps
+- Unlinked brand mentions
+- Competitor links
+- Outreach lists
+- Publications
+- Journalists
+- Campaigns
+- PR ideas
+- Press briefings
+- Outreach drafts
+- Campaign tracking
+
+Do not automate spam outreach.
+
+## 34. Trend detection
+
+Detect trends from:
+
+- Search Console queries
+- Internal search
+- Industry sources
+- Regulation changes
+- Seasonality
+- Competitor activity
+- New product terminology
+- Reviews
+- AI prompt changes
+
+For each trend provide:
+
+- Summary
+- Relevance
+- Urgency
+- Content opportunity
+- Recommended date
+- Expected lifespan
+
+## 35. Analytics and monitoring
+
+Monitor:
+
+- Clicks
+- Impressions
+- CTR
+- Rankings
+- Organic sessions
+- Landing pages
+- Leads
+- Conversions
+- Revenue
+- WooCommerce results
+- Technical issues
+- Publications
+- Content updates
+- Competitor changes
+- GEO readiness
+- AI visibility
+- Reviews
+- Local performance
+
+Alerts include:
+
+- Ranking drop
+- Click drop
+- Impression drop
+- CTR drop
+- Conversion drop
+- Revenue drop
+- Indexing issue
+- New 404
+- Unexpected noindex
+- Integration failure
+- Publishing failure
+- Lost AI mention
+- Negative review trend
+- Content decay
+- Competitor change
+- Deployment regression
+
+Reduce alert fatigue through:
+
+- Thresholds
+- Grouping
+- Snooze
+- Acknowledgement
+- Minimum data volumes
+- Severity levels
+- Digest summaries
+
+## 36. First-party analytics and behaviour
+
+Provide optional privacy-friendly analytics for:
+
+- Page views
+- Sessions
+- Sources
+- Campaigns
+- Events
+- Conversions
+- Funnels
+- Revenue
+- Server-side events
+- Cookieless basic measurement
+- Consent state
+
+Support behaviour imports or integrations for:
+
+- Scroll depth
+- Clicks
+- Rage clicks
+- Dead clicks
+- Form abandonment
+- Mobile behaviour
+- Desktop behaviour
+- Engagement
+
+Avoid storing unnecessary personal information.
+
+## 37. CRO and experiments
+
+Analyse:
+
+- CTAs
+- Forms
+- Friction
+- Trust elements
+- Value proposition
+- Price communication
+- Mobile UX
+- Funnel drop-off
+- Landing pages
+- Product pages
+- Checkout indicators
+- Leads
+- Revenue
+
+Generate hypotheses for:
+
+- Headlines
+- CTAs
+- Forms
+- Introductions
+- Product benefits
+- Social proof
+- Trust elements
+- Page structure
+
+Support experiments for:
+
+- Titles
+- Meta descriptions
+- H1
+- Content
+- Internal links
+- Structured data
+- CTAs
+- Forms
+- Templates
+- Product copy
+
+Track:
+
+- Hypothesis
+- Test group
+- Control group
+- KPI
+- Dates
+- Expected result
+- Measured result
+- Confidence
+- Conclusion
+- Recommended action
+
+Do not present correlation as proven causation.
+
+## 38. CTR optimisation
+
+Find high-impression, low-CTR pages.
+
+Generate title and description variants using:
+
+- Search intent
+- Brand
+- Page content
+- Audience
+- Main benefit
+- Existing performance
+
+Monitor changes and provide rollback.
+
+## 39. Forecasting and budget planning
+
+Forecast:
+
+- Traffic
+- Clicks
+- Leads
+- Conversions
+- Revenue
+- CTR improvements
+- Ranking improvements
+- Content growth
+- Production capacity
+- Investment needs
+
+Provide:
+
+- Conservative scenario
+- Realistic scenario
+- Ambitious scenario
+- Assumptions
+- Data sources
+- Uncertainty
+- Confidence
+- Value range
+
+Never present forecasts as guarantees.
+
+Create a budget planner for:
+
+- Technical SEO
+- Content
+- Content updates
+- Link building
+- Digital PR
+- CRO
+- Local SEO
+- GEO
+- Monitoring
+- Reporting
+- New pages
+
+## 40. Roadmap and collaboration
+
+Provide:
+
+- Today
+- This week
+- This month
+- Next 90 days
+- Later
+- Quick wins
+- Strategic projects
+- Technical blockers
+- Content opportunities
+- Conversion opportunities
+
+Views:
+
+- Kanban
+- Calendar
+- Table
+- Timeline
+
+Content workflow statuses:
+
+- Idea
+- Research
+- Brief
+- Draft
+- SEO review
+- Editorial review
+- Legal review
+- Client review
+- Approved
+- Scheduled
+- Published
+- Update required
+
+Support:
+
+- Comments
+- Mentions
+- Assignments
+- Deadlines
+- Approvals
+- Versions
+- Capacity planning
+- Attachments
+- Notifications
+
+## 41. White-label reporting
+
+This is a core product, not a minor export feature.
+
+Support branding:
+
+- Logo
+- Company name
+- Colours
+- Fonts
+- Contact details
+- Footer
+- Introduction
+- Closing text
+- Sender identity
+- Custom domain architecture
+- Custom templates
+- Removal of platform branding
+
+Report types:
+
+- Monthly
+- Quarterly
+- Technical audit
+- Content
+- Keywords
+- Competitors
+- Local SEO
+- GEO and AI visibility
+- WooCommerce
+- CRO
+- Revenue
+- Migration
+- Executive summary
+- Holistic SEO
+- Custom report
+
+Report builder:
+
+- Drag-and-drop sections
+- Reusable templates
+- Charts
+- KPI cards
+- Tables
+- Text
+- Recommendations
+- Roadmaps
+- Comments
+- Preview
+- Versions
+
+Export and sharing:
+
+- HTML
+- PDF
+- CSV
+- Secure link
+- Password
+- Expiry date
+- Client comments
+- Archive
+- Scheduling
+- Approval
+- Audit log
+
+AI-generated summaries may:
+
+- Summarise trends
+- Identify changes
+- Suggest possible explanations
+- Recommend actions
+
+AI-generated summaries may not:
+
+- Invent figures
+- Present uncertain causes as facts
+- Fill missing data
+- Guarantee growth
+
+## 42. Client portal and agency operations
+
+Client portal:
+
+- Reports
+- Results
+- Roadmap
+- Content approval
+- Comments
+- Task approval
+- Documents
+- AI draft review
+- Technical action approval
+- Meeting notes
+
+Agency operations:
+
+- Multiple clients
+- Contract limits
+- Deliverables
+- Time tracking
+- Monthly work
+- Client health
+- Team capacity
+- Assignments
+- Profitability
+- Recurring tasks
+- Approval workflows
+- Subscription architecture
+- Billing adapters
+- Internal notes
+- SLAs
+
+Do not expose internal margins or private notes to clients.
+
+## 43. Benchmarking
+
+Allow benchmarking within an organisation for:
+
+- CTR
+- Technical health
+- Publishing frequency
+- Content growth
+- Conversion rate
+- Issue resolution time
+- GEO readiness
+- AI visibility
+- Organic growth
+- Publication speed
+
+Cross-client benchmarking requires:
+
+- Anonymisation
+- Permission
+- Removal of sensitive details
+
+## 44. Dutch AI copilot
+
+Create a project-aware Dutch copilot.
+
+It should answer questions such as:
+
+- Welke pagina’s moet ik eerst verbeteren?
+- Waarom zijn mijn bezoekers gedaald?
+- Welke content ontbreekt?
+- Welke pagina’s concurreren met elkaar?
+- Wat heeft mijn concurrent veranderd?
+- Welke technische problemen zijn het belangrijkst?
+- Maak een briefing voor deze zoekterm.
+- Welke acties leveren waarschijnlijk de meeste omzet op?
+- Vat deze maand samen voor mijn klant.
+- Welke vestiging heeft aandacht nodig?
+- Waar ontbreekt mijn merk in AI-antwoorden?
+
+The copilot must:
+
+- Ground answers in project data
+- Cite internal evidence
+- Link to pages and reports
+- State uncertainty
+- Never invent metrics
+- Prepare actions
+- Require approval for risky actions
+
+## 45. Specialised AI agents
+
+Create:
+
+- Strategy Agent
+- Technical SEO Agent
+- Content Research Agent
+- Content Writer Agent
+- Content Quality Agent
+- Internal Linking Agent
+- Local SEO Agent
+- E-commerce Agent
+- GEO Agent
+- Competitor Agent
+- CRO Agent
+- Reporting Agent
+- Publishing Agent
+- Migration Agent
+- Quality Assurance Agent
+
+Every agent run records:
+
+- Objective
+- Inputs
+- Data sources
+- Proposed action
+- Expected impact
+- Risk
+- Approval status
+- Result
+- Audit log
+
+## 46. Change detection and rollback
+
+Track changes to:
+
+- Titles
+- Meta descriptions
+- Headings
+- Content
+- Canonicals
+- Robots directives
+- Structured data
+- Internal links
+- Templates
+- Products
+- Redirects
+
+Show:
+
+- Previous value
+- New value
+- Date
+- User or system
+- Origin
+- Potential impact
+
+## 47. Website migrations
+
+Support:
+
+- Old URL inventory
+- New URL inventory
+- Redirect mapping
+- Metadata transfer
+- Content mapping
+- Internal link checks
+- Staging crawl
+- Template comparison
+- Pre-launch checklist
+- Go-live checks
+- 404 monitoring
+- Redirect validation
+- Ranking monitoring
+- Traffic monitoring
+- Post-migration report
+
+## 48. Deployment monitoring
+
+Support optional integration with:
+
+- GitHub
+- GitLab
+- CI/CD tools
+- Webhooks
+
+After deployment check:
+
+- robots.txt
+- Canonicals
+- Titles
+- Meta robots
+- Sitemaps
+- Status codes
+- Structured data
+- Internal links
+- Rendering
+- Performance
+- Critical pages
+
+## 49. Project management integrations
+
+Create adapter interfaces for:
+
+- Jira
+- Trello
+- Asana
+- ClickUp
+- Monday
+- Linear
+- GitHub Issues
+- Webhooks
+
+Convert SEO issues into tasks containing:
+
+- Title
+- Plain-language explanation
+- Technical instructions
+- Priority
+- URLs
+- Evidence
+- Deadline
+- Owner
+- Status
+
+## 50. Security and privacy
+
+Implement:
+
+- Secure authentication
+- Strong password hashing
+- Tenant isolation
+- Role-based access control
+- CSRF protection where applicable
+- Rate limiting
+- Validation
+- Output escaping
+- Secret encryption
+- Audit logging
+- Secure uploads
+- MIME validation
+- SSRF protection
+- Private network protection
+- Crawl allowlists
+- Secret masking
+- Backups
+- Retention settings
+- Data export
+- Account deletion
+- Project deletion
+- Privacy-friendly defaults
+- External AI consent
+- Behaviour tracking consent
+
+## 51. Required core entities
+
+At minimum design:
+
+- User
+- Organization
+- OrganizationMember
+- Client
+- WebsiteProject
+- Domain
+- Location
+- BrandProfile
+- Persona
+- CustomerJourney
+- Integration
+- Crawl
+- CrawlPage
+- PageSnapshot
+- SeoIssue
+- SeoRule
+- Keyword
+- KeywordMetric
+- SearchQuery
+- SearchIntent
+- Topic
+- TopicCluster
+- TopicRelation
+- ContentItem
+- ContentBrief
+- ContentVersion
+- ContentQualityCheck
+- ProgrammaticTemplate
+- ProgrammaticPage
+- InternalLink
+- InternalLinkSuggestion
+- CmsPublication
+- Product
+- ProductCategory
+- ProductFeed
+- Competitor
+- CompetitorPage
+- CompetitorChange
+- Backlink
+- BrandMention
+- Review
+- ReputationInsight
+- GeoPrompt
+- GeoTestRun
+- GeoMention
+- AnalyticsMetric
+- ConversionMetric
+- RevenueMetric
+- BehaviorMetric
+- Experiment
+- Forecast
+- BudgetPlan
+- Alert
+- RoadmapItem
+- Task
+- Report
+- ReportTemplate
+- ReportSection
+- ReportSnapshot
+- WhiteLabelProfile
+- MigrationProject
+- MigrationUrlMapping
+- DeploymentCheck
+- AiProviderConfiguration
+- AiRun
+- AgentRun
+- AuditLog
+- ScheduledJob
+
+Use:
+
+- UUIDs
+- Tenant IDs
+- Project IDs
+- Created timestamps
+- Updated timestamps
+- Created-by fields
+- Status fields
+- Versions
+- Soft deletion where appropriate
+
+## 52. Required API groups
+
+Create a versioned REST API under /api/v1.
+
+Include route groups for:
+
+- auth
+- organizations
+- clients
+- projects
+- websites
+- locations
+- crawls
+- pages
+- issues
+- keywords
+- intents
+- clusters
+- content
+- programmatic-seo
+- internal-links
+- structured-data
+- integrations
+- wordpress
+- woocommerce
+- monitoring
+- analytics
+- conversions
+- revenue
+- competitors
+- authority
+- reputation
+- local-seo
+- geo
+- alerts
+- forecasts
+- budgets
+- experiments
+- roadmap
+- tasks
+- reports
+- white-label
+- client-portal
+- ai-providers
+- copilot
+- agents
+- migrations
+- deployments
+- audit-logs
+- system
+
+Use:
+
+- Pagination
+- Filtering
+- Sorting
+- Bulk actions
+- Idempotency where needed
+- Structured error responses
+- OpenAPI documentation
+- Background job IDs
+- Tenant authorisation
+
+## 53. Completion rules
+
+A feature is not complete when:
+
+- It only has a non-functional button
+- It only uses mock data outside an explicit demo mode
+- It has no tenant protection
+- It has no error state
+- It has no loading state
+- It has no empty state
+- It has no tests
+- It has no audit log for sensitive changes
+- It presents a score without explanation
+- It automates a risky action without approval
+- It is inaccessible to keyboard users
+- It is undocumented
+
+Create the product charter and requirements documents now.
+
+Do not start broad feature implementation yet.
+
+After creating the documents:
+
+1. Summarise the main architecture implications.
+2. Identify the largest implementation risks.
+3. Identify requirements needing provider adapters.
+4. Identify requirements that need legal or policy-aware handling.
+5. Update REQUIREMENTS_TRACEABILITY.md with every major module.
+6. Update IMPLEMENTATION_STATUS.md.
+7. Commit the documentation if Git is available.

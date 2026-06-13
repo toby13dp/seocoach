@@ -1,0 +1,315 @@
+Continue from the existing repository.
+
+Implement Phase 4 completely.
+
+Maintain safe defaults and approval-first workflows.
+
+## 1. Full AI content studio
+
+Complete the content workflow:
+
+1. Select opportunity
+2. Select content type
+3. Generate brief
+4. Edit outline
+5. Select sources
+6. Generate draft
+7. Run quality checks
+8. Review claims
+9. Add internal links
+10. Preview
+11. Approve
+12. Save as CMS draft
+13. Schedule or publish
+14. Monitor publication status
+
+Support:
+
+- Articles
+- Service pages
+- Location pages
+- Category pages
+- Product descriptions
+- Comparison pages
+- FAQs
+- Glossary pages
+- How-to content
+- Pillar pages
+- Landing pages
+- AI answer posts
+- Meta titles
+- Meta descriptions
+- CTAs
+- Introductions
+- Content updates
+
+## 2. Source grounding
+
+Allow users to select:
+
+- Existing pages
+- Brand profile data
+- Uploaded internal documents
+- Product data
+- Approved facts
+- Approved external sources stored by the user
+
+Record which sources were used.
+
+Mark claims that are not supported by selected sources.
+
+Do not claim that generated text is factually verified when it is not.
+
+## 3. Content quality controls
+
+Before publication, run:
+
+- Duplicate comparison
+- Near-duplicate comparison
+- Brand consistency
+- Prohibited claim detection
+- Prohibited terminology detection
+- Search intent check
+- Readability check
+- Internal link check
+- Conversion check
+- GEO readiness check
+- Unsupported claim check
+- Location page uniqueness check
+- Product data consistency check
+
+Create blocking and non-blocking findings.
+
+## 4. Internal linking
+
+Implement:
+
+- Semantic candidate generation
+- Topic-cluster candidates
+- Orphan page candidates
+- Strong-page candidates
+- Anchor variation
+- Existing link detection
+- Broken link replacement
+- Cannibalisation safeguards
+- Context snippets
+- Confidence score
+
+Provide:
+
+- Single approval
+- Bulk approval
+- Diff preview
+- CMS publishing
+- Rollback metadata
+
+## 5. Structured data generator
+
+Implement visual editors and JSON-LD generation for:
+
+- Organization
+- LocalBusiness
+- Product
+- Offer
+- Review
+- BreadcrumbList
+- Article
+- FAQPage
+- HowTo
+- Person
+- Event
+- JobPosting
+- Service
+- WebSite
+- WebPage
+
+Validate against:
+
+- Required fields
+- Visible page content
+- Product data
+- Review data
+- Price data
+- Availability data
+
+Never fabricate missing values.
+
+## 6. WordPress integration
+
+Use the official WordPress REST API.
+
+Implement:
+
+- Connection wizard
+- Connection test
+- Secure credential storage
+- Capability detection
+- Page and post import
+- Categories
+- Tags
+- Authors where available
+- Media
+- Draft creation
+- Draft update
+- Preview
+- Scheduling
+- Publishing
+- Slug
+- Excerpt
+- Featured image
+- Category and tag assignment
+- SEO metadata adapter architecture
+- Publication status
+- Error handling
+- Retry
+- Audit log
+- Rollback metadata
+
+Support application passwords and other secure official methods.
+
+## 7. WooCommerce integration
+
+Use the official WooCommerce REST API.
+
+Implement:
+
+- Connection wizard
+- Products
+- Categories
+- Variations
+- Product descriptions
+- Short descriptions
+- Category content
+- Inventory status
+- Prices
+- Public product metadata
+- Reviews where available
+- Sales and revenue signals where authorised
+- Draft updates where supported
+- Publication audit trail
+
+## 8. Programmatic SEO
+
+Implement controlled templates for:
+
+- Service and location
+- Product and use case
+- Product and audience
+- Product and feature
+- Category and feature
+- Industry and service
+- Integration and platform
+- Comparison pages
+- Glossary pages
+
+Each generated page must pass:
+
+- Unique data requirement
+- Minimum value threshold
+- Duplicate check
+- Cannibalisation check
+- Template completeness
+- Brand check
+- Claim check
+- Internal link check
+
+Provide:
+
+- Variable editor
+- Data preview
+- Sample page
+- Bulk preview
+- Exclusion reasons
+- Approval queue
+- Publication limit
+- Scheduling
+- CMS draft publishing
+- Rollback
+
+Do not publish thin or doorway pages.
+
+## 9. Content decay workflow
+
+Allow users to:
+
+- View declining pages
+- Generate update briefs
+- Compare old and proposed content
+- Approve revisions
+- Publish updates
+- Monitor post-update metrics
+
+Do not claim decline when insufficient historical data exists.
+
+## 10. Content pruning workflow
+
+Provide:
+
+- Recommendation
+- Evidence
+- Risk
+- Affected internal links
+- Search performance
+- Conversion performance
+- Proposed redirect
+- Approval
+- Execution status
+- Rollback guidance
+
+Removal actions must require explicit approval.
+
+## 11. Change history
+
+Track:
+
+- Previous content
+- New content
+- User
+- AI agent
+- Timestamp
+- CMS result
+- Rollback data
+- Approval
+
+## Tests
+
+Add:
+
+- Content generation workflow tests
+- Claim check tests
+- Duplicate check tests
+- Internal link tests
+- Structured data tests
+- WordPress mock integration tests
+- WooCommerce mock integration tests
+- Publishing idempotency tests
+- Programmatic SEO quality-gate tests
+- Rollback tests
+- Permission tests
+- Tenant isolation tests
+- End-to-end draft publication test
+
+## Completion criteria
+
+A non-technical user must be able to:
+
+- Create a Dutch page using a wizard
+- Understand quality warnings
+- Approve internal links
+- Preview structured data
+- Connect WordPress
+- Publish a WordPress draft
+- Connect WooCommerce
+- Update a product draft
+- Generate programmatic pages
+- See why low-quality pages are rejected
+- Review every change
+- Roll back supported changes
+
+Update documentation, traceability and implementation status.
+
+Run all tests, type checks, linting and migrations.
+
+Resolve failures.
+
+Commit if Git is available.

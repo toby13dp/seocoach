@@ -1,0 +1,270 @@
+Continue from the existing repository.
+
+Read:
+
+- PROJECT_CHARTER.md
+- PRODUCT_REQUIREMENTS.md
+- ARCHITECTURE.md
+- DATA_MODEL.md
+- IMPLEMENTATION_PLAN.md
+- REQUIREMENTS_TRACEABILITY.md
+- IMPLEMENTATION_STATUS.md
+
+Implement Phase 1 completely.
+
+Do not start later phases except where minimal shared infrastructure is required.
+
+## Required functionality
+
+### Authentication
+
+Implement:
+
+- User registration
+- Login
+- Logout
+- Secure password reset architecture
+- Session management
+- Email verification architecture
+- Rate limiting
+- Secure password hashing
+- Authentication audit events
+
+Development mode may use a local email preview mechanism.
+
+Do not depend on a paid email provider.
+
+### Multi-tenancy
+
+Implement:
+
+- Organisations
+- Organisation memberships
+- Clients
+- Website projects
+- Domains
+- Locations
+- User invitations
+- Tenant-aware queries
+- Tenant-aware background jobs
+
+Every tenant-owned table must have explicit tenant protection.
+
+Add automated tests proving that one organisation cannot read or modify another organisation’s data.
+
+### Role-based permissions
+
+Implement roles:
+
+- Platform administrator
+- Organisation owner
+- Agency owner
+- SEO manager
+- Content manager
+- Editor
+- Developer
+- Client
+- Read-only user
+
+Create a central permission system.
+
+Do not spread permission rules unpredictably throughout components.
+
+### Brand profile
+
+Implement BrandProfile with:
+
+- Brand name
+- Description
+- Products
+- Services
+- Audiences
+- Regions
+- Tone of voice
+- Address preference
+- Preferred terminology
+- Prohibited terminology
+- Allowed claims
+- Prohibited claims
+- Proof points
+- Certifications
+- Contact information
+- Conversion goals
+- Editorial rules
+- Disclaimers
+- Dutch locale
+
+### Onboarding
+
+Build a Dutch onboarding wizard.
+
+Steps:
+
+1. Organisatie
+2. Bedrijf
+3. Website
+4. Doelen
+5. Doelgroepen
+6. Producten en diensten
+7. Regio’s
+8. Koppelingen
+9. Eerste scan voorbereiden
+10. Overzicht
+
+The user must be able to skip optional integrations.
+
+Provide clear Dutch explanations.
+
+### Dashboard
+
+Implement a basic role-aware dashboard.
+
+Include:
+
+- Project health placeholder based only on real available data
+- Important actions
+- Recent activity
+- Integration status
+- Scheduled work
+- Approval requests
+
+Do not show fabricated SEO metrics before crawling and integrations are implemented.
+
+### Central action list
+
+Implement “Mijn belangrijkste acties”.
+
+Each action contains:
+
+- Title
+- Plain-language description
+- Business impact
+- SEO impact
+- Priority
+- Effort
+- Owner
+- Deadline
+- Status
+- Automation availability
+- Approval requirement
+
+### Job system
+
+Implement:
+
+- Job creation
+- Job status
+- Job progress
+- Retries
+- Cancellation architecture
+- Error storage
+- Tenant context
+- User-visible job history
+
+### Audit logging
+
+Record:
+
+- Authentication events
+- Membership changes
+- Role changes
+- Project changes
+- Brand profile changes
+- Integration configuration changes
+- Sensitive actions
+
+### Internationalisation
+
+Implement:
+
+- nl-NL
+- nl-BE
+- English technical fallback
+- Translation keys
+- Locale switching architecture
+- Locale-aware date and number formatting
+
+The default user-facing locale is Dutch.
+
+### Settings
+
+Implement:
+
+- Organisation settings
+- Project settings
+- User settings
+- Automation level
+- Locale
+- Time zone
+- Notification preferences
+- Privacy preferences
+
+### Docker and local operation
+
+The application must start locally with documented commands.
+
+Provide:
+
+- Docker Compose
+- PostgreSQL
+- Redis
+- Object storage
+- API
+- Worker
+- Scheduler
+- Web app
+- Optional Ollama profile
+
+### Tests
+
+Add:
+
+- Authentication tests
+- RBAC tests
+- Tenant isolation tests
+- Onboarding tests
+- BrandProfile tests
+- Job tests
+- Audit tests
+- Basic end-to-end test
+- Accessibility checks for onboarding
+
+### Definition of done
+
+Phase 1 is complete only when:
+
+- A user can register and log in
+- A user can create an organisation
+- A user can invite members
+- A user can create a client
+- A user can create a project
+- A user can complete onboarding
+- A user can edit a BrandProfile
+- Roles restrict access correctly
+- Tenant isolation tests pass
+- Jobs can be queued and monitored
+- Audit events are visible
+- The UI is in Dutch by default
+- Docker startup is documented
+- No later-phase metrics are fabricated
+
+Update:
+
+- IMPLEMENTATION_STATUS.md
+- REQUIREMENTS_TRACEABILITY.md
+- API documentation
+- User guide
+- Admin guide
+
+Run:
+
+- Backend tests
+- Frontend tests
+- Type checking
+- Linting
+- Database migrations
+- End-to-end tests
+
+Resolve all errors.
+
+Commit the completed phase if Git is available.

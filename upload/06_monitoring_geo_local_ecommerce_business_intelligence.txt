@@ -1,0 +1,527 @@
+Continue from the existing repository.
+
+Implement Phases 5 through 9 in controlled increments.
+
+Complete and test each subphase before proceeding.
+
+## Subphase A: Search performance and analytics
+
+Implement adapter architecture and working imports for:
+
+- Google Search Console
+- Google Analytics 4
+- CSV search performance
+- CSV analytics
+- CSV conversions
+- CSV revenue
+
+Store time-series metrics for:
+
+- Clicks
+- Impressions
+- CTR
+- Average position
+- Sessions
+- Landing pages
+- Conversions
+- Revenue
+- Product revenue
+- Query performance
+
+Provide:
+
+- Date comparison
+- Previous period
+- Year-over-year where data exists
+- Filters
+- Segments
+- Export
+- Data freshness indicator
+- Sync status
+- Missing-data explanations
+
+## Subphase B: Monitoring and alerts
+
+Implement alerts for:
+
+- Ranking drops
+- Click drops
+- Impression drops
+- CTR drops
+- Conversion drops
+- Revenue drops
+- Indexing issues
+- New 404 pages
+- Unexpected noindex
+- Broken integrations
+- Publishing failures
+- Content decay
+- Competitor changes
+- Lost AI mentions
+- Negative review trends
+- Deployment regressions
+
+Implement:
+
+- Severity
+- Thresholds
+- Minimum data volume
+- Anomaly detection architecture
+- Grouping
+- Snooze
+- Acknowledge
+- Resolve
+- Assign
+- Notification preferences
+- Daily and weekly digest architecture
+
+## Subphase C: Roadmap
+
+Generate roadmap recommendations from:
+
+- Technical issues
+- Content gaps
+- Keyword opportunities
+- Decay
+- Internal links
+- Competitors
+- GEO
+- Local SEO
+- E-commerce
+- CRO
+- Revenue
+
+Views:
+
+- Today
+- This week
+- This month
+- 90 days
+- Later
+- Kanban
+- Calendar
+- Table
+- Timeline
+
+## Subphase D: White-label reporting
+
+Build the reporting system as a dedicated product.
+
+Implement:
+
+- WhiteLabelProfile
+- Logo
+- Colours
+- Fonts
+- Organisation details
+- Footer
+- Introduction
+- Closing text
+- Sender identity
+- Branding removal
+- Custom domain-ready architecture
+
+Report types:
+
+- Monthly
+- Quarterly
+- Technical audit
+- Content
+- Keywords
+- Competitors
+- Local SEO
+- GEO
+- WooCommerce
+- CRO
+- Revenue
+- Executive
+- Holistic
+- Custom
+
+Report builder:
+
+- Drag-and-drop sections
+- KPI cards
+- Charts
+- Tables
+- Text
+- Recommendations
+- Roadmap
+- Page breaks
+- Preview
+- Versions
+- Approval status
+
+Output:
+
+- HTML
+- PDF
+- CSV
+- Secure share link
+- Password protection
+- Expiry date
+- Client comments
+- Archive
+- Scheduling
+
+Use report snapshots so historical reports do not unexpectedly change when source data changes.
+
+## Subphase E: GEO readiness
+
+Implement actionable analysis for:
+
+- Direct answers
+- Definitions
+- Answer blocks
+- Entity clarity
+- Organisation clarity
+- Author information
+- Source transparency
+- Dates
+- Structured data
+- FAQs
+- Unique information
+- Citable facts
+- Crawlability
+- Indexability
+- Brand consistency
+
+Do not present the result as measured external AI visibility.
+
+## Subphase F: Measured AI visibility
+
+Implement:
+
+- Prompt library
+- Prompt clusters
+- Manual test entry
+- CSV import
+- Response upload
+- Screenshot evidence
+- Permitted provider adapter interface
+- Local simulation
+
+Every result stores:
+
+- Method
+- Platform
+- Model
+- Prompt
+- Response
+- Date
+- Country
+- Language
+- Mentions
+- URLs
+- Sources
+- Competitors
+- Sentiment
+- Accuracy
+- Confidence
+- Evidence
+
+Local simulations must display:
+
+“Simulatie – geen bewijs van werkelijke externe AI-zichtbaarheid.”
+
+Calculate:
+
+- Share of AI Voice
+- Brand mentions
+- Source mentions
+- Competitor mentions
+- Accuracy
+- Sentiment
+- Prompt coverage
+- Funnel coverage
+
+## Subphase G: Competitor intelligence
+
+Implement respectful public crawling and change detection for:
+
+- Pages
+- Titles
+- Headings
+- Topics
+- Services
+- Categories
+- Locations
+- Structured data
+- Internal links
+- Public prices
+- Publishing frequency
+- Positioning
+
+Create:
+
+- Competitor feed
+- Evidence snapshots
+- Change summaries
+- Impact suggestions
+- Recommended response
+
+Do not invent traffic or revenue.
+
+## Subphase H: Trends and authority
+
+Implement trend records from:
+
+- Search queries
+- Internal search imports
+- Competitor changes
+- Review themes
+- User-provided news sources
+- Regulation records
+- Seasonality
+- AI prompts
+
+Implement provider-neutral authority data for:
+
+- Backlinks
+- Lost links
+- New links
+- Brand mentions
+- Link gaps
+- Outreach opportunities
+- Campaigns
+
+Do not send outreach automatically.
+
+## Subphase I: Local SEO
+
+Implement:
+
+- Locations
+- NAP records
+- Opening hours
+- Local landing pages
+- Local keywords
+- Local competitors
+- Local structured data
+- Location health
+- Location comparisons
+- Local content plans
+- Rank CSV imports
+- Google Business Profile adapter
+
+## Subphase J: Reviews and reputation
+
+Implement imports and adapters for:
+
+- Google reviews
+- WooCommerce reviews
+- Trustpilot imports
+- CSV reviews
+- Surveys
+- Support feedback
+
+Analyse:
+
+- Sentiment
+- Themes
+- Complaints
+- Compliments
+- Product issues
+- Service issues
+- FAQ opportunities
+- Content opportunities
+- Trust signals
+
+Generate review response drafts.
+
+Require approval for public responses.
+
+## Subphase K: E-commerce SEO
+
+Implement:
+
+- Product inventory
+- Category inventory
+- Variation analysis
+- Out-of-stock handling
+- Seasonal product analysis
+- Faceted navigation analysis
+- Product structured data analysis
+- Product internal links
+- Product image analysis
+- Category quality
+- Revenue prioritisation
+- Margin prioritisation when data exists
+
+## Subphase L: Product feeds
+
+Support import and validation for:
+
+- Merchant feeds
+- Meta catalogue feeds
+- Comparison feeds
+- Marketplace feeds
+- Affiliate feeds
+
+Validate:
+
+- Titles
+- Descriptions
+- GTIN
+- Category
+- Product type
+- Inventory
+- Price
+- Images
+- Missing attributes
+- Website mismatches
+- Rejection reasons
+
+## Subphase M: First-party analytics
+
+Implement an optional privacy-friendly event collector.
+
+Support:
+
+- Page views
+- Sessions
+- Sources
+- Campaigns
+- Events
+- Conversions
+- Funnels
+- Revenue
+- Consent state
+- Cookieless basic mode
+- Server-side events
+
+Document privacy responsibilities.
+
+## Subphase N: Behaviour and CRO
+
+Support behaviour imports and adapters for:
+
+- Scroll depth
+- Clicks
+- Rage clicks
+- Dead clicks
+- Form abandonment
+- Device type
+- Engagement
+
+Create CRO findings for:
+
+- CTAs
+- Forms
+- Trust
+- Value proposition
+- Pricing communication
+- Mobile UX
+- Funnels
+- Landing pages
+- Product pages
+
+## Subphase O: Experiments
+
+Implement:
+
+- Hypothesis
+- Test group
+- Control group
+- KPI
+- Dates
+- Expected result
+- Observed result
+- Confidence
+- Conclusion
+- Follow-up
+
+Do not overstate statistical certainty.
+
+## Subphase P: Forecasting and budget planning
+
+Create scenarios:
+
+- Conservative
+- Realistic
+- Ambitious
+
+Forecast:
+
+- Traffic
+- Clicks
+- Leads
+- Conversions
+- Revenue
+- CTR improvement
+- Ranking improvement
+- Content output
+- Required effort
+
+Show:
+
+- Assumptions
+- Inputs
+- Uncertainty
+- Confidence
+- Ranges
+
+Implement budget allocation for:
+
+- Technical SEO
+- Content
+- Updates
+- Authority
+- Digital PR
+- CRO
+- Local SEO
+- GEO
+- Monitoring
+- Reporting
+
+## Tests
+
+Add comprehensive tests for:
+
+- Data imports
+- Time-series calculations
+- Alerts
+- Report snapshots
+- PDF generation
+- Secure report links
+- GEO separation
+- AI simulation labels
+- Competitor changes
+- Local SEO
+- Reviews
+- Product feeds
+- Revenue prioritisation
+- First-party analytics
+- CRO findings
+- Experiments
+- Forecasts
+- Tenant isolation
+- Permissions
+- Accessibility
+
+## Completion requirements
+
+A user must be able to:
+
+- Import or connect performance data
+- Understand trends
+- Receive useful alerts
+- View a prioritised roadmap
+- Create a white-label report
+- Export PDF and HTML
+- Share a secure report
+- Analyse GEO readiness
+- Record measured AI visibility
+- Track competitors
+- Manage locations
+- Analyse reviews
+- Prioritise e-commerce opportunities
+- Import a product feed
+- Create CRO hypotheses
+- View transparent forecasts
+
+Update documentation and traceability after every subphase.
+
+Run all tests and resolve failures.
+
+Commit completed subphases when Git is available.

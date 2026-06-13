@@ -1,0 +1,404 @@
+Perform the final production-hardening phase.
+
+Do not add broad new features until the existing requirements have been audited.
+
+Read:
+
+- PROJECT_CHARTER.md
+- PRODUCT_REQUIREMENTS.md
+- REQUIREMENTS_TRACEABILITY.md
+- IMPLEMENTATION_STATUS.md
+- ARCHITECTURE.md
+- SECURITY.md
+- All architecture decision records
+
+## 1. Requirement audit
+
+Review every requirement.
+
+Update REQUIREMENTS_TRACEABILITY.md with:
+
+- Requirement
+- Implementation location
+- API endpoint
+- UI screen
+- Database entity
+- Tests
+- Documentation
+- Status
+- Limitations
+
+Classify each requirement as:
+
+- Complete
+- Partially complete
+- Planned
+- Blocked
+- Not applicable
+
+Do not mark a requirement complete without working code and tests.
+
+## 2. Security audit
+
+Audit:
+
+- Authentication
+- Sessions
+- Password handling
+- Tenant isolation
+- RBAC
+- Object-level permissions
+- API permissions
+- Background jobs
+- Report links
+- File uploads
+- CMS credentials
+- AI credentials
+- Integration secrets
+- Webhooks
+- SSRF protection
+- Private IP protection
+- Crawler redirects
+- HTML sanitisation
+- XSS
+- CSRF
+- SQL injection
+- Command injection
+- Path traversal
+- Rate limiting
+- Brute-force protection
+- Audit logging
+- Secret masking
+- Error information leakage
+- Dependency vulnerabilities
+- Container security
+- Backup security
+- Prompt injection
+- AI tool misuse
+- Agent privilege escalation
+
+Create SECURITY_AUDIT.md.
+
+Resolve critical and high-severity issues.
+
+## 3. Privacy audit
+
+Audit:
+
+- Personal data collection
+- Consent
+- Analytics
+- Behaviour tracking
+- Review data
+- Client portal data
+- AI provider data transfer
+- Data retention
+- Data deletion
+- Data export
+- Backups
+- Logs
+- Screenshots
+- Uploaded files
+
+Create PRIVACY.md.
+
+Implement:
+
+- Data export
+- Project deletion
+- Account deletion
+- Retention controls
+- External AI consent
+- Analytics consent handling
+- Behaviour tracking consent handling
+
+## 4. Accessibility audit
+
+Audit against WCAG 2.1 AA.
+
+Check:
+
+- Keyboard access
+- Focus order
+- Focus visibility
+- Screen reader labels
+- Form errors
+- Colour contrast
+- Charts
+- Tables
+- Dialogs
+- Drag-and-drop alternatives
+- Reduced motion
+- Responsive layout
+- Zoom
+- Dutch language metadata
+
+Provide accessible non-drag alternatives for:
+
+- Topic cluster editing
+- Report builder
+- Kanban
+- Automation builder
+
+Create ACCESSIBILITY_AUDIT.md.
+
+## 5. Performance audit
+
+Optimise:
+
+- Database indexes
+- N+1 queries
+- Large tables
+- Time-series queries
+- Crawl storage
+- Page snapshots
+- Report generation
+- PDF rendering
+- Background jobs
+- Redis usage
+- Frontend bundles
+- Image delivery
+- Server rendering
+- API pagination
+- Caching
+
+Create PERFORMANCE.md.
+
+Add realistic load tests for:
+
+- Projects
+- Pages
+- Metrics
+- Reports
+- Crawls
+- Background jobs
+- Concurrent users
+
+## 6. Reliability
+
+Implement or verify:
+
+- Health checks
+- Readiness checks
+- Graceful shutdown
+- Job retries
+- Dead-letter handling
+- Idempotency
+- Database transaction boundaries
+- Migration safety
+- Backup verification
+- Restore procedure
+- Failed integration recovery
+- Partial sync recovery
+- Report generation recovery
+- CMS publishing recovery
+
+## 7. Observability
+
+Implement:
+
+- Structured logs
+- Request IDs
+- Job IDs
+- Tenant-safe logging
+- Error tracking interface
+- Metrics
+- Queue metrics
+- Crawl metrics
+- Integration metrics
+- AI usage metrics
+- Report generation metrics
+- Health dashboard
+
+Do not log credentials, full access tokens or unnecessary sensitive content.
+
+## 8. Backup and restore
+
+Provide:
+
+- PostgreSQL backup procedure
+- Object storage backup procedure
+- Encryption guidance
+- Retention guidance
+- Restore procedure
+- Restore verification
+- Disaster recovery checklist
+
+Test a restore in an automated or documented reproducible environment.
+
+## 9. Production deployment
+
+Provide production examples for:
+
+- Docker Compose
+- Reverse proxy
+- TLS
+- Environment variables
+- Secret management
+- Database
+- Redis
+- Object storage
+- Workers
+- Scheduler
+- Ollama
+- Optional external AI providers
+- Horizontal worker scaling
+- Health monitoring
+
+Do not claim Kubernetes support unless actual manifests are provided and tested.
+
+## 10. Test completion
+
+Ensure coverage for:
+
+- Authentication
+- Tenant isolation
+- RBAC
+- Crawling
+- SSRF
+- SEO rules
+- Keywords
+- Content
+- WordPress
+- WooCommerce
+- Programmatic SEO
+- Monitoring
+- Alerts
+- Reports
+- GEO
+- Competitors
+- Local SEO
+- Reviews
+- E-commerce
+- CRO
+- Forecasts
+- Client portal
+- Copilot
+- Agents
+- Migrations
+- Deployments
+- Backups
+- Accessibility
+
+Run:
+
+- Unit tests
+- Integration tests
+- End-to-end tests
+- Security tests
+- Accessibility tests
+- Load tests
+- Type checking
+- Linting
+- Dependency audit
+- Database migration test
+- Clean-environment installation test
+
+## 11. User documentation
+
+Complete Dutch user documentation for:
+
+- Getting started
+- Adding a website
+- Reading the dashboard
+- Understanding actions
+- Creating content
+- Publishing to WordPress
+- Using WooCommerce
+- Creating reports
+- GEO analysis
+- AI visibility tests
+- Competitors
+- Local SEO
+- Reviews
+- Alerts
+- Forecasts
+- Client approvals
+- Copilot
+- Automations
+- Migrations
+
+Keep user documentation non-technical.
+
+## 12. Administrator documentation
+
+Document:
+
+- Installation
+- Environment configuration
+- AI providers
+- Integrations
+- Backups
+- Restores
+- Security
+- Updates
+- Migrations
+- Queue management
+- Troubleshooting
+- Logs
+- Monitoring
+- Data retention
+- Tenant administration
+
+## 13. Final acceptance test
+
+Create a complete demonstration scenario:
+
+1. Start the platform locally
+2. Register a user
+3. Create an agency
+4. Create a client
+5. Add a Dutch website
+6. Complete onboarding
+7. Run a crawl
+8. Review technical issues
+9. Import keywords
+10. Create a topic cluster
+11. Generate Dutch content with Ollama
+12. Review quality
+13. Add internal links
+14. Publish a WordPress draft
+15. Import Search Console data
+16. Configure an alert
+17. Add a competitor
+18. Run GEO readiness analysis
+19. Add an AI visibility test
+20. Add a location
+21. Import reviews
+22. Import WooCommerce data
+23. Generate a forecast
+24. Create a roadmap
+25. Build a white-label report
+26. Export PDF
+27. Share it through the client portal
+28. Ask the copilot a grounded question
+29. Review an agent proposal
+30. Create a migration project
+31. Run a deployment regression check
+
+Document this scenario in DEMO_SCENARIO.md.
+
+## 14. Final completion report
+
+Create FINAL_IMPLEMENTATION_REPORT.md containing:
+
+- Completed features
+- Partial features
+- Missing features
+- Known limitations
+- Security status
+- Test status
+- Accessibility status
+- Performance status
+- Deployment readiness
+- Recommended next steps
+
+Do not conceal limitations.
+
+A feature may only be described as complete when it works end to end.
+
+Resolve all critical errors.
+
+Update IMPLEMENTATION_STATUS.md and REQUIREMENTS_TRACEABILITY.md one final time.
+
+Commit the final hardening work if Git is available.
