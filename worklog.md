@@ -516,3 +516,61 @@ Stage Summary:
 - Review response workflow enforces approval-before-publish
 - GBP adapter is a stub ready for real Google API integration
 - Sentiment analysis uses 60+ Dutch keyword patterns
+
+---
+Task ID: 8-2
+Agent: Sub Agent
+Task: Build E-commerce SEO Module (Subphase K)
+
+Work Log:
+- Created 9 files under src/lib/ecommerce/ implementing the full E-commerce SEO module
+- types.ts: Core type definitions (ProductSEOAnalysis, CategoryQualityResult, RevenuePrioritization, FacetedNavigationResult, SeasonalProductResult, VariationAnalysisResult, Dutch labels, scoring weights, CRUD types)
+- product-manager.ts: Product CRUD operations (create, update, soft delete, get, list with filters/sorting/pagination, inventory summary) — all scoped by projectId for tenant isolation
+- product-analyzer.ts: Product SEO analysis across 4 dimensions (title quality, description quality, structured data score, image score) with weighted overall score; pure analyzeProductSEO function plus DB-persisting analyzeAndSaveProductSEO and batch analyzeAllProducts
+- category-analyzer.ts: Category quality analysis with 7-point scoring (description presence, description length, slug, product count, >5 products, structured data, product description coverage); pure function + DB-persisted analysis
+- revenue-prioritizer.ts: Revenue-based SEO investment prioritization (critical/high/medium/low) with Dutch reasoning; margin-aware; getTopRevenueOpportunities for high-ROI targets
+- variation-analyzer.ts: Product variation analysis detecting duplicate content, missing unique descriptions, missing variation images, missing structured attributes, and out-of-stock marking issues
+- seasonal-analyzer.ts: Seasonal product detection and phase-based recommendations (pre-season, in-season, post-season); markProductSeasonal for manual tagging
+- faceted-analyzer.ts: Faceted navigation issue detection from crawled Page data (duplicate content, thin content, missing canonical, noindex needed); CRUD for faceted issues with resolve capability
+- index.ts: Barrel export of all public functions and types
+- Fixed TypeScript compilation error (string | null | undefined → string | null coercion in product-analyzer.ts)
+- All user-facing text is in Dutch throughout the module
+- No fabricated data — uses "— —" or null for missing numeric values
+- All functions verify projectId for tenant isolation
+
+Stage Summary:
+- E-commerce SEO module complete with 9 files, 0 TypeScript errors
+- Product SEO analysis covers 4 dimensions with 25/25/25/25 weighting
+- Category quality uses 7-point scoring system (max 100)
+- Revenue prioritization maps products to critical/high/medium/low with Dutch explanations
+- Variation analyzer detects duplicate content groups and missing unique content
+- Seasonal analyzer provides timing-based recommendations (pre/in/post season)
+- Faceted navigation analyzer detects 4 issue types from crawled page data
+
+---
+Task ID: 8
+Agent: Main Agent
+Task: Build Phase 8 - E-commerce SEO & Product Feeds
+
+Work Log:
+- Updated Prisma schema with 4 new enums (ProductStatus, FeedType, FeedValidationStatus, FeedIssueSeverity) and 6 new models (Product, ProductCategory, FacetedNavigationIssue, ProductFeed, ProductFeedItem, FeedValidationRule)
+- Pushed schema changes to SQLite database
+- Implemented E-commerce SEO module (src/lib/ecommerce/, 9 files): Product CRUD with inventory summary, product SEO analyzer (4 dimensions: title/description/structured data/images), category quality analyzer, revenue-based prioritization (critical/high/medium/low with Dutch reasoning), variation analysis with duplicate detection, seasonal product analysis, faceted navigation issue detection
+- Implemented Product Feeds module (src/lib/product-feeds/, 6 files): Feed manager (CRUD), feed parser (XML Merchant Center/CSV/TSV with Dutch/English columns), feed validator (8 validation functions with Dutch messages at ERROR/WARNING/INFO severity), feed importer with product matching by GTIN/SKU/URL
+- Created 18 API route files: products (5), product-categories (2), variations (1), seasonal (1), faceted-issues (2), feeds (6)
+- Created 4 frontend pages: products list with revenue prioritization, product detail with SEO scores and variations, feeds list, feed detail with validation and import
+- Updated project detail page with 2 Phase 8 navigation cards (Producten, Productfeeds)
+- Wrote 142 tests across 6 test suites - all passing (202 assertions)
+- Updated IMPLEMENTATION_STATUS.md
+
+Stage Summary:
+- Phase 8 (E-commerce SEO) is complete with all definition of done items checked
+- 169 requirements implemented out of 218 total (78%)
+- All lint passes, Phase 8 TypeScript compiles cleanly
+- All user-facing text is in Dutch
+- 2 new backend library modules (15 files), 18 API routes, 4 frontend pages
+- 142 tests all passing
+- Product SEO scoring covers 4 dimensions with Dutch issues
+- Revenue prioritization drives SEO investment decisions
+- Feed validation engine supports 5 feed types with configurable rules
+- Never fabricates revenue or margin data

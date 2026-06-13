@@ -1,5 +1,5 @@
 // ============================================================================
-// Prisma Schema — AI-Driven SEO Automation Platform (Phase 1-7)
+// Prisma Schema — AI-Driven SEO Automation Platform (Phase 1-8)
 // ============================================================================
 
 generator client {
@@ -2721,4 +2721,288 @@ model ReviewResponse {
   @@index([status])
   @@index([submittedBy])
   @@map("review_responses")
+}
+
+// ============================================================================
+// Phase 8: Enums — E-commerce SEO & Product Feeds
+// ============================================================================
+
+enum ProductStatus {
+  ACTIVE
+  OUT_OF_STOCK
+  DISCONTINUED
+  SEASONAL
+  DRAFT
+}
+
+enum FeedType {
+  MERCHANT
+  META_CATALOGUE
+  COMPARISON
+  MARKETPLACE
+  AFFILIATE
+}
+
+enum FeedValidationStatus {
+  PENDING
+  VALIDATING
+  VALID
+  VALID_WITH_WARNINGS
+  INVALID
+  ERROR
+}
+
+enum FeedIssueSeverity {
+  ERROR
+  WARNING
+  INFO
+}
+
+// ============================================================================
+// Phase 8: E-commerce SEO Models
+// ============================================================================
+
+model Product {
+  id              String        @id @default(uuid())
+  projectId       String
+  // Product identity
+  sku             String?
+  gtin            String?       // Global Trade Item Number (EAN/UPC/ISBN)
+  mpn             String?       // Manufacturer Part Number
+  // Content
+  name            String
+  slug            String?
+  description     String?
+  shortDescription String?
+  // Categorisation
+  categoryId      String?
+  productType     String?       // Google product type taxonomy
+  brand           String?
+  // Pricing
+  regularPrice    Float?
+  salePrice       Float?
+  currency        String?       @default("EUR")
+  // Margin data (when available)
+  costPrice       Float?
+  margin          Float?        // Calculated margin percentage
+  // Inventory
+  stockStatus     ProductStatus @default(ACTIVE)
+  stockQuantity   Int?
+  manageStock     Boolean       @default(false)
+  // Variations
+  parentProductId String?       // For variation products
+  variationAttributes String?   // JSON: {"color":"red","size":"M"}
+  // Images
+  imageUrl        String?
+  imageAlt        String?
+  additionalImages String?      // JSON array of image URLs
+  // URLs
+  productUrl      String?
+  // SEO analysis
+  titleQuality    Float?        @default(0) // 0-100
+  descriptionQuality Float?     @default(0)
+  structuredDataScore Float?    @default(0)
+  imageScore      Float?        @default(0)
+  overallSeoScore Float?        @default(0)
+  seoIssues       String?       // JSON array of Dutch SEO issues
+  // Revenue tracking
+  revenue30d      Float?        @default(0)
+  revenue90d      Float?        @default(0)
+  unitsSold30d    Int?
+  unitsSold90d    Int?
+  // Internal links
+  internalLinkCount Int?        @default(0)
+  // Seasonal data
+  isSeasonal      Boolean       @default(false)
+  seasonalMonths  String?       // JSON array of active months [1-12]
+  // Source
+  source          String?       // "woocommerce", "csv_import", "manual"
+  externalId      String?
+  importBatch     String?
+  // Metadata
+  deletedAt       DateTime?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  category        ProductCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  parentProduct   Product?         @relation("ProductVariations", fields: [parentProductId], references: [id], onDelete: Cascade)
+  variations      Product[]        @relation("ProductVariations")
+  feedItems       ProductFeedItem[]
+
+  @@index([projectId])
+  @@index([sku])
+  @@index([gtin])
+  @@index([categoryId])
+  @@index([stockStatus])
+  @@index([overallSeoScore])
+  @@index([revenue30d])
+  @@index([parentProductId])
+  @@index([isSeasonal])
+  @@index([source])
+  @@index([importBatch])
+  @@index([deletedAt])
+  @@map("products")
+}
+
+model ProductCategory {
+  id              String   @id @default(uuid())
+  projectId       String
+  name            String
+  slug            String?
+  description     String?
+  parentId        String?
+  // Quality analysis
+  productCount    Int      @default(0)
+  qualityScore    Float?   @default(0) // 0-100
+  seoIssues       String?  // JSON array of Dutch issues
+  hasDescription  Boolean  @default(false)
+  hasStructuredData Boolean @default(false)
+  // Source
+  externalId      String?
+  // Metadata
+  deletedAt       DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  parent          ProductCategory?  @relation("CategoryHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  children        ProductCategory[] @relation("CategoryHierarchy")
+  products        Product[]
+
+  @@index([projectId])
+  @@index([parentId])
+  @@index([qualityScore])
+  @@index([deletedAt])
+  @@map("product_categories")
+}
+
+model FacetedNavigationIssue {
+  id              String   @id @default(uuid())
+  projectId       String
+  // The faceted URL that has issues
+  url             String
+  // What kind of issue
+  issueType       String   // "duplicate_content", "thin_content", "crawled_facet", "noindex_needed"
+  severity        String   // "error", "warning", "info"
+  // Dutch description and recommendation
+  description     String   // Dutch description of the issue
+  recommendation  String   // Dutch recommendation
+  // Evidence
+  parameterName   String?  // e.g. "color", "size", "page"
+  parameterValue  String?  // e.g. "red", "xl", "2"
+  canonicalUrl    String?  // Recommended canonical
+  // Status
+  isResolved      Boolean  @default(false)
+  resolvedAt      DateTime?
+  // Metadata
+  detectedAt      DateTime @default(now())
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([projectId])
+  @@index([issueType])
+  @@index([severity])
+  @@index([isResolved])
+  @@index([detectedAt])
+  @@map("faceted_navigation_issues")
+}
+
+// ============================================================================
+// Phase 8: Product Feed Models
+// ============================================================================
+
+model ProductFeed {
+  id              String              @id @default(uuid())
+  projectId       String
+  name            String
+  feedType        FeedType
+  // Feed source
+  sourceUrl       String?             // URL to fetch feed from
+  sourceFormat    String?             // "xml", "csv", "tsv"
+  // Processing
+  status          FeedValidationStatus @default(PENDING)
+  lastValidatedAt DateTime?
+  lastFetchedAt   DateTime?
+  // Stats
+  totalProducts   Int                 @default(0)
+  validProducts   Int                 @default(0)
+  warningProducts Int                 @default(0)
+  invalidProducts Int                 @default(0)
+  // Metadata
+  notes           String?             // Dutch notes
+  deletedAt       DateTime?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  items           ProductFeedItem[]
+
+  @@index([projectId])
+  @@index([feedType])
+  @@index([status])
+  @@index([deletedAt])
+  @@map("product_feeds")
+}
+
+model ProductFeedItem {
+  id              String           @id @default(uuid())
+  feedId          String
+  productId       String?
+  // Item identification
+  title           String?
+  description     String?
+  gtin            String?
+  mpn             String?
+  sku             String?
+  brand           String?
+  // Categorisation
+  category        String?          // Feed category
+  productType     String?          // Google product type
+  // Pricing & inventory
+  price           Float?
+  salePrice       Float?
+  currency        String?          @default("EUR")
+  availability    String?
+  // URLs
+  link            String?
+  imageLink       String?
+  // Validation
+  validationStatus FeedValidationStatus @default(PENDING)
+  issues          String?          // JSON array of validation issues
+  // Metadata
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  feed            ProductFeed      @relation(fields: [feedId], references: [id], onDelete: Cascade)
+  product         Product?         @relation(fields: [productId], references: [id], onDelete: SetNull)
+
+  @@index([feedId])
+  @@index([productId])
+  @@index([validationStatus])
+  @@index([gtin])
+  @@index([sku])
+  @@map("product_feed_items")
+}
+
+model FeedValidationRule {
+  id              String           @id @default(uuid())
+  projectId       String
+  // Rule definition
+  feedType        FeedType
+  field           String           // e.g. "title", "description", "gtin"
+  ruleName        String           // e.g. "required", "maxLength", "minLength", "pattern"
+  severity        FeedIssueSeverity @default(ERROR)
+  // Rule parameters (JSON)
+  parameters      String?          // JSON: {"maxLength": 150, "minLength": 10}
+  // Dutch description
+  description     String           // Dutch description of what this rule checks
+  failureMessage  String           // Dutch message when validation fails
+  // Status
+  isActive        Boolean          @default(true)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  @@index([projectId])
+  @@index([feedType])
+  @@index([field])
+  @@index([isActive])
+  @@map("feed_validation_rules")
 }

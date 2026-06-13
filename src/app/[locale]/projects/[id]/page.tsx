@@ -43,6 +43,8 @@ import {
   Users,
   MapPin,
   Star,
+  ShoppingBag,
+  Database,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -621,6 +623,28 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
                     <div>
                       <p className="text-sm font-medium">Beoordelingen</p>
                       <p className="text-xs text-muted-foreground">Reputatiebeheer</p>
+                    </div>
+                  </CardContent>
+                </Card>
+              </Link>
+              <Link href={`/projects/${id}/products`}>
+                <Card className="hover:bg-accent/50 transition-colors cursor-pointer">
+                  <CardContent className="p-4 flex items-center gap-3">
+                    <ShoppingBag className="h-5 w-5 text-indigo-600 shrink-0" />
+                    <div>
+                      <p className="text-sm font-medium">Producten</p>
+                      <p className="text-xs text-muted-foreground">E-commerce SEO</p>
+                    </div>
+                  </CardContent>
+                </Card>
+              </Link>
+              <Link href={`/projects/${id}/feeds`}>
+                <Card className="hover:bg-accent/50 transition-colors cursor-pointer">
+                  <CardContent className="p-4 flex items-center gap-3">
+                    <Database className="h-5 w-5 text-cyan-600 shrink-0" />
+                    <div>
+                      <p className="text-sm font-medium">Productfeeds</p>
+                      <p className="text-xs text-muted-foreground">Importeren & valideren</p>
                     </div>
                   </CardContent>
                 </Card>

@@ -17,7 +17,7 @@
 | 5 | Analytics & Monitoring | 🟢 Complete | 2026-06-13 | 2026-06-13 | 100% |
 | 6 | GEO & Competitive Intelligence | 🟢 Complete | 2026-06-13 | 2026-06-13 | 100% |
 | 7 | Local SEO & Reputation | 🟢 Complete | 2026-06-13 | 2026-06-13 | 100% |
-| 8 | E-commerce SEO | ⚪ Planned | — | — | 0% |
+| 8 | E-commerce SEO | 🟢 Complete | 2026-06-13 | 2026-06-13 | 100% |
 | 9 | CRO & Business Intelligence | ⚪ Planned | — | — | 0% |
 | 10 | Agency & Client Operations | ⚪ Planned | — | — | 0% |
 | 11 | AI Copilots & Agents | ⚪ Planned | — | — | 0% |
@@ -419,21 +419,53 @@
 
 ## Phase 8: E-commerce SEO
 
-**Status:** ⚪ Planned  
+**Status:** 🟢 Complete  
 **Description:** Implement e-commerce SEO analysis, product feeds, and revenue prioritisation.
 
-### Planned Sub-Deliverables
+### Sub-Deliverables
 
-| Sub-Deliverable | Key Requirements | Dependencies |
-|----------------|-----------------|-------------|
-| A. E-commerce SEO | ECOM-001 through ECOM-003 | WooCommerce integration (Phase 4), product data |
-| B. Product feeds | FEED-001, FEED-002 | Feed parsers, validation engine |
+| Sub-Deliverable | Key Requirements | Status | Notes |
+|----------------|-----------------|--------|-------|
+| A. E-commerce SEO | ECOM-001 through ECOM-003 | ✅ Complete | Products, categories, variations, seasonal, faceted nav, revenue prioritisation |
+| B. Product feeds | FEED-001, FEED-002 | ✅ Complete | 5 feed types, XML/CSV/TSV parsing, validation engine, product matching |
+
+### Phase 8 Implementation Details
+
+**Schema (4 enums, 6 new models):**
+- Enums: `ProductStatus`, `FeedType`, `FeedValidationStatus`, `FeedIssueSeverity`
+- Models: `Product`, `ProductCategory`, `FacetedNavigationIssue`, `ProductFeed`, `ProductFeedItem`, `FeedValidationRule`
+
+**Backend Modules:**
+- `src/lib/ecommerce/` (9 files): Product CRUD, SEO analyzer (4 dimensions), category quality, revenue prioritisation, variation analysis, seasonal analysis, faceted navigation analysis
+- `src/lib/product-feeds/` (6 files): Feed manager, XML/CSV/TSV parser, feed validator (8 validation functions), feed importer with product matching
+
+**API Routes (18 files):**
+- Products (5): CRUD, inventory, analyze, analyze-all, revenue prioritisation
+- Product categories (2): CRUD
+- Variations (1): variation analysis
+- Seasonal (1): seasonal analysis
+- Faceted issues (2): list + analyze, resolve
+- Feeds (6): CRUD, import, validate, match, summary
+
+**Frontend Pages (4 pages):**
+- `/projects/[id]/products` — Producten overview with inventory stats, revenue prioritisation
+- `/projects/[id]/products/[productId]` — Product detail with SEO scores, variations, seasonal
+- `/projects/[id]/feeds` — Productfeeds overview with status badges
+- `/projects/[id]/feeds/[feedId]` — Feed detail with items, validation, import
+
+**Tests (142 tests, 202 assertions):**
+- `ecommerce/product-analyzer.test.ts` (28 tests)
+- `ecommerce/category-analyzer.test.ts` (15 tests)
+- `ecommerce/revenue-prioritizer.test.ts` (16 tests)
+- `ecommerce/variation-analyzer.test.ts` (13 tests)
+- `product-feeds/feed-validator.test.ts` (35 tests)
+- `product-feeds/feed-parser.test.ts` (35 tests)
 
 ### Phase 8 Definition of Done
 
-- [ ] A user can view product inventory with revenue prioritisation
-- [ ] A user can import and validate product feeds
-- [ ] Product feed issues are reported with actionable Dutch explanations
+- [x] A user can view product inventory with revenue prioritisation
+- [x] A user can import and validate product feeds
+- [x] Product feed issues are reported with actionable Dutch explanations
 
 ---
 
