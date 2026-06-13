@@ -1,0 +1,1033 @@
+     1→"use client";
+     2→
+     3→import { useState, useEffect, use, useCallback, useRef } from "react";
+     4→import { useRouter } from "@/i18n/routing";
+     5→import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+     6→import { Button } from "@/components/ui/button";
+     7→import { Badge } from "@/components/ui/badge";
+     8→import { Progress } from "@/components/ui/progress";
+     9→import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
+    10→import { Input } from "@/components/ui/input";
+    11→import { Label } from "@/components/ui/label";
+    12→import { Textarea } from "@/components/ui/textarea";
+    13→import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+    14→import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+    15→import { motion } from "framer-motion";
+    16→import {
+    17→  ArrowLeft,
+    18→  Loader2,
+    19→  Plus,
+    20→  Star,
+    21→  MessageSquare,
+    22→  Upload,
+    23→  Search,
+    24→  Filter,
+    25→  TrendingUp,
+    26→  TrendingDown,
+    27→  Minus,
+    28→  CheckCircle2,
+    29→  Sparkles,
+    30→  FileUp,
+    31→  MapPin,
+    32→  ThumbsUp,
+    33→  ThumbsDown,
+    34→  BarChart3,
+    35→  Eye,
+    36→} from "lucide-react";
+    37→import { toast } from "sonner";
+    38→
+    39→// --- Types ---
+    40→interface ReviewSummary {
+    41→  totalReviews: number;
+    42→  averageRating: number;
+    43→  positiveCount: number;
+    44→  negativeCount: number;
+    45→  neutralCount: number;
+    46→  mixedCount: number;
+    47→  responseRate: number;
+    48→}
+    49→
+    50→interface Review {
+    51→  id: string;
+    52→  projectId: string;
+    53→  locationId: string | null;
+    54→  source: string;
+    55→  externalId: string | null;
+    56→  sourceUrl: string | null;
+    57→  authorName: string | null;
+    58→  authorAvatar: string | null;
+    59→  isVerified: boolean;
+    60→  rating: number;
+    61→  title: string | null;
+    62→  content: string | null;
+    63→  sentiment: string;
+    64→  sentimentScore: number | null;
+    65→  themes: string[] | null;
+    66→  complaints: string[] | null;
+    67→  compliments: string[] | null;
+    68→  productIssues: string[] | null;
+    69→  serviceIssues: string[] | null;
+    70→  faqOpportunities: string[] | null;
+    71→  contentOpportunities: string[] | null;
+    72→  trustSignals: string[] | null;
+    73→  language: string | null;
+    74→  reviewDate: string | null;
+    75→  responseDraftId: string | null;
+    76→  responseDraft: ReviewResponse | null;
+    77→  responses: ReviewResponse[];
+    78→  importBatch: string | null;
+    79→  deletedAt: string | null;
+    80→  createdAt: string;
+    81→  updatedAt: string;
+    82→  location?: { id: string; name: string; city: string | null } | null;
+    83→}
+    84→
+    85→interface ReviewResponse {
+    86→  id: string;
+    87→  projectId: string;
+    88→  reviewId: string;
+    89→  content: string;
+    90→  status: string;
+    91→  submittedBy: string | null;
+    92→  reviewedBy: string | null;
+    93→  reviewedAt: string | null;
+    94→  rejectionReason: string | null;
+    95→  publishedAt: string | null;
+    96→  publishError: string | null;
+    97→  createdAt: string;
+    98→  updatedAt: string;
+    99→}
+   100→
+   101→interface Location {
+   102→  id: string;
+   103→  name: string;
+   104→  city: string | null;
+   105→}
+   106→
+   107→// --- Dutch Labels ---
+   108→const SOURCE_LABELS: Record<string, string> = {
+   109→  GOOGLE: "Google",
+   110→  WOOCOMMERCE: "WooCommerce",
+   111→  TRUSTPILOT: "Trustpilot",
+   112→  CSV_IMPORT: "CSV-import",
+   113→  SURVEY: "Enquête",
+   114→  SUPPORT_FEEDBACK: "Klantenservice-feedback",
+   115→  MANUAL: "Handmatig",
+   116→};
+   117→
+   118→const SOURCE_COLORS: Record<string, string> = {
+   119→  GOOGLE: "bg-blue-100 text-blue-800 border-blue-200",
+   120→  WOOCOMMERCE: "bg-purple-100 text-purple-800 border-purple-200",
+   121→  TRUSTPILOT: "bg-green-100 text-green-800 border-green-200",
+   122→  CSV_IMPORT: "bg-gray-100 text-gray-800 border-gray-200",
+   123→  SURVEY: "bg-teal-100 text-teal-800 border-teal-200",
+   124→  SUPPORT_FEEDBACK: "bg-orange-100 text-orange-800 border-orange-200",
+   125→  MANUAL: "bg-slate-100 text-slate-800 border-slate-200",
+   126→};
+   127→
+   128→const SENTIMENT_LABELS: Record<string, string> = {
+   129→  POSITIVE: "Positief",
+   130→  NEUTRAL: "Neutraal",
+   131→  NEGATIVE: "Negatief",
+   132→  MIXED: "Gemengd",
+   133→};
+   134→
+   135→const SENTIMENT_COLORS: Record<string, string> = {
+   136→  POSITIVE: "bg-green-100 text-green-800 border-green-200",
+   137→  NEUTRAL: "bg-gray-100 text-gray-800 border-gray-200",
+   138→  NEGATIVE: "bg-red-100 text-red-800 border-red-200",
+   139→  MIXED: "bg-yellow-100 text-yellow-800 border-yellow-200",
+   140→};
+   141→
+   142→const RESPONSE_STATUS_LABELS: Record<string, string> = {
+   143→  DRAFT: "Concept",
+   144→  PENDING_APPROVAL: "Wacht op goedkeuring",
+   145→  APPROVED: "Goedgekeurd",
+   146→  REJECTED: "Afgewezen",
+   147→  PUBLISHED: "Gepubliceerd",
+   148→};
+   149→
+   150→const RESPONSE_STATUS_COLORS: Record<string, string> = {
+   151→  DRAFT: "bg-gray-100 text-gray-800 border-gray-200",
+   152→  PENDING_APPROVAL: "bg-yellow-100 text-yellow-800 border-yellow-200",
+   153→  APPROVED: "bg-green-100 text-green-800 border-green-200",
+   154→  REJECTED: "bg-red-100 text-red-800 border-red-200",
+   155→  PUBLISHED: "bg-blue-100 text-blue-800 border-blue-200",
+   156→};
+   157→
+   158→// --- Star Display Component ---
+   159→function StarRating({ rating, size = 16 }: { rating: number; size?: number }) {
+   160→  return (
+   161→    <div className="flex items-center gap-0.5">
+   162→      {[1, 2, 3, 4, 5].map((star) => (
+   163→        <Star
+   164→          key={star}
+   165→          size={size}
+   166→          className={
+   167→            star <= Math.round(rating)
+   168→              ? "fill-yellow-400 text-yellow-400"
+   169→              : "text-gray-300"
+   170→          }
+   171→        />
+   172→      ))}
+   173→    </div>
+   174→  );
+   175→}
+   176→
+   177→export default function ReviewsPage({
+   178→  params,
+   179→}: {
+   180→  params: Promise<{ id: string }>;
+   181→}) {
+   182→  const { id } = use(params);
+   183→  const router = useRouter();
+   184→
+   185→  // --- State ---
+   186→  const [reviews, setReviews] = useState<Review[]>([]);
+   187→  const [summary, setSummary] = useState<ReviewSummary>({
+   188→    totalReviews: 0,
+   189→    averageRating: 0,
+   190→    positiveCount: 0,
+   191→    negativeCount: 0,
+   192→    neutralCount: 0,
+   193→    mixedCount: 0,
+   194→    responseRate: 0,
+   195→  });
+   196→  const [locations, setLocations] = useState<Location[]>([]);
+   197→  const [isLoading, setIsLoading] = useState(true);
+   198→  const [isImporting, setIsImporting] = useState(false);
+   199→  const [isCreating, setIsCreating] = useState(false);
+   200→  const [isAnalyzing, setIsAnalyzing] = useState<string | null>(null);
+   201→  const [isGenerating, setIsGenerating] = useState<string | null>(null);
+   202→
+   203→  // Filters
+   204→  const [sourceFilter, setSourceFilter] = useState("all");
+   205→  const [sentimentFilter, setSentimentFilter] = useState("all");
+   206→  const [ratingMin, setRatingMin] = useState("");
+   207→  const [ratingMax, setRatingMax] = useState("");
+   208→  const [searchText, setSearchText] = useState("");
+   209→  const [locationFilter, setLocationFilter] = useState("all");
+   210→
+   211→  // Dialogs
+   212→  const [showImportDialog, setShowImportDialog] = useState(false);
+   213→  const [showAddDialog, setShowAddDialog] = useState(false);
+   214→
+   215→  // Import form
+   216→  const [importFile, setImportFile] = useState<File | null>(null);
+   217→  const [importSource, setImportSource] = useState("CSV_IMPORT");
+   218→  const fileInputRef = useRef<HTMLInputElement>(null);
+   219→
+   220→  // Manual review form
+   221→  const [manualRating, setManualRating] = useState(5);
+   222→  const [manualTitle, setManualTitle] = useState("");
+   223→  const [manualContent, setManualContent] = useState("");
+   224→  const [manualAuthor, setManualAuthor] = useState("");
+   225→  const [manualLocationId, setManualLocationId] = useState("");
+   226→
+   227→  // --- Fetch Data ---
+   228→  const fetchSummary = useCallback(async () => {
+   229→    try {
+   230→      const res = await fetch(`/api/projects/${id}/reviews/summary`);
+   231→      if (res.ok) {
+   232→        const data = await res.json();
+   233→        setSummary(data.data || data);
+   234→      }
+   235→    } catch {
+   236→      // silent fail for summary
+   237→    }
+   238→  }, [id]);
+   239→
+   240→  const fetchReviews = useCallback(async () => {
+   241→    setIsLoading(true);
+   242→    try {
+   243→      const params = new URLSearchParams();
+   244→      if (sourceFilter !== "all") params.set("source", sourceFilter);
+   245→      if (sentimentFilter !== "all") params.set("sentiment", sentimentFilter);
+   246→      if (ratingMin) params.set("ratingMin", ratingMin);
+   247→      if (ratingMax) params.set("ratingMax", ratingMax);
+   248→      if (searchText) params.set("search", searchText);
+   249→      if (locationFilter !== "all") params.set("locationId", locationFilter);
+   250→
+   251→      const res = await fetch(`/api/projects/${id}/reviews?${params.toString()}`);
+   252→      if (res.ok) {
+   253→        const data = await res.json();
+   254→        setReviews(data.data || data || []);
+   255→      } else {
+   256→        setReviews([]);
+   257→      }
+   258→    } catch {
+   259→      setReviews([]);
+   260→    } finally {
+   261→      setIsLoading(false);
+   262→    }
+   263→  }, [id, sourceFilter, sentimentFilter, ratingMin, ratingMax, searchText, locationFilter]);
+   264→
+   265→  const fetchLocations = useCallback(async () => {
+   266→    try {
+   267→      const res = await fetch(`/api/projects/${id}/locations`);
+   268→      if (res.ok) {
+   269→        const data = await res.json();
+   270→        setLocations(data.data || data || []);
+   271→      }
+   272→    } catch {
+   273→      setLocations([]);
+   274→    }
+   275→  }, [id]);
+   276→
+   277→  useEffect(() => {
+   278→    fetchSummary();
+   279→    fetchLocations();
+   280→  }, [fetchSummary, fetchLocations]);
+   281→
+   282→  useEffect(() => {
+   283→    fetchReviews();
+   284→  }, [fetchReviews]);
+   285→
+   286→  // --- Handlers ---
+   287→  const handleImport = async () => {
+   288→    if (!importFile) {
+   289→      toast.error("Selecteer een CSV-bestand");
+   290→      return;
+   291→    }
+   292→    setIsImporting(true);
+   293→    try {
+   294→      const formData = new FormData();
+   295→      formData.append("file", importFile);
+   296→      formData.append("source", importSource);
+   297→
+   298→      const res = await fetch(`/api/projects/${id}/reviews/import`, {
+   299→        method: "POST",
+   300→        body: formData,
+   301→      });
+   302→
+   303→      if (res.ok) {
+   304→        const data = await res.json();
+   305→        toast.success(`${data.data?.importedCount || 0} beoordelingen geïmporteerd`);
+   306→        setShowImportDialog(false);
+   307→        setImportFile(null);
+   308→        setImportSource("CSV_IMPORT");
+   309→        fetchReviews();
+   310→        fetchSummary();
+   311→      } else {
+   312→        const errorData = await res.json().catch(() => ({}));
+   313→        toast.error(errorData.error || "Fout bij importeren");
+   314→      }
+   315→    } catch {
+   316→      toast.error("Fout bij importeren");
+   317→    } finally {
+   318→      setIsImporting(false);
+   319→    }
+   320→  };
+   321→
+   322→  const handleCreateManual = async () => {
+   323→    if (!manualAuthor.trim()) {
+   324→      toast.error("Naam van auteur is verplicht");
+   325→      return;
+   326→    }
+   327→    if (!manualContent.trim()) {
+   328→      toast.error("Inhoud is verplicht");
+   329→      return;
+   330→    }
+   331→    setIsCreating(true);
+   332→    try {
+   333→      const body: Record<string, unknown> = {
+   334→        source: "MANUAL",
+   335→        rating: manualRating,
+   336→        title: manualTitle || null,
+   337→        content: manualContent,
+   338→        authorName: manualAuthor,
+   339→        locationId: manualLocationId || null,
+   340→      };
+   341→
+   342→      const res = await fetch(`/api/projects/${id}/reviews`, {
+   343→        method: "POST",
+   344→        headers: { "Content-Type": "application/json" },
+   345→        body: JSON.stringify(body),
+   346→      });
+   347→
+   348→      if (res.ok) {
+   349→        toast.success("Beoordeling toegevoegd");
+   350→        setShowAddDialog(false);
+   351→        setManualRating(5);
+   352→        setManualTitle("");
+   353→        setManualContent("");
+   354→        setManualAuthor("");
+   355→        setManualLocationId("");
+   356→        fetchReviews();
+   357→        fetchSummary();
+   358→      } else {
+   359→        const errorData = await res.json().catch(() => ({}));
+   360→        toast.error(errorData.error || "Fout bij toevoegen");
+   361→      }
+   362→    } catch {
+   363→      toast.error("Fout bij toevoegen");
+   364→    } finally {
+   365→      setIsCreating(false);
+   366→    }
+   367→  };
+   368→
+   369→  const handleAnalyze = async (reviewId: string) => {
+   370→    setIsAnalyzing(reviewId);
+   371→    try {
+   372→      const res = await fetch(`/api/projects/${id}/reviews/${reviewId}/analyze`, {
+   373→        method: "POST",
+   374→      });
+   375→      if (res.ok) {
+   376→        toast.success("Analyse gestart");
+   377→        fetchReviews();
+   378→      } else {
+   379→        toast.error("Fout bij analyseren");
+   380→      }
+   381→    } catch {
+   382→      toast.error("Fout bij analyseren");
+   383→    } finally {
+   384→      setIsAnalyzing(null);
+   385→    }
+   386→  };
+   387→
+   388→  const handleGenerateResponse = async (reviewId: string) => {
+   389→    setIsGenerating(reviewId);
+   390→    try {
+   391→      const res = await fetch(`/api/projects/${id}/reviews/${reviewId}/response`, {
+   392→        method: "POST",
+   393→      });
+   394→      if (res.ok) {
+   395→        toast.success("Reactie gegenereerd");
+   396→        fetchReviews();
+   397→      } else {
+   398→        toast.error("Fout bij genereren reactie");
+   399→      }
+   400→    } catch {
+   401→      toast.error("Fout bij genereren reactie");
+   402→    } finally {
+   403→      setIsGenerating(null);
+   404→    }
+   405→  };
+   406→
+   407→  const hasAnalysis = (review: Review) => {
+   408→    return (
+   409→      review.sentimentScore !== null ||
+   410→      (review.themes && review.themes.length > 0) ||
+   411→      (review.compliments && review.compliments.length > 0) ||
+   412→      (review.complaints && review.complaints.length > 0)
+   413→    );
+   414→  };
+   415→
+   416→  // --- Render ---
+   417→  return (
+   418→    <div className="min-h-screen bg-background">
+   419→      <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+   420→        {/* Header */}
+   421→        <motion.div
+   422→          initial={{ opacity: 0, y: -10 }}
+   423→          animate={{ opacity: 1, y: 0 }}
+   424→          className="mb-6"
+   425→        >
+   426→          <div className="flex items-center gap-4 mb-2">
+   427→            <Button
+   428→              variant="ghost"
+   429→              size="icon"
+   430→              onClick={() => router.push(`/projects/${id}`)}
+   431→            >
+   432→              <ArrowLeft className="h-5 w-5" />
+   433→            </Button>
+   434→            <div>
+   435→              <h1 className="text-2xl font-bold tracking-tight">Beoordelingen</h1>
+   436→              <p className="text-muted-foreground">
+   437→                Beheer beoordelingen en je online reputatie
+   438→              </p>
+   439→            </div>
+   440→          </div>
+   441→        </motion.div>
+   442→
+   443→        {/* Stats Bar */}
+   444→        <motion.div
+   445→          initial={{ opacity: 0, y: 10 }}
+   446→          animate={{ opacity: 1, y: 0 }}
+   447→          transition={{ delay: 0.1 }}
+   448→          className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 mb-6"
+   449→        >
+   450→          <Card>
+   451→            <CardContent className="p-4">
+   452→              <div className="flex items-center gap-2 text-muted-foreground mb-1">
+   453→                <MessageSquare className="h-4 w-4" />
+   454→                <span className="text-xs font-medium">Totaal</span>
+   455→              </div>
+   456→              <p className="text-2xl font-bold">{summary.totalReviews}</p>
+   457→            </CardContent>
+   458→          </Card>
+   459→          <Card>
+   460→            <CardContent className="p-4">
+   461→              <div className="flex items-center gap-2 text-muted-foreground mb-1">
+   462→                <Star className="h-4 w-4" />
+   463→                <span className="text-xs font-medium">Gemiddelde</span>
+   464→              </div>
+   465→              <div className="flex items-center gap-2">
+   466→                <p className="text-2xl font-bold">
+   467→                  {summary.averageRating > 0 ? summary.averageRating.toFixed(1) : "—"}
+   468→                </p>
+   469→                <StarRating rating={summary.averageRating} size={14} />
+   470→              </div>
+   471→            </CardContent>
+   472→          </Card>
+   473→          <Card>
+   474→            <CardContent className="p-4">
+   475→              <div className="flex items-center gap-2 text-green-600 mb-1">
+   476→                <ThumbsUp className="h-4 w-4" />
+   477→                <span className="text-xs font-medium">Positief</span>
+   478→              </div>
+   479→              <p className="text-2xl font-bold text-green-700">
+   480→                {summary.positiveCount}
+   481→              </p>
+   482→            </CardContent>
+   483→          </Card>
+   484→          <Card>
+   485→            <CardContent className="p-4">
+   486→              <div className="flex items-center gap-2 text-red-600 mb-1">
+   487→                <ThumbsDown className="h-4 w-4" />
+   488→                <span className="text-xs font-medium">Negatief</span>
+   489→              </div>
+   490→              <p className="text-2xl font-bold text-red-700">
+   491→                {summary.negativeCount}
+   492→              </p>
+   493→            </CardContent>
+   494→          </Card>
+   495→          <Card>
+   496→            <CardContent className="p-4">
+   497→              <div className="flex items-center gap-2 text-blue-600 mb-1">
+   498→                <BarChart3 className="h-4 w-4" />
+   499→                <span className="text-xs font-medium">Reactiesnelheid</span>
+   500→              </div>
+   501→              <div className="flex items-center gap-2">
+   502→                <p className="text-2xl font-bold text-blue-700">
+   503→                  {summary.responseRate}%
+   504→                </p>
+   505→              </div>
+   506→              <Progress value={summary.responseRate} className="mt-1 h-1.5" />
+   507→            </CardContent>
+   508→          </Card>
+   509→        </motion.div>
+   510→
+   511→        {/* Action Buttons */}
+   512→        <motion.div
+   513→          initial={{ opacity: 0, y: 10 }}
+   514→          animate={{ opacity: 1, y: 0 }}
+   515→          transition={{ delay: 0.15 }}
+   516→          className="flex flex-wrap items-center gap-3 mb-6"
+   517→        >
+   518→          <Dialog open={showImportDialog} onOpenChange={setShowImportDialog}>
+   519→            <DialogTrigger asChild>
+   520→              <Button variant="outline" className="gap-2">
+   521→                <Upload className="h-4 w-4" />
+   522→                CSV importeren
+   523→              </Button>
+   524→            </DialogTrigger>
+   525→            <DialogContent>
+   526→              <DialogHeader>
+   527→                <DialogTitle>Beoordelingen importeren</DialogTitle>
+   528→                <DialogDescription>
+   529→                  Upload een CSV-bestand met beoordelingen
+   530→                </DialogDescription>
+   531→              </DialogHeader>
+   532→              <div className="space-y-4 py-4">
+   533→                <div className="space-y-2">
+   534→                  <Label htmlFor="import-source">Bron</Label>
+   535→                  <Select value={importSource} onValueChange={setImportSource}>
+   536→                    <SelectTrigger>
+   537→                      <SelectValue placeholder="Selecteer bron" />
+   538→                    </SelectTrigger>
+   539→                    <SelectContent>
+   540→                      <SelectItem value="GOOGLE">Google</SelectItem>
+   541→                      <SelectItem value="WOOCOMMERCE">WooCommerce</SelectItem>
+   542→                      <SelectItem value="TRUSTPILOT">Trustpilot</SelectItem>
+   543→                      <SelectItem value="CSV_IMPORT">CSV-import</SelectItem>
+   544→                      <SelectItem value="SURVEY">Enquête</SelectItem>
+   545→                      <SelectItem value="SUPPORT_FEEDBACK">
+   546→                        Klantenservice-feedback
+   547→                      </SelectItem>
+   548→                    </SelectContent>
+   549→                  </Select>
+   550→                </div>
+   551→                <div className="space-y-2">
+   552→                  <Label htmlFor="import-file">CSV-bestand</Label>
+   553→                  <div
+   554→                    className="border-2 border-dashed rounded-lg p-6 text-center cursor-pointer hover:border-primary/50 transition-colors"
+   555→                    onClick={() => fileInputRef.current?.click()}
+   556→                  >
+   557→                    <FileUp className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
+   558→                    <p className="text-sm text-muted-foreground">
+   559→                      {importFile ? importFile.name : "Klik om bestand te selecteren"}
+   560→                    </p>
+   561→                    <input
+   562→                      ref={fileInputRef}
+   563→                      type="file"
+   564→                      accept=".csv"
+   565→                      className="hidden"
+   566→                      onChange={(e) =>
+   567→                        setImportFile(e.target.files?.[0] || null)
+   568→                      }
+   569→                    />
+   570→                  </div>
+   571→                </div>
+   572→              </div>
+   573→              <DialogFooter>
+   574→                <Button
+   575→                  variant="outline"
+   576→                  onClick={() => setShowImportDialog(false)}
+   577→                >
+   578→                  Annuleren
+   579→                </Button>
+   580→                <Button onClick={handleImport} disabled={isImporting}>
+   581→                  {isImporting ? (
+   582→                    <>
+   583→                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+   584→                      Importeren...
+   585→                    </>
+   586→                  ) : (
+   587→                    "Importeren"
+   588→                  )}
+   589→                </Button>
+   590→              </DialogFooter>
+   591→            </DialogContent>
+   592→          </Dialog>
+   593→
+   594→          <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
+   595→            <DialogTrigger asChild>
+   596→              <Button className="gap-2">
+   597→                <Plus className="h-4 w-4" />
+   598→                Beoordeling toevoegen
+   599→              </Button>
+   600→            </DialogTrigger>
+   601→            <DialogContent className="max-w-lg">
+   602→              <DialogHeader>
+   603→                <DialogTitle>Handmatige beoordeling toevoegen</DialogTitle>
+   604→                <DialogDescription>
+   605→                  Voeg een beoordeling handmatig toe aan het project
+   606→                </DialogDescription>
+   607→              </DialogHeader>
+   608→              <div className="space-y-4 py-4 max-h-[60vh] overflow-y-auto">
+   609→                <div className="space-y-2">
+   610→                  <Label>Beoordeling</Label>
+   611→                  <div className="flex items-center gap-1">
+   612→                    {[1, 2, 3, 4, 5].map((star) => (
+   613→                      <button
+   614→                        key={star}
+   615→                        type="button"
+   616→                        onClick={() => setManualRating(star)}
+   617→                        className="p-0.5 hover:scale-110 transition-transform"
+   618→                      >
+   619→                        <Star
+   620→                          className={`h-7 w-7 ${
+   621→                            star <= manualRating
+   622→                              ? "fill-yellow-400 text-yellow-400"
+   623→                              : "text-gray-300"
+   624→                          }`}
+   625→                        />
+   626→                      </button>
+   627→                    ))}
+   628→                    <span className="ml-2 text-sm text-muted-foreground">
+   629→                      {manualRating}/5
+   630→                    </span>
+   631→                  </div>
+   632→                </div>
+   633→                <div className="space-y-2">
+   634→                  <Label htmlFor="manual-title">Titel (optioneel)</Label>
+   635→                  <Input
+   636→                    id="manual-title"
+   637→                    value={manualTitle}
+   638→                    onChange={(e) => setManualTitle(e.target.value)}
+   639→                    placeholder="Korte samenvatting"
+   640→                  />
+   641→                </div>
+   642→                <div className="space-y-2">
+   643→                  <Label htmlFor="manual-content">Inhoud *</Label>
+   644→                  <Textarea
+   645→                    id="manual-content"
+   646→                    value={manualContent}
+   647→                    onChange={(e) => setManualContent(e.target.value)}
+   648→                    placeholder="Volledige beoordelingstekst"
+   649→                    rows={4}
+   650→                  />
+   651→                </div>
+   652→                <div className="space-y-2">
+   653→                  <Label htmlFor="manual-author">Naam auteur *</Label>
+   654→                  <Input
+   655→                    id="manual-author"
+   656→                    value={manualAuthor}
+   657→                    onChange={(e) => setManualAuthor(e.target.value)}
+   658→                    placeholder="Naam van de beoordelaar"
+   659→                  />
+   660→                </div>
+   661→                {locations.length > 0 && (
+   662→                  <div className="space-y-2">
+   663→                    <Label htmlFor="manual-location">Locatie (optioneel)</Label>
+   664→                    <Select
+   665→                      value={manualLocationId}
+   666→                      onValueChange={setManualLocationId}
+   667→                    >
+   668→                      <SelectTrigger>
+   669→                        <SelectValue placeholder="Selecteer locatie" />
+   670→                      </SelectTrigger>
+   671→                      <SelectContent>
+   672→                        {locations.map((loc) => (
+   673→                          <SelectItem key={loc.id} value={loc.id}>
+   674→                            {loc.name}
+   675→                            {loc.city ? ` — ${loc.city}` : ""}
+   676→                          </SelectItem>
+   677→                        ))}
+   678→                      </SelectContent>
+   679→                    </Select>
+   680→                  </div>
+   681→                )}
+   682→              </div>
+   683→              <DialogFooter>
+   684→                <Button
+   685→                  variant="outline"
+   686→                  onClick={() => setShowAddDialog(false)}
+   687→                >
+   688→                  Annuleren
+   689→                </Button>
+   690→                <Button onClick={handleCreateManual} disabled={isCreating}>
+   691→                  {isCreating ? (
+   692→                    <>
+   693→                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+   694→                      Toevoegen...
+   695→                    </>
+   696→                  ) : (
+   697→                    "Toevoegen"
+   698→                  )}
+   699→                </Button>
+   700→              </DialogFooter>
+   701→            </DialogContent>
+   702→          </Dialog>
+   703→        </motion.div>
+   704→
+   705→        {/* Filter Bar */}
+   706→        <motion.div
+   707→          initial={{ opacity: 0, y: 10 }}
+   708→          animate={{ opacity: 1, y: 0 }}
+   709→          transition={{ delay: 0.2 }}
+   710→        >
+   711→          <Card className="mb-6">
+   712→            <CardContent className="p-4">
+   713→              <div className="flex items-center gap-2 mb-3">
+   714→                <Filter className="h-4 w-4 text-muted-foreground" />
+   715→                <span className="text-sm font-medium">Filters</span>
+   716→              </div>
+   717→              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3">
+   718→                <div className="space-y-1">
+   719→                  <Label className="text-xs">Bron</Label>
+   720→                  <Select value={sourceFilter} onValueChange={setSourceFilter}>
+   721→                    <SelectTrigger className="h-9">
+   722→                      <SelectValue placeholder="Alle bronnen" />
+   723→                    </SelectTrigger>
+   724→                    <SelectContent>
+   725→                      <SelectItem value="all">Alle bronnen</SelectItem>
+   726→                      <SelectItem value="GOOGLE">Google</SelectItem>
+   727→                      <SelectItem value="WOOCOMMERCE">WooCommerce</SelectItem>
+   728→                      <SelectItem value="TRUSTPILOT">Trustpilot</SelectItem>
+   729→                      <SelectItem value="CSV_IMPORT">CSV-import</SelectItem>
+   730→                      <SelectItem value="SURVEY">Enquête</SelectItem>
+   731→                      <SelectItem value="SUPPORT_FEEDBACK">
+   732→                        Klantenservice-feedback
+   733→                      </SelectItem>
+   734→                      <SelectItem value="MANUAL">Handmatig</SelectItem>
+   735→                    </SelectContent>
+   736→                  </Select>
+   737→                </div>
+   738→                <div className="space-y-1">
+   739→                  <Label className="text-xs">Sentiment</Label>
+   740→                  <Select
+   741→                    value={sentimentFilter}
+   742→                    onValueChange={setSentimentFilter}
+   743→                  >
+   744→                    <SelectTrigger className="h-9">
+   745→                      <SelectValue placeholder="Alle sentimenten" />
+   746→                    </SelectTrigger>
+   747→                    <SelectContent>
+   748→                      <SelectItem value="all">Alle sentimenten</SelectItem>
+   749→                      <SelectItem value="POSITIVE">Positief</SelectItem>
+   750→                      <SelectItem value="NEUTRAL">Neutraal</SelectItem>
+   751→                      <SelectItem value="NEGATIVE">Negatief</SelectItem>
+   752→                      <SelectItem value="MIXED">Gemengd</SelectItem>
+   753→                    </SelectContent>
+   754→                  </Select>
+   755→                </div>
+   756→                <div className="space-y-1">
+   757→                  <Label className="text-xs">Min. beoordeling</Label>
+   758→                  <Input
+   759→                    type="number"
+   760→                    min={1}
+   761→                    max={5}
+   762→                    placeholder="1"
+   763→                    value={ratingMin}
+   764→                    onChange={(e) => setRatingMin(e.target.value)}
+   765→                    className="h-9"
+   766→                  />
+   767→                </div>
+   768→                <div className="space-y-1">
+   769→                  <Label className="text-xs">Max. beoordeling</Label>
+   770→                  <Input
+   771→                    type="number"
+   772→                    min={1}
+   773→                    max={5}
+   774→                    placeholder="5"
+   775→                    value={ratingMax}
+   776→                    onChange={(e) => setRatingMax(e.target.value)}
+   777→                    className="h-9"
+   778→                  />
+   779→                </div>
+   780→                <div className="space-y-1">
+   781→                  <Label className="text-xs">Zoeken</Label>
+   782→                  <div className="relative">
+   783→                    <Search className="absolute left-2.5 top-2 h-4 w-4 text-muted-foreground" />
+   784→                    <Input
+   785→                      placeholder="Zoek in beoordelingen..."
+   786→                      value={searchText}
+   787→                      onChange={(e) => setSearchText(e.target.value)}
+   788→                      className="h-9 pl-8"
+   789→                    />
+   790→                  </div>
+   791→                </div>
+   792→                <div className="space-y-1">
+   793→                  <Label className="text-xs">Locatie</Label>
+   794→                  <Select
+   795→                    value={locationFilter}
+   796→                    onValueChange={setLocationFilter}
+   797→                  >
+   798→                    <SelectTrigger className="h-9">
+   799→                      <SelectValue placeholder="Alle locaties" />
+   800→                    </SelectTrigger>
+   801→                    <SelectContent>
+   802→                      <SelectItem value="all">Alle locaties</SelectItem>
+   803→                      {locations.map((loc) => (
+   804→                        <SelectItem key={loc.id} value={loc.id}>
+   805→                          {loc.name}
+   806→                        </SelectItem>
+   807→                      ))}
+   808→                    </SelectContent>
+   809→                  </Select>
+   810→                </div>
+   811→              </div>
+   812→            </CardContent>
+   813→          </Card>
+   814→        </motion.div>
+   815→
+   816→        {/* Review Cards List */}
+   817→        <div className="space-y-4">
+   818→          {isLoading ? (
+   819→            <div className="flex items-center justify-center py-20">
+   820→              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+   821→            </div>
+   822→          ) : reviews.length === 0 ? (
+   823→            <Card>
+   824→              <CardContent className="py-20 text-center">
+   825→                <MessageSquare className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
+   826→                <h3 className="text-lg font-semibold mb-2">
+   827→                  Geen beoordelingen gevonden
+   828→                </h3>
+   829→                <p className="text-muted-foreground mb-4">
+   830→                  Importeer beoordelingen of voeg er handmatig een toe om te
+   831→                  beginnen.
+   832→                </p>
+   833→                <div className="flex justify-center gap-3">
+   834→                  <Button
+   835→                    variant="outline"
+   836→                    onClick={() => setShowImportDialog(true)}
+   837→                  >
+   838→                    <Upload className="h-4 w-4 mr-2" />
+   839→                    CSV importeren
+   840→                  </Button>
+   841→                  <Button onClick={() => setShowAddDialog(true)}>
+   842→                    <Plus className="h-4 w-4 mr-2" />
+   843→                    Beoordeling toevoegen
+   844→                  </Button>
+   845→                </div>
+   846→              </CardContent>
+   847→            </Card>
+   848→          ) : (
+   849→            reviews.map((review, index) => (
+   850→              <motion.div
+   851→                key={review.id}
+   852→                initial={{ opacity: 0, y: 10 }}
+   853→                animate={{ opacity: 1, y: 0 }}
+   854→                transition={{ delay: index * 0.03 }}
+   855→              >
+   856→                <Card
+   857→                  className="cursor-pointer hover:shadow-md transition-shadow"
+   858→                  onClick={() =>
+   859→                    router.push(`/projects/${id}/reviews/${review.id}`)
+   860→                  }
+   861→                >
+   862→                  <CardContent className="p-4 sm:p-6">
+   863→                    <div className="flex flex-col sm:flex-row sm:items-start gap-4">
+   864→                      {/* Avatar + Author */}
+   865→                      <div className="flex items-center gap-3 sm:min-w-[200px]">
+   866→                        <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-semibold text-sm shrink-0">
+   867→                          {review.authorName
+   868→                            ? review.authorName.charAt(0).toUpperCase()
+   869→                            : "?"}
+   870→                        </div>
+   871→                        <div className="min-w-0">
+   872→                          <div className="flex items-center gap-1.5">
+   873→                            <span className="font-medium text-sm truncate">
+   874→                              {review.authorName || "Anoniem"}
+   875→                            </span>
+   876→                            {review.isVerified && (
+   877→                              <CheckCircle2 className="h-3.5 w-3.5 text-blue-500 shrink-0" />
+   878→                            )}
+   879→                          </div>
+   880→                          <div className="flex items-center gap-2 mt-0.5">
+   881→                            <StarRating rating={review.rating} size={12} />
+   882→                            <span className="text-xs text-muted-foreground">
+   883→                              {review.rating.toFixed(1)}
+   884→                            </span>
+   885→                          </div>
+   886→                          <p className="text-xs text-muted-foreground mt-0.5">
+   887→                            {review.reviewDate
+   888→                              ? new Date(review.reviewDate).toLocaleDateString(
+   889→                                  "nl-NL"
+   890→                                )
+   891→                              : new Date(review.createdAt).toLocaleDateString(
+   892→                                  "nl-NL"
+   893→                                )}
+   894→                          </p>
+   895→                        </div>
+   896→                      </div>
+   897→
+   898→                      {/* Content */}
+   899→                      <div className="flex-1 min-w-0">
+   900→                        {review.title && (
+   901→                          <p className="font-semibold text-sm mb-1">
+   902→                            {review.title}
+   903→                          </p>
+   904→                        )}
+   905→                        <p className="text-sm text-muted-foreground line-clamp-2">
+   906→                          {review.content || "Geen inhoud"}
+   907→                        </p>
+   908→
+   909→                        {/* Badges row */}
+   910→                        <div className="flex flex-wrap items-center gap-1.5 mt-3">
+   911→                          {/* Source badge */}
+   912→                          <Badge
+   913→                            variant="outline"
+   914→                            className={`text-xs ${SOURCE_COLORS[review.source] || "bg-gray-100 text-gray-800"}`}
+   915→                          >
+   916→                            {SOURCE_LABELS[review.source] || review.source}
+   917→                          </Badge>
+   918→
+   919→                          {/* Sentiment badge */}
+   920→                          <Badge
+   921→                            variant="outline"
+   922→                            className={`text-xs ${SENTIMENT_COLORS[review.sentiment] || ""}`}
+   923→                          >
+   924→                            {SENTIMENT_LABELS[review.sentiment] ||
+   925→                              review.sentiment}
+   926→                          </Badge>
+   927→
+   928→                          {/* Location badge */}
+   929→                          {review.location && (
+   930→                            <Badge variant="outline" className="text-xs">
+   931→                              <MapPin className="h-3 w-3 mr-1" />
+   932→                              {review.location.name}
+   933→                            </Badge>
+   934→                          )}
+   935→
+   936→                          {/* Response status badge */}
+   937→                          {review.responseDraft && (
+   938→                            <Badge
+   939→                              variant="outline"
+   940→                              className={`text-xs ${RESPONSE_STATUS_COLORS[review.responseDraft.status] || ""}`}
+   941→                            >
+   942→                              {RESPONSE_STATUS_LABELS[
+   943→                                review.responseDraft.status
+   944→                              ] || review.responseDraft.status}
+   945→                            </Badge>
+   946→                          )}
+   947→
+   948→                          {/* Themes tags */}
+   949→                          {review.themes &&
+   950→                            review.themes.slice(0, 3).map((theme) => (
+   951→                              <Badge
+   952→                                key={theme}
+   953→                                variant="secondary"
+   954→                                className="text-xs"
+   955→                              >
+   956→                                {theme}
+   957→                              </Badge>
+   958→                            ))}
+   959→                          {review.themes && review.themes.length > 3 && (
+   960→                            <Badge variant="secondary" className="text-xs">
+   961→                              +{review.themes.length - 3}
+   962→                            </Badge>
+   963→                          )}
+   964→                        </div>
+   965→                      </div>
+   966→
+   967→                      {/* Actions */}
+   968→                      <div className="flex sm:flex-col items-center gap-2 shrink-0">
+   969→                        {!hasAnalysis(review) && (
+   970→                          <Button
+   971→                            variant="outline"
+   972→                            size="sm"
+   973→                            className="gap-1.5 text-xs"
+   974→                            onClick={(e) => {
+   975→                              e.stopPropagation();
+   976→                              handleAnalyze(review.id);
+   977→                            }}
+   978→                            disabled={isAnalyzing === review.id}
+   979→                          >
+   980→                            {isAnalyzing === review.id ? (
+   981→                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+   982→                            ) : (
+   983→                              <Sparkles className="h-3.5 w-3.5" />
+   984→                            )}
+   985→                            Analyseer
+   986→                          </Button>
+   987→                        )}
+   988→                        {!review.responseDraft && (
+   989→                          <Button
+   990→                            variant="outline"
+   991→                            size="sm"
+   992→                            className="gap-1.5 text-xs"
+   993→                            onClick={(e) => {
+   994→                              e.stopPropagation();
+   995→                              handleGenerateResponse(review.id);
+   996→                            }}
+   997→                            disabled={isGenerating === review.id}
+   998→                          >
+   999→                            {isGenerating === review.id ? (
+  1000→                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+  1001→                            ) : (
+  1002→                              <MessageSquare className="h-3.5 w-3.5" />
+  1003→                            )}
+  1004→                            Genereer reactie
+  1005→                          </Button>
+  1006→                        )}
+  1007→                        <Button
+  1008→                          variant="ghost"
+  1009→                          size="sm"
+  1010→                          className="gap-1.5 text-xs"
+  1011→                          onClick={(e) => {
+  1012→                            e.stopPropagation();
+  1013→                            router.push(
+  1014→                              `/projects/${id}/reviews/${review.id}`
+  1015→                            );
+  1016→                          }}
+  1017→                        >
+  1018→                          <Eye className="h-3.5 w-3.5" />
+  1019→                          Details
+  1020→                        </Button>
+  1021→                      </div>
+  1022→                    </div>
+  1023→                  </CardContent>
+  1024→                </Card>
+  1025→              </motion.div>
+  1026→            ))
+  1027→          )}
+  1028→        </div>
+  1029→      </div>
+  1030→    </div>
+  1031→  );
+  1032→}
+  1033→

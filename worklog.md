@@ -574,3 +574,63 @@ Stage Summary:
 - Revenue prioritization drives SEO investment decisions
 - Feed validation engine supports 5 feed types with configurable rules
 - Never fabricates revenue or margin data
+
+---
+Task ID: 9-2b
+Agent: General Purpose Agent
+Task: Build Experiments + Forecasting Modules (Subphases O & P, Phase 9)
+
+Work Log:
+- Added deletedAt fields to Experiment, Forecast, and BudgetAllocation Prisma models (with indexes)
+- Ran prisma generate and prisma db push successfully
+- Created Module 3: Experiments (src/lib/experiments/) — 5 files
+  - types.ts: ExperimentData, ExperimentResult, StatisticalTestResult, ExperimentFilters interfaces; Dutch status labels (Concept/Actief/Afgerond/Geannuleerd)
+  - statistics.ts: calculateZTest (two-proportion Z-test), calculateTTest (Welch's t-test), calculateRequiredSampleSize, calculateImprovement, generateDutchConclusion — honest statistical analysis with Dutch explanations and sample size cautions
+  - experiment-manager.ts: Full CRUD + lifecycle (create/update/get/list/start/complete/cancel/soft-delete) with projectId tenant isolation and state transition validation
+  - experiment-analyzer.ts: recordExperimentResult (runs statistical analysis, generates Dutch conclusion with sample-size warnings), getExperimentRecommendations (rule-based Dutch recommendations per experiment)
+  - index.ts: Barrel export of all types, functions, and labels
+- Created Module 4: Forecasting & Budget (src/lib/forecasting/) — 4 files
+  - types.ts: ForecastInput, ForecastOutput, ForecastRange, MonthlyProjection, BudgetAllocationData, BudgetRecommendation interfaces; Dutch labels for scenarios (Conservatief/Realistisch/Ambitieus) and categories (10 Dutch budget category labels)
+  - forecast-engine.ts: generateForecast (3-scenario projections with compounding, confidence levels, uncertainty ranges ±20/30/50%), generateAssumptions (Dutch), calculateForecastRanges (low/mid/high), getForecasts/getForecast/deleteForecast with tenant isolation
+  - budget-manager.ts: createBudget/updateBudget/getBudget/listBudgets/deleteBudget with 100% allocation validation, getBudgetRecommendations (rule-based Dutch recommendations analyzing project state — technical issues, content decay, authority, locations, experiments)
+  - index.ts: Barrel export of all types, functions, and labels
+- All TypeScript compilation passes for new modules (0 errors)
+- All user-facing text in Dutch; never fabricates data; all functions verify projectId for tenant isolation
+- Statistical engine never overstates certainty — includes sample size warnings, p-values, confidence intervals, and honest Dutch disclaimers
+
+Stage Summary:
+- 2 complete backend modules for Phase 9 Subphases O & P
+- 9 new source files across src/lib/experiments/ and src/lib/forecasting/
+- 3 Prisma schema updates (deletedAt + indexes)
+- Zero TypeScript errors in new code
+- All Dutch-first with honest statistical framing
+
+---
+Task ID: 9
+Agent: Main Agent
+Task: Build Phase 9 - CRO & Business Intelligence
+
+Work Log:
+- Updated Prisma schema with 8 new enums (AnalyticsEventType, ConsentState, CROCategory, CROSeverity, BehaviourType, ExperimentStatus, ForecastScenario, BudgetCategory) and 7 new models (AnalyticsEvent, AnalyticsSession, BehaviourRecord, CROFinding, Experiment, Forecast, BudgetAllocation)
+- Pushed schema changes to SQLite database
+- Implemented First-party Analytics module (src/lib/first-party-analytics/, 5 files): Event collector with cookieless session generation (cls- prefix), session manager with summary statistics, funnel analyzer with dropoff rates, privacy disclaimer in Dutch
+- Implemented CRO & Behaviour module (src/lib/cro/, 4 files): Behaviour CSV importer with Dutch/English columns, CRO analyzer with 5 analysis modules (scroll depth, rage clicks, dead clicks, form abandonment, device engagement), CRO finding CRUD with 9 categories
+- Implemented Experiments module (src/lib/experiments/, 5 files): Experiment lifecycle management (DRAFT→RUNNING→COMPLETED→CANCELLED), Z-test + t-test statistical engine, honest Dutch conclusions with sample size warnings, never overstates certainty
+- Implemented Forecasting & Budget module (src/lib/forecasting/, 4 files): 3-scenario forecast engine (conservative/realistic/ambitious) with compounding growth, uncertainty ranges (±20%/30%/50%), budget allocation with 100% validation, rule-based budget recommendations
+- Created 20 API route files covering: analytics events (4), behaviour & CRO (4), experiments (7), forecasting & budget (5)
+- Created 3 frontend pages: CRO & Gedrag (combined behaviour/findings/experiments), Experiment detail (with statistical results), Prognoses & Budget (forecasting + budget planning)
+- Updated project detail page with 2 Phase 9 navigation cards (CRO & Gedrag, Prognoses & Budget)
+- Wrote 107 tests across 5 test suites - all passing (212 assertions)
+- Updated IMPLEMENTATION_STATUS.md
+
+Stage Summary:
+- Phase 9 (CRO & Business Intelligence) is complete with all definition of done items checked
+- 186 requirements implemented out of 218 total (85%)
+- All lint passes, Phase 9 TypeScript compiles cleanly
+- All user-facing text is in Dutch
+- 4 new backend library modules (18 files), 20 API routes, 3 frontend pages
+- 107 tests all passing
+- Statistical engine never overstates certainty - includes honest disclaimers
+- Cookieless mode for privacy-friendly analytics
+- Forecasts always show uncertainty ranges and confidence levels
+- Budget allocation validates percentages sum to 100%

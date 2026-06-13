@@ -45,6 +45,8 @@ import {
   Star,
   ShoppingBag,
   Database,
+  Target,
+  TrendingUp,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -645,6 +647,28 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
                     <div>
                       <p className="text-sm font-medium">Productfeeds</p>
                       <p className="text-xs text-muted-foreground">Importeren & valideren</p>
+                    </div>
+                  </CardContent>
+                </Card>
+              </Link>
+              <Link href={`/projects/${id}/cro`}>
+                <Card className="hover:bg-accent/50 transition-colors cursor-pointer">
+                  <CardContent className="p-4 flex items-center gap-3">
+                    <Target className="h-5 w-5 text-rose-600 shrink-0" />
+                    <div>
+                      <p className="text-sm font-medium">CRO & Gedrag</p>
+                      <p className="text-xs text-muted-foreground">Conversie-optimalisatie</p>
+                    </div>
+                  </CardContent>
+                </Card>
+              </Link>
+              <Link href={`/projects/${id}/forecasts`}>
+                <Card className="hover:bg-accent/50 transition-colors cursor-pointer">
+                  <CardContent className="p-4 flex items-center gap-3">
+                    <TrendingUp className="h-5 w-5 text-teal-600 shrink-0" />
+                    <div>
+                      <p className="text-sm font-medium">Prognoses & Budget</p>
+                      <p className="text-xs text-muted-foreground">Forecasting & planning</p>
                     </div>
                   </CardContent>
                 </Card>

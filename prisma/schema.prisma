@@ -1,5 +1,5 @@
 // ============================================================================
-// Prisma Schema — AI-Driven SEO Automation Platform (Phase 1-8)
+// Prisma Schema — AI-Driven SEO Automation Platform (Phase 1-9)
 // ============================================================================
 
 generator client {
@@ -3005,4 +3005,354 @@ model FeedValidationRule {
   @@index([field])
   @@index([isActive])
   @@map("feed_validation_rules")
+}
+
+// ============================================================================
+// Phase 9: Enums — CRO & Business Intelligence
+// ============================================================================
+
+enum AnalyticsEventType {
+  PAGE_VIEW
+  SESSION
+  EVENT
+  CONVERSION
+  REVENUE
+}
+
+enum ConsentState {
+  GRANTED
+  DENIED
+  UNKNOWN
+}
+
+enum CROCategory {
+  CTA
+  FORMS
+  TRUST
+  VALUE_PROPOSITION
+  PRICING_COMMUNICATION
+  MOBILE_UX
+  FUNNELS
+  LANDING_PAGES
+  PRODUCT_PAGES
+}
+
+enum CROSeverity {
+  CRITICAL
+  HIGH
+  MEDIUM
+  LOW
+}
+
+enum BehaviourType {
+  SCROLL_DEPTH
+  CLICK
+  RAGE_CLICK
+  DEAD_CLICK
+  FORM_ABANDONMENT
+  DEVICE_TYPE
+  ENGAGEMENT
+}
+
+enum ExperimentStatus {
+  DRAFT
+  RUNNING
+  COMPLETED
+  CANCELLED
+}
+
+enum ForecastScenario {
+  CONSERVATIVE
+  REALISTIC
+  AMBITIOUS
+}
+
+enum BudgetCategory {
+  TECHNICAL_SEO
+  CONTENT
+  UPDATES
+  AUTHORITY
+  DIGITAL_PR
+  CRO
+  LOCAL_SEO
+  GEO
+  MONITORING
+  REPORTING
+}
+
+// ============================================================================
+// Phase 9: First-party Analytics Models
+// ============================================================================
+
+model AnalyticsEvent {
+  id          String            @id @default(uuid())
+  projectId   String
+  // Event identity
+  eventType   AnalyticsEventType
+  eventName   String?           // Custom event name
+  // Page context
+  pageUrl     String?
+  pageTitle   String?
+  referrer    String?
+  // Session
+  sessionId   String?
+  userId      String?           // Anonymised user identifier
+  // Campaign
+  utmSource   String?
+  utmMedium   String?
+  utmCampaign String?
+  utmTerm     String?
+  utmContent  String?
+  // Event data
+  eventData   String?           // JSON for custom properties
+  // Revenue
+  revenue     Float?
+  currency    String?           @default("EUR")
+  // Consent
+  consentState ConsentState     @default(UNKNOWN)
+  // Device
+  deviceType  String?           // "desktop", "mobile", "tablet"
+  browser     String?
+  os          String?
+  country     String?
+  language    String?
+  // Metadata
+  timestamp   DateTime          @default(now())
+  createdAt   DateTime          @default(now())
+
+  @@index([projectId])
+  @@index([eventType])
+  @@index([sessionId])
+  @@index([pageUrl])
+  @@index([timestamp])
+  @@index([consentState])
+  @@index([utmSource])
+  @@index([utmCampaign])
+  @@map("analytics_events")
+}
+
+model AnalyticsSession {
+  id              String   @id @default(uuid())
+  projectId       String
+  sessionId       String
+  // Session data
+  entryPage       String?
+  exitPage        String?
+  pageViews       Int      @default(0)
+  events          Int      @default(0)
+  conversions     Int      @default(0)
+  revenue         Float?   @default(0)
+  // Source
+  source          String?
+  medium          String?
+  campaign        String?
+  // Device
+  deviceType      String?
+  browser         String?
+  os              String?
+  country         String?
+  // Consent
+  consentState    ConsentState @default(UNKNOWN)
+  isCookieless    Boolean  @default(false)
+  // Duration
+  durationSeconds Int?
+  // Timestamps
+  startedAt       DateTime @default(now())
+  lastActivityAt  DateTime @default(now())
+  createdAt       DateTime @default(now())
+
+  @@unique([projectId, sessionId])
+  @@index([projectId])
+  @@index([sessionId])
+  @@index([startedAt])
+  @@index([source])
+  @@index([deviceType])
+  @@map("analytics_sessions")
+}
+
+// ============================================================================
+// Phase 9: Behaviour & CRO Models
+// ============================================================================
+
+model BehaviourRecord {
+  id              String        @id @default(uuid())
+  projectId       String
+  pageUrl         String?
+  behaviourType   BehaviourType
+  // Behaviour data
+  element         String?       // CSS selector or element description
+  value           Float?        // e.g. scroll depth percentage
+  metadata        String?       // JSON for additional data
+  // Session
+  sessionId       String?
+  deviceType      String?
+  // Source
+  source          String?       // "import", "adapter", "first_party"
+  importBatch     String?
+  // Timestamp
+  recordedAt      DateTime      @default(now())
+  createdAt       DateTime      @default(now())
+
+  @@index([projectId])
+  @@index([behaviourType])
+  @@index([pageUrl])
+  @@index([recordedAt])
+  @@index([importBatch])
+  @@map("behaviour_records")
+}
+
+model CROFinding {
+  id              String      @id @default(uuid())
+  projectId       String
+  category        CROCategory
+  severity        CROSeverity @default(MEDIUM)
+  // Finding details
+  title           String      // Dutch title
+  description     String      // Dutch description
+  recommendation  String      // Dutch recommendation
+  evidence        String?     // JSON evidence data
+  pageUrl         String?     // Page where finding applies
+  // Impact
+  estimatedImpact String?     // Dutch estimated impact description
+  effort          String?     // "low", "medium", "high"
+  // Status
+  status          String      @default("open") // open, in_progress, implemented, dismissed
+  dismissedReason String?     // Dutch reason for dismissal
+  // Source
+  source          String?     // "behaviour_analysis", "manual", "experiment"
+  // Metadata
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  @@index([projectId])
+  @@index([category])
+  @@index([severity])
+  @@index([status])
+  @@index([pageUrl])
+  @@map("cro_findings")
+}
+
+// ============================================================================
+// Phase 9: Experiments Model
+// ============================================================================
+
+model Experiment {
+  id              String           @id @default(uuid())
+  projectId       String
+  name            String
+  description     String?          // Dutch description
+  // Hypothesis
+  hypothesis      String           // Dutch hypothesis
+  // Groups
+  testGroupName   String?          // Dutch label
+  controlGroupName String?         // Dutch label
+  testGroupSize   Int?
+  controlGroupSize Int?
+  // KPI
+  kpiName         String           // Dutch KPI name
+  kpiBaseline     Float?           // Current baseline value
+  kpiTarget       Float?           // Expected improvement
+  // Dates
+  startDate       DateTime?
+  endDate         DateTime?
+  // Results
+  testGroupResult  Float?
+  controlGroupResult Float?
+  improvement     Float?           // Percentage improvement
+  confidence      Float?           // 0-1 statistical confidence
+  isSignificant   Boolean          @default(false)
+  // Conclusion
+  conclusion      String?          // Dutch conclusion
+  followUp        String?          // Dutch follow-up action
+  // Status
+  status          ExperimentStatus @default(DRAFT)
+  // Metadata
+  deletedAt       DateTime?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  @@index([projectId])
+  @@index([status])
+  @@index([startDate])
+  @@index([isSignificant])
+  @@index([deletedAt])
+  @@map("experiments")
+}
+
+// ============================================================================
+// Phase 9: Forecasting & Budget Models
+// ============================================================================
+
+model Forecast {
+  id              String           @id @default(uuid())
+  projectId       String
+  scenario        ForecastScenario
+  name            String
+  description     String?          // Dutch description
+  // Forecast inputs (JSON)
+  assumptions     String           // JSON: list of Dutch assumptions
+  inputs          String           // JSON: input parameters
+  // Forecast outputs (JSON)
+  trafficForecast String?          // JSON: monthly projections
+  clicksForecast  String?          // JSON
+  leadsForecast   String?          // JSON
+  conversionsForecast String?      // JSON
+  revenueForecast String?          // JSON
+  ctrImprovement  Float?
+  rankingImprovement Float?
+  contentOutput   Int?             // Articles per month
+  requiredEffort  String?          // JSON: effort breakdown in Dutch
+  // Confidence
+  confidence      Float?           // 0-1
+  uncertaintyRange String?         // JSON: {low, mid, high} for each metric
+  // Time range
+  forecastMonths  Int              @default(12)
+  startDate       DateTime         @default(now())
+  // Metadata
+  deletedAt       DateTime?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  @@index([projectId])
+  @@index([scenario])
+  @@index([confidence])
+  @@index([deletedAt])
+  @@map("forecasts")
+}
+
+model BudgetAllocation {
+  id              String         @id @default(uuid())
+  projectId       String
+  name            String
+  description     String?        // Dutch description
+  // Total budget
+  totalBudget     Float
+  currency        String         @default("EUR")
+  // Allocations (percentages stored as 0-100)
+  technicalSeo    Float          @default(0)
+  content         Float          @default(0)
+  updates         Float          @default(0)
+  authority       Float          @default(0)
+  digitalPR       Float          @default(0)
+  cro             Float          @default(0)
+  localSeo        Float          @default(0)
+  geo             Float          @default(0)
+  monitoring      Float          @default(0)
+  reporting       Float          @default(0)
+  // Notes per category (JSON with Dutch notes)
+  allocationNotes String?
+  // Status
+  isActive        Boolean        @default(true)
+  // Time range
+  periodStart     DateTime?
+  periodEnd       DateTime?
+  // Metadata
+  deletedAt       DateTime?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  @@index([projectId])
+  @@index([isActive])
+  @@index([deletedAt])
+  @@map("budget_allocations")
 }

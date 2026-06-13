@@ -18,7 +18,7 @@
 | 6 | GEO & Competitive Intelligence | 🟢 Complete | 2026-06-13 | 2026-06-13 | 100% |
 | 7 | Local SEO & Reputation | 🟢 Complete | 2026-06-13 | 2026-06-13 | 100% |
 | 8 | E-commerce SEO | 🟢 Complete | 2026-06-13 | 2026-06-13 | 100% |
-| 9 | CRO & Business Intelligence | ⚪ Planned | — | — | 0% |
+| 9 | CRO & Business Intelligence | 🟢 Complete | 2026-06-13 | 2026-06-13 | 100% |
 | 10 | Agency & Client Operations | ⚪ Planned | — | — | 0% |
 | 11 | AI Copilots & Agents | ⚪ Planned | — | — | 0% |
 | 12 | Migrations & Deployments | ⚪ Planned | — | — | 0% |
@@ -471,24 +471,54 @@
 
 ## Phase 9: CRO & Business Intelligence
 
-**Status:** ⚪ Planned  
+**Status:** 🟢 Complete  
 **Description:** Implement first-party analytics, behaviour analysis, CRO findings, experiments, forecasting, and budget planning.
 
-### Planned Sub-Deliverables
+### Sub-Deliverables
 
-| Sub-Deliverable | Key Requirements | Dependencies |
-|----------------|-----------------|-------------|
-| A. First-party analytics | FPA-001, FPA-002 | Event collector, consent model |
-| B. Behaviour & CRO | CRO-001, CRO-002 | Behaviour adapters, CRO model |
-| C. Experiments | EXP-001, EXP-002 | Experiment model, statistical calculations |
-| D. Forecasting & budget planning | FORE-001 through FORE-003 | Historical time-series data, scenario model |
+| Sub-Deliverable | Key Requirements | Status | Notes |
+|----------------|-----------------|--------|-------|
+| A. First-party analytics | FPA-001, FPA-002 | ✅ Complete | Privacy-friendly event collector, sessions, funnels, cookieless mode |
+| B. Behaviour & CRO | CRO-001, CRO-002 | ✅ Complete | 7 behaviour types, 9 CRO categories, CSV import, auto-analysis |
+| C. Experiments | EXP-001, EXP-002 | ✅ Complete | Z-test + t-test, honest statistics, sample size warnings, Dutch conclusions |
+| D. Forecasting & budget | FORE-001 through FORE-003 | ✅ Complete | 3 scenarios, uncertainty ranges, budget allocation with validation |
+
+### Phase 9 Implementation Details
+
+**Schema (8 enums, 8 new models):**
+- Enums: `AnalyticsEventType`, `ConsentState`, `CROCategory`, `CROSeverity`, `BehaviourType`, `ExperimentStatus`, `ForecastScenario`, `BudgetCategory`
+- Models: `AnalyticsEvent`, `AnalyticsSession`, `BehaviourRecord`, `CROFinding`, `Experiment`, `Forecast`, `BudgetAllocation`
+
+**Backend Modules:**
+- `src/lib/first-party-analytics/` (5 files): Event collector with cookieless mode, session manager with summary stats, funnel analyzer
+- `src/lib/cro/` (4 files): Behaviour CSV importer, CRO analyzer (5 analysis modules), CRO finding CRUD
+- `src/lib/experiments/` (5 files): Experiment lifecycle management, Z-test + t-test statistical engine, honest Dutch conclusions
+- `src/lib/forecasting/` (4 files): 3-scenario forecast engine with uncertainty ranges, budget manager with 100% allocation validation
+
+**API Routes (20 files):**
+- Analytics events (4): track (public), list, sessions, funnels
+- Behaviour & CRO (4): records, import, findings, finding update
+- Experiments (7): CRUD, start, complete, cancel, results, recommendations
+- Forecasting & Budget (5): forecasts, budgets, budget recommendations
+
+**Frontend Pages (3 pages):**
+- `/projects/[id]/cro` — CRO & Gedrag (behaviour, findings, experiments)
+- `/projects/[id]/experiments/[experimentId]` — Experiment detail with results
+- `/projects/[id]/forecasts` — Prognoses & Budget
+
+**Tests (107 tests, 212 assertions):**
+- `first-party-analytics/event-collector.test.ts` (22 tests)
+- `experiments/statistics.test.ts` (28 tests)
+- `cro/cro-analyzer.test.ts` (21 tests)
+- `forecasting/forecast-engine.test.ts` (21 tests)
+- `forecasting/budget-manager.test.ts` (15 tests)
 
 ### Phase 9 Definition of Done
 
-- [ ] A user can deploy privacy-friendly analytics
-- [ ] A user can create CRO findings and hypotheses
-- [ ] Forecasts show assumptions, uncertainty, and confidence ranges
-- [ ] Budget allocation is transparent and adjustable
+- [x] A user can deploy privacy-friendly analytics
+- [x] A user can create CRO findings and hypotheses
+- [x] Forecasts show assumptions, uncertainty, and confidence ranges
+- [x] Budget allocation is transparent and adjustable
 
 ---
 
