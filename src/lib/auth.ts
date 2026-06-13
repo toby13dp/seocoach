@@ -1,5 +1,6 @@
 import type { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
+import GoogleProvider from "next-auth/providers/google";
 import { compare, hash } from "bcryptjs";
 import { db } from "@/lib/db";
 
@@ -126,6 +127,22 @@ export async function authenticateUser(
 
 export const authOptions: NextAuthOptions = {
   providers: [
+    // Google OAuth provider — only enabled if credentials are configured
+    ...(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET
+      ? [
+          GoogleProvider({
+            clientId: process.env.GOOGLE_CLIENT_ID,
+            clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+            authorization: {
+              params: {
+                prompt: "consent",
+                access_type: "offline",
+                scope: "openid email profile",
+              },
+            },
+          }),
+        ]
+      : []),
     CredentialsProvider({
       name: "credentials",
       credentials: {
@@ -161,13 +178,60 @@ export const authOptions: NextAuthOptions = {
   },
 
   callbacks: {
-    async jwt({ token, user }) {
+    async signIn({ user, account, profile }) {
+      // Handle Google OAuth sign-in — auto-create user if first time
+      if (account?.provider === "google" && user.email) {
+        try {
+          const existingUser = await db.user.findUnique({
+            where: { email: user.email },
+          });
+
+          if (!existingUser) {
+            // Create user automatically on first Google sign-in
+            const newUser = await db.user.create({
+              data: {
+                email: user.email,
+                name: user.name ?? null,
+                image: user.image ?? null,
+                locale: "nl-NL",
+                settings: {
+                  create: { locale: "nl-NL" },
+                },
+              },
+            });
+            // Update the user id so it flows into the JWT
+            user.id = newUser.id;
+          } else {
+            // Update existing user with latest Google info
+            await db.user.update({
+              where: { id: existingUser.id },
+              data: {
+                name: user.name ?? existingUser.name,
+                image: user.image ?? existingUser.image,
+              },
+            });
+            user.id = existingUser.id;
+          }
+        } catch (err) {
+          console.error("Google sign-in user sync failed:", err);
+          return false;
+        }
+      }
+      return true;
+    },
+
+    async jwt({ token, user, account }) {
       // On sign-in the `user` object is available – persist extra fields in the token.
       if (user) {
         token.id = user.id;
         token.email = user.email;
         token.name = user.name ?? undefined;
         token.locale = (user as { locale?: string }).locale ?? "nl-NL";
+      }
+      // Persist Google access/refresh tokens for API calls
+      if (account?.provider === "google") {
+        token.accessToken = account.access_token;
+        token.refreshToken = account.refresh_token;
       }
       return token;
     },
@@ -180,6 +244,8 @@ export const authOptions: NextAuthOptions = {
         session.user.name = token.name as string | null;
         (session.user as { locale?: string }).locale =
           token.locale as string;
+        (session.user as { accessToken?: string }).accessToken =
+          token.accessToken as string;
       }
       return session;
     },
