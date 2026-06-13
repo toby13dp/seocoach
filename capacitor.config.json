@@ -1,7 +1,7 @@
 {
   "appId": "nl.seocoach.app",
   "appName": "SEOCoach",
-  "webDir": "out",
+  "webDir": "www",
   "server": {
     "url": "https://seocoach-cyan.vercel.app",
     "cleartext": true

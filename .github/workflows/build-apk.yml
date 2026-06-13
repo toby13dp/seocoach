@@ -1,0 +1,220 @@
+# ============================================================================
+# SEOCoach — Android APK Build Workflow
+# ============================================================================
+# Bouwt automatisch een release APK bij elke push naar main.
+# De APK wordt geüpload als GitHub Release artifact.
+# ============================================================================
+
+name: Build Android APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-apk:
+    name: Build APK
+    runs-on: ubuntu-latest
+
+    steps:
+      # ── Checkout ──────────────────────────────────────
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # ── JDK 21 ───────────────────────────────────────
+      - name: Setup JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      # ── Node.js ──────────────────────────────────────
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      # ── Android SDK ──────────────────────────────────
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Accept Android licenses
+        run: yes | sdkmanager --licenses 2>/dev/null || true
+
+      - name: Install Android platform & build tools
+        run: |
+          sdkmanager "platforms;android-34" "build-tools;34.0.0" "platform-tools"
+
+      # ── npm dependencies ─────────────────────────────
+      - name: Install npm dependencies
+        run: npm ci
+
+      # ── Web assets (minimale fallback) ───────────────
+      - name: Create web assets directory
+        run: mkdir -p www
+
+      - name: Create offline fallback page
+        run: |
+          cat > www/index.html << 'HTMLEOF'
+          <!DOCTYPE html>
+          <html lang="nl">
+          <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>SEOCoach</title>
+            <style>
+              * { margin: 0; padding: 0; box-sizing: border-box; }
+              body {
+                background: #0f172a;
+                color: #e2e8f0;
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                min-height: 100vh;
+                text-align: center;
+              }
+              .loader {
+                border: 4px solid #1e293b;
+                border-top: 4px solid #3b82f6;
+                border-radius: 50%;
+                width: 48px;
+                height: 48px;
+                animation: spin 1s linear infinite;
+                margin: 0 auto 24px;
+              }
+              @keyframes spin { to { transform: rotate(360deg); } }
+              h1 { font-size: 24px; margin-bottom: 8px; }
+              p { color: #94a3b8; font-size: 14px; }
+            </style>
+          </head>
+          <body>
+            <div>
+              <div class="loader"></div>
+              <h1>SEOCoach</h1>
+              <p>Verbinding maken met server...</p>
+            </div>
+          </body>
+          </html>
+          HTMLEOF
+
+      # ── Capacitor sync ───────────────────────────────
+      - name: Add Capacitor Android platform
+        run: npx cap add android || true
+
+      - name: Sync Capacitor
+        run: npx cap sync android
+
+      # ── Signing keystore ─────────────────────────────
+      - name: Generate release keystore
+        run: |
+          keytool -genkey -v \
+            -keystore seocoach-release-key.jks \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10000 \
+            -alias seocoach \
+            -storepass "${{ secrets.KEYSTORE_PASSWORD }}" \
+            -keypass "${{ secrets.KEY_PASSWORD }}" \
+            -dname "CN=SEOCoach, OU=Mobile, O=SEOCoach, L=Amsterdam, ST=Noord-Holland, C=NL"
+
+      # ── Patch build.gradle met signing config ────────
+      - name: Configure signing in build.gradle
+        run: |
+          cd android/app
+          # Verwijder bestaande signingConfigs en buildTypes blokken, voeg nieuwe toe
+          python3 -c "
+          import re
+          with open('build.gradle', 'r') as f:
+              content = f.read()
+          
+          # Voeg signing toe vóór buildTypes
+          signing_block = '''
+              signingConfigs {
+                  release {
+                      storeFile file('../../seocoach-release-key.jks')
+                      storePassword '${{ secrets.KEYSTORE_PASSWORD }}'
+                      keyAlias 'seocoach'
+                      keyPassword '${{ secrets.KEY_PASSWORD }}'
+                  }
+              }
+          '''
+          
+          # Als signingConfigs nog niet bestaat, voeg toe
+          if 'signingConfigs' not in content:
+              content = content.replace('    buildTypes {', signing_block + '    buildTypes {')
+          
+          # Voeg signingConfig toe aan release buildType
+          if 'signingConfig signingConfigs.release' not in content:
+              content = content.replace(
+                  'proguardFiles getDefaultProguardFile',
+                  'signingConfig signingConfigs.release\n            proguardFiles getDefaultProguardFile'
+              )
+          
+          # Zet Java compatibility
+          if 'sourceCompatibility' not in content:
+              content = content.replace(
+                  '    defaultConfig {',
+                  '''    compileOptions {
+                  sourceCompatibility JavaVersion.VERSION_21
+                  targetCompatibility JavaVersion.VERSION_21
+              }
+              defaultConfig {'''
+              )
+          
+          with open('build.gradle', 'w') as f:
+              f.write(content)
+          "
+
+      # ── Build APK ────────────────────────────────────
+      - name: Build Release APK
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon
+
+      # ── Upload APK als artifact ──────────────────────
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SEOCoach-release
+          path: android/app/build/outputs/apk/release/app-release.apk
+          retention-days: 30
+
+      # ── Maak GitHub Release ─────────────────────────
+      - name: Get version info
+        id: version
+        run: |
+          VERSION="v1.0.$(date +%Y%m%d)-$(echo ${{ github.sha }} | cut -c1-7)"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "date=$(date +'%Y-%m-%d %H:%M')" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.version }}
+          name: "SEOCoach Android ${{ steps.version.outputs.version }}"
+          body: |
+            ## SEOCoach Android APK
+            
+            **Build:** ${{ steps.version.outputs.version }}
+            **Datum:** ${{ steps.version.outputs.date }}
+            **Commit:** ${{ github.sha }}
+            
+            ### Installatie
+            1. Download `app-release.apk` hieronder
+            2. Open op je Android telefoon
+            3. Sta installatie uit onbekende bronnen toe
+            4. Installeer en open
+            
+            ### Wat is nieuw
+            Zie commits sinds vorige release.
+          files: |
+            android/app/build/outputs/apk/release/app-release.apk
+          draft: false
+          prerelease: false

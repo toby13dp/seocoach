@@ -52,7 +52,145 @@ jobs:
         continue-on-error: true
 
   # ============================================================
-  # Job 2: Deploy to Vercel (production only, on main push)
+  # Job 2: Build Android APK
+  # ============================================================
+  build-apk:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Accept Android licenses
+        run: yes | sdkmanager --licenses 2>/dev/null || true
+
+      - name: Install Android platform & build tools
+        run: sdkmanager "platforms;android-34" "build-tools;34.0.0" "platform-tools"
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Ensure web assets
+        run: |
+          mkdir -p www
+          if [ ! -f www/index.html ]; then
+            cat > www/index.html << 'EOF'
+          <!DOCTYPE html>
+          <html lang="nl">
+          <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>SEOCoach</title>
+            <style>
+              * { margin: 0; padding: 0; box-sizing: border-box; }
+              body { background: #0f172a; color: #e2e8f0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; display: flex; align-items: center; justify-content: center; min-height: 100vh; text-align: center; }
+              .loader { border: 4px solid #1e293b; border-top: 4px solid #3b82f6; border-radius: 50%; width: 48px; height: 48px; animation: spin 1s linear infinite; margin: 0 auto 24px; }
+              @keyframes spin { to { transform: rotate(360deg); } }
+              h1 { font-size: 24px; margin-bottom: 8px; }
+              p { color: #94a3b8; font-size: 14px; }
+            </style>
+          </head>
+          <body>
+            <div>
+              <div class="loader"></div>
+              <h1>SEOCoach</h1>
+              <p>Verbinding maken met server...</p>
+            </div>
+          </body>
+          </html>
+          EOF
+          fi
+
+      - name: Sync Capacitor Android
+        run: npx cap add android || true && npx cap sync android
+
+      - name: Generate release keystore
+        run: |
+          keytool -genkey -v \
+            -keystore seocoach-release-key.jks \
+            -keyalg RSA -keysize 2048 -validity 10000 \
+            -alias seocoach \
+            -storepass "${{ secrets.KEYSTORE_PASSWORD }}" \
+            -keypass "${{ secrets.KEY_PASSWORD }}" \
+            -dname "CN=SEOCoach, OU=Mobile, O=SEOCoach, L=Amsterdam, ST=Noord-Holland, C=NL"
+
+      - name: Configure signing in build.gradle
+        run: |
+          cd android/app
+          python3 -c "
+          with open('build.gradle', 'r') as f:
+              content = f.read()
+          
+          signing = '''
+              signingConfigs {
+                  release {
+                      storeFile file('../../seocoach-release-key.jks')
+                      storePassword '${{ secrets.KEYSTORE_PASSWORD }}'
+                      keyAlias 'seocoach'
+                      keyPassword '${{ secrets.KEY_PASSWORD }}'
+                  }
+              }
+          '''
+          if 'signingConfigs' not in content:
+              content = content.replace('    buildTypes {', signing + '    buildTypes {')
+          if 'signingConfig signingConfigs.release' not in content:
+              content = content.replace('proguardFiles getDefaultProguardFile', 'signingConfig signingConfigs.release\n            proguardFiles getDefaultProguardFile')
+          if 'sourceCompatibility' not in content:
+              content = content.replace('    defaultConfig {', '    compileOptions {\n        sourceCompatibility JavaVersion.VERSION_21\n        targetCompatibility JavaVersion.VERSION_21\n    }\n    defaultConfig {')
+          
+          with open('build.gradle', 'w') as f:
+              f.write(content)
+          "
+
+      - name: Build Release APK
+        working-directory: android
+        run: chmod +x gradlew && ./gradlew assembleRelease --no-daemon
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SEOCoach-release
+          path: android/app/build/outputs/apk/release/app-release.apk
+          retention-days: 30
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: "apk-v1.0.${{ github.run_number }}"
+          name: "SEOCoach Android APK #${{ github.run_number }}"
+          body: |
+            ## SEOCoach Android APK
+            
+            **Build:** #${{ github.run_number }}
+            **Commit:** ${{ github.sha }}
+            
+            ### Installatie
+            1. Download `app-release.apk` hieronder
+            2. Open op je Android telefoon
+            3. Sta installatie uit onbekende bronnen toe
+            4. Installeer en open — de app verbindt automatisch met de SEOCoach server
+          files: |
+            android/app/build/outputs/apk/release/app-release.apk
+
+  # ============================================================
+  # Job 3: Deploy to Vercel (production only)
   # ============================================================
   deploy-production:
     name: Deploy to Production
