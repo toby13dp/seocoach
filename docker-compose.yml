@@ -1,0 +1,132 @@
+# ============================================================================
+# SEOCoach — Production Docker Compose
+# ============================================================================
+# Gebruik: docker compose up -d
+# Override voor ontwikkeling: docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+# ============================================================================
+
+services:
+  # ──────────────────────────────────────────────
+  # Next.js Applicatie
+  # ──────────────────────────────────────────────
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: seocoach-app
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - HOSTNAME=0.0.0.0
+      # PostgreSQL connectie (overschrijft .env als PostgreSQL actief is)
+      - DATABASE_URL=${DATABASE_URL:-postgresql://seocoach:seocoach_password@postgres:5432/seocoach?schema=public&connection_limit=20&pool_timeout=10}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      # SQLite database bestand bewaren tussen restarts
+      - seocoach-db-data:/app/db
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health/live"]
+      interval: 30s
+      timeout: 10s
+      start_period: 40s
+      retries: 3
+    networks:
+      - seocoach-internal
+
+  # ──────────────────────────────────────────────
+  # PostgreSQL Database
+  # ──────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: seocoach-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-seocoach}
+      POSTGRES_USER: ${POSTGRES_USER:-seocoach}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-seocoach_password}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-seocoach} -d ${POSTGRES_DB:-seocoach}"]
+      interval: 10s
+      timeout: 5s
+      start_period: 10s
+      retries: 5
+    networks:
+      - seocoach-internal
+
+  # ──────────────────────────────────────────────
+  # Ollama (Lokale AI-modellen)
+  # ──────────────────────────────────────────────
+  ollama:
+    image: ollama/ollama:latest
+    container_name: seocoach-ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/version"]
+      interval: 30s
+      timeout: 10s
+      start_period: 60s
+      retries: 3
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    networks:
+      - seocoach-internal
+
+  # ──────────────────────────────────────────────
+  # Caddy Reverse Proxy
+  # ──────────────────────────────────────────────
+  caddy:
+    image: caddy:2-alpine
+    container_name: seocoach-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      app:
+        condition: service_healthy
+    networks:
+      - seocoach-internal
+
+# ============================================================================
+# Named Volumes
+# ============================================================================
+volumes:
+  postgres-data:
+    driver: local
+  ollama-data:
+    driver: local
+  caddy-data:
+    driver: local
+  caddy-config:
+    driver: local
+  seocoach-db-data:
+    driver: local
+
+# ============================================================================
+# Netwerk
+# ============================================================================
+networks:
+  seocoach-internal:
+    driver: bridge

@@ -1,0 +1,45 @@
+# ============================================================================
+# SEOCoach — Development Docker Compose Override
+# ============================================================================
+# Gebruik: docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+# Dit bestand overschrijft productie-instellingen voor ontwikkeling.
+# ============================================================================
+
+services:
+  # ──────────────────────────────────────────────
+  # Next.js Applicatie — Development Override
+  # ──────────────────────────────────────────────
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: deps  # Stop na deps stage voor snellere iteratie
+    container_name: seocoach-app-dev
+    command: bun run dev
+    environment:
+      - NODE_ENV=development
+      - PORT=3000
+      - HOSTNAME=0.0.0.0
+      - DATABASE_URL=${DATABASE_URL:-postgresql://seocoach:seocoach_password@postgres:5432/seocoach?schema=public&connection_limit=20&pool_timeout=10}
+    volumes:
+      # Broncode mounten voor hot-reload
+      - .:/app
+      # Voorkom dat node_modules van host de container overschrijft
+      - /app/node_modules
+      - seocoach-db-data:/app/db
+    ports:
+      - "3000:3000"
+      - "9229:9229"  # Node.js debugger poort
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health/live"]
+      interval: 30s
+      timeout: 15s
+      start_period: 60s
+      retries: 5
+
+  # ──────────────────────────────────────────────
+  # PostgreSQL — Development Override
+  # ──────────────────────────────────────────────
+  postgres:
+    ports:
+      - "5432:5432"  # Expose naar host voor ontwikkelingstools

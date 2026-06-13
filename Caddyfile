@@ -1,23 +1,127 @@
-:81 {
-	@transform_port_query {
-		query XTransformPort=*
-	}
+# ============================================================================
+# SEOCoach — Caddy Reverse Proxy Configuration
+# ============================================================================
+# Werkt zowel lokaal als in productie:
+#   - Lokaal:         :81 (standaard, geen TLS)
+#   - Productie:      {$SITE_ADDRESS} (automatische HTTPS via Caddy)
+#
+# Omgevingsvariabelen:
+#   SITE_ADDRESS  — Domeinnaam voor productie (bijv. seocoach.example.nl)
+#                   Als leeg, valt terug naar :81 voor lokale ontwikkeling
+# ============================================================================
 
-	handle @transform_port_query {
-		reverse_proxy localhost:{query.XTransformPort} {
-			header_up Host {host}
-			header_up X-Forwarded-For {remote_host}
-			header_up X-Forwarded-Proto {scheme}
-			header_up X-Real-IP {remote_host}
-		}
-	}
+# Globale opties
+{
+  # Automatische HTTPS (alleen in productie met domein)
+  auto_https disable_redirects
 
-	handle {
-		reverse_proxy localhost:3000 {
-			header_up Host {host}
-			header_up X-Forwarded-For {remote_host}
-			header_up X-Forwarded-Proto {scheme}
-			header_up X-Real-IP {remote_host}
-		}
-	}
+  # Email voor Let's Encrypt certificaten
+  email {$ACME_EMAIL:-}
+
+  # Rate limiting zone — bescherm tegen misbruik
+  order rate_limit before basicauth
+}
+
+# ============================================================================
+# Site configuratie — Werkt lokaal EN in productie
+# ============================================================================
+{$SITE_ADDRESS::81} {
+  # ──────────────────────────────────────────
+  # Compressie
+  # ──────────────────────────────────────────
+  encode gzip zstd
+
+  # ──────────────────────────────────────────
+  # Logging
+  # ──────────────────────────────────────────
+  log {
+    output file /var/log/caddy/seocoach-access.log {
+      roll_size 10mb
+      roll_keep 10
+      roll_keep_for 720h
+    }
+    format json
+  }
+
+  # ──────────────────────────────────────────
+  # Beveiligingsheaders
+  # ──────────────────────────────────────────
+  header {
+    # Voorkom MIME-type sniffing
+    X-Content-Type-Options "nosniff"
+
+    # Voorkom clickjacking — alleen zelfde origin mag iframen
+    X-Frame-Options "SAMEORIGIN"
+
+    # XSS-bescherming (legacy browsers)
+    X-XSS-Protection "1; mode=block"
+
+    # Referrer policy — stuur alleen origin naar cross-origin
+    Referrer-Policy "strict-origin-when-cross-origin"
+
+    # Permissions policy — beperk browser features
+    Permissions-Policy "camera=(), microphone=(), geolocation=()"
+
+    # Content Security Policy — basisbeleid (kan per route verfijnd worden)
+    Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https:; frame-ancestors 'self';"
+
+    # HSTS — forceer HTTPS (alleen in productie met HTTPS)
+    Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+
+    # Cache control voor statische assets
+    Cache-Control "public, max-age=3600"
+  }
+
+  # ──────────────────────────────────────────
+  # XTransformPort query handler — voor mini services
+  # ──────────────────────────────────────────
+  @transform_port_query {
+    query XTransformPort=*
+  }
+
+  handle @transform_port_query {
+    reverse_proxy localhost:{query.XTransformPort} {
+      header_up Host {host}
+      header_up X-Forwarded-For {remote_host}
+      header_up X-Forwarded-Proto {scheme}
+      header_up X-Real-IP {remote_host}
+    }
+  }
+
+  # ──────────────────────────────────────────
+  # Applicatie reverse proxy
+  # ──────────────────────────────────────────
+  handle {
+    reverse_proxy app:3000 {
+      header_up Host {host}
+      header_up X-Forwarded-For {remote_host}
+      header_up X-Forwarded-Proto {scheme}
+      header_up X-Real-IP {remote_host}
+
+      # Timeouts voor langlopende AI-verzoeken
+      transport http {
+        read_timeout 300s
+        write_timeout 300s
+        dial_timeout 30s
+      }
+
+      # Health check failover
+      health_uri /api/health/live
+      health_interval 30s
+      health_timeout 10s
+    }
+  }
+
+  # ──────────────────────────────────────────
+  # Statische bestanden — directe caching
+  # ──────────────────────────────────────────
+  @static path *.js *.css *.png *.jpg *.jpeg *.gif *.svg *.ico *.woff *.woff2 *.ttf *.eot
+  header @static Cache-Control "public, max-age=31536000, immutable"
+
+  # ──────────────────────────────────────────
+  # Foutpagina's
+  # ──────────────────────────────────────────
+  handle_errors {
+    respond "{err.status_code} {err.status_text}"
+  }
 }

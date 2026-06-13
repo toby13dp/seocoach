@@ -1,0 +1,932 @@
+     1→---
+     2→Task ID: 1
+     3→Agent: Main Agent
+     4→Task: Build Phase 1 - Foundation and Multi-Tenant Platform
+     5→
+     6→Work Log:
+     7→- Created comprehensive project documentation (PROJECT_CHARTER.md, PRODUCT_REQUIREMENTS.md, UX_PRINCIPLES.md, IMPLEMENTATION_STATUS.md, REQUIREMENTS_TRACEABILITY.md)
+     8→- Designed and implemented Prisma database schema with 17+ models (User, Organization, OrganizationMembership, Client, Project, Domain, Location, BrandProfile, Permission, RolePermission, Job, AuditLog, ActionItem, UserSettings, etc.)
+     9→- Implemented NextAuth.js v4 authentication with Credentials provider, JWT sessions, password hashing
+    10→- Implemented RBAC permission system with 9 roles and 8 permission categories
+    11→- Implemented audit logging with domain-specific helpers
+    12→- Implemented job system with progress tracking, retries, cancellation
+    13→- Implemented tenant isolation utilities
+    14→- Set up next-intl for Dutch-first i18n (nl-NL default, en fallback)
+    15→- Created Dutch translation file with 150+ keys across 15 sections
+    16→- Built 20 API route endpoints covering auth, organizations, projects, brand profiles, actions, jobs, audit logs, user settings
+    17→- Built complete frontend UI: login/register page, dashboard, projects list, project detail with tabs, onboarding wizard (10 steps), settings, audit log, integrations placeholder
+    18→- All pages use Dutch by default with emerald/green color scheme
+    19→- Fixed setState-during-render issue in HomePage (redirect)
+    20→- Fixed Prisma P2011 error (updatedAt NOT NULL constraint) by adding @default(now())
+    21→- Fixed audit log function signature mismatch in projects route
+    22→- Verified full registration → login → project creation → onboarding flow in browser
+    23→
+    24→Stage Summary:
+    25→- Phase 1 core functionality is working end-to-end
+    26→- User can register, login, create organizations and projects
+    27→- Dutch onboarding wizard works through all 10 steps
+    28→- Audit logging captures project creation events
+    29→- RBAC and tenant isolation implemented at the API level
+    30→- All lint checks pass
+    31→
+    32→---
+    33→Task ID: 4
+    34→Agent: Rule Engine Agent
+    35→Task: Build Technical SEO Rule Engine for SEOCoach
+    36→
+    37→Work Log:
+    38→- Created /src/lib/rules/types.ts — Core type definitions (TechnicalRule, IssueEvidence, TechnicalIssueResult, PageAnalysis, RuleEntry, CrossPageRuleEntry)
+    39→- Created 15 rule files under /src/lib/rules/rules/:
+    40→  1. status-codes.ts — 4xx/5xx detection (2 rules)
+    41→  2. redirect-chains.ts — 3+ hop redirect chains
+    42→  3. redirect-loops.ts — Circular redirect detection
+    43→  4. canonical-errors.ts — Missing/conflicting canonical (2 rules)
+    44→  5. meta-issues.ts — Missing/duplicate title/description, noindex (5 rules: 3 per-page + 2 cross-page)
+    45→  6. heading-issues.ts — Missing H1, multiple H1, heading hierarchy (3 rules)
+    46→  7. broken-links.ts — Broken internal/external links (cross-page)
+    47→  8. orphan-pages.ts — Orphan page detection
+    48→  9. deep-pages.ts — Pages too deep in site structure (>3 clicks)
+    49→  10. thin-content.ts — Pages with <300 words
+    50→  11. duplicate-content.ts — Near-duplicate content (per-page + cross-page)
+    51→  12. image-issues.ts — Missing alt text, oversized images (2 rules)
+    52→  13. https-issues.ts — Non-HTTPS, mixed content (2 rules)
+    53→  14. structured-data-issues.ts — Invalid/missing structured data (2 rules)
+    54→  15. hreflang-issues.ts — Missing/invalid/conflicting hreflang (3 rules: 2 per-page + 1 cross-page)
+    55→  16. sitemap-issues.ts — Noindex in sitemap, missing from sitemap (2 rules)
+    56→- Created /src/lib/rules/engine.ts — RuleEngine class with:
+    57→  - Registers all 25+ rules automatically
+    58→  - runAllRules() / runRule() for per-page analysis
+    59→  - runAllCrossPageRules() for cross-page analysis
+    60→  - disableRule() / enableRule() for selective rule execution
+    61→  - addRule() / addCrossPageRule() for custom rules
+    62→  - getRuleDefinitions() / getRulesByCategory() / getCategories() for querying
+    63→  - Singleton instance via getRuleEngine()
+    64→- Created /src/lib/rules/session-analyzer.ts — Session-wide analysis:
+    65→  - analyzeCrawlSession() — Fetches all pages from a crawl session, converts to PageAnalysis, runs all rules, saves to TechnicalIssue table
+    66→  - pageToAnalysis() — Converts Prisma Page model to PageAnalysis
+    67→  - getSessionIssues() / getSessionSummary() — Query existing issues
+    68→  - Includes broken-links cross-page detection
+    69→  - Batch insertion with transaction support
+    70→- Created /src/lib/rules/index.ts — Barrel export
+    71→- All Dutch explanations in plain, non-technical language
+    72→- Fixed escaping issues with apostrophes in Dutch text (pagina's → pagina\'s)
+    73→- All lint checks pass
+    74→
+    75→Stage Summary:
+    76→- Complete SEO rule engine with 25+ rules across 9 categories
+    77→- Per-page and cross-page rule execution
+    78→- Session-wide analysis that saves results to the database
+    79→- All Dutch explanations are in plain, non-technical language
+    80→- Engine supports custom rules, disabling rules, and category filtering
+    81→
+    82→---
+    83→Task ID: 6+7
+    84→Agent: Keyword & Scoring Agent
+    85→Task: Build Keyword Management and Opportunity Scoring Libraries
+    86→
+    87→Work Log:
+    88→- Created /src/lib/keywords/types.ts — Core type definitions:
+    89→  - SearchIntent, FunnelStage union types matching Prisma enums
+    90→  - KeywordImport interface for import operations
+    91→  - KeywordCSVRow interface for flexible CSV column mapping
+    92→  - IntentClassificationResult with Dutch reasoning
+    93→  - OpportunityScoreWeights with default values documented
+    94→  - KeywordWithMetrics combining keyword + brand profile data
+    95→  - ScoreResult with 7 component scores (0-100 each)
+    96→  - ScoreCalculationStep and ScoreCalculationTrace for explainability
+    97→  - ImportResult for tracking import outcomes
+    98→
+    99→- Created /src/lib/keywords/import.ts — Keyword CSV Import:
+   100→  - parseCSV() — Parses CSV with flexible column name mapping (30+ aliases for Dutch/English/SEO-tool columns)
+   101→  - validateKeywordImport() — Validates keyword entries with Dutch error messages
+   102→  - normalizeKeyword() — Lowercases, trims, removes diacritical marks for deduplication
+   103→  - importKeywords() — Bulk import with duplicate handling (update vs skip)
+   104→  - Handles quoted CSV fields, various CSV dialects
+   105→  - Returns count of imported, updated, and skipped keywords
+   106→
+   107→- Created /src/lib/keywords/intent-classifier.ts — Search Intent Classification:
+   108→  - classifyIntent() — Rule-based classification using Dutch language patterns
+   109→    - Transactional: 28 patterns (kopen, bestellen, prijs, etc.)
+   110→    - Commercial Investigation: 24 patterns (vergelijk, review, beste, etc.)
+   111→    - Navigational: 13 patterns (login, inloggen, website, etc.)
+   112→    - Informational: 31 patterns (hoe, wat is, waarom, etc.)
+   113→    - Local: 18 patterns (in de buurt, dichtbij, etc.) + 2 geographic patterns with Dutch cities/provinces
+   114→    - Branded: 48 well-known Dutch brand names
+   115→  - classifyIntentWithAI() — AI-assisted classification using ProviderManager
+   116→    - Falls back to rule-based when AI is unavailable
+   117→    - Parses JSON from AI response (handles markdown code blocks)
+   118→    - Low temperature (0.2) for consistent classification
+   119→  - classifyIntentBatch() / classifyIntentBatchWithAI() — Batch processing
+   120→  - All reasoning in Dutch
+   121→
+   122→- Created /src/lib/keywords/opportunity-scorer.ts — Opportunity Scoring:
+   123→  - 7 component scoring functions (each 0-100):
+   124→    - volumeScore: logarithmic scale with diminishing returns
+   125→    - difficultyScore: inverse relationship (lower = better)
+   126→    - relevanceScore: matches against brand name, products, services
+   127→    - currentRankScore: position 11-20 = highest opportunity (quick-win sweet spot)
+   128→    - intentScore: transactional (95) > commercial (85) > local (75) > branded (60) > informational (40) > navigational (30)
+   129→    - funnelScore: decision (95) > consideration (70) > retention (60) > awareness (35)
+   130→    - competitionScore: CPC value scaled by difficulty factor
+   131→  - getDefaultWeights() / validateWeights() — Weight management
+   132→  - calculateOpportunityScore() — Full weighted score calculation
+   133→  - calculateScoreDetails() — Full calculation trace in Dutch with 7 steps + summary
+   134→  - calculateAndSaveOpportunityScore() — Calculate and persist to database
+   135→  - recalculateProjectScores() — Recalculate all project keyword scores
+   136→  - getScoreTrace() — Retrieve stored calculation trace
+   137→  - All explanations in plain Dutch with verdicts and actionable insights
+   138→
+   139→- Created /src/lib/keywords/index.ts — Barrel export
+   140→
+   141→Stage Summary:
+   142→- Complete keyword management library with import, classification, and scoring
+   143→- CSV import supports 30+ column name aliases from SEO tools (Ahrefs, SEMrush, Moz)
+   144→- Rule-based intent classifier with 150+ Dutch language patterns across 6 intent categories
+   145→- AI-assisted classification with graceful fallback to rule-based
+   146→- Opportunity scoring with 7 weighted components and full Dutch calculation traces
+   147→- All edge cases handled (null values, zero volume, missing data → neutral defaults)
+   148→- All lint checks pass
+   149→
+   150→---
+   151→Task ID: 3-api
+   152→Agent: API Routes Agent
+   153→Task: Build API Routes for Phase 2-3 (Crawl, Keywords, Topics, AI Providers, Content)
+   154→
+   155→Work Log:
+   156→- Created /src/lib/topics/index.ts — Barrel export for topics module (was missing)
+   157→
+   158→- Created 24 API route files connecting frontend to backend libraries:
+   159→
+   160→  Crawl & Technical SEO Routes (6 files):
+   161→  1. /api/projects/[id]/crawls/route.ts — GET (list with pagination, status filter), POST (start crawl with Job creation, async background execution + rule analysis)
+   162→  2. /api/projects/[id]/crawls/[crawlId]/route.ts — GET (session details with progress %), DELETE (cancel running crawl)
+   163→  3. /api/projects/[id]/pages/route.ts — GET (list pages from latest crawl, 12+ filters: statusCode, indexability, contentType, search, wordCount range, isOrphan, duplicateGroup, sorting)
+   164→  4. /api/projects/[id]/pages/[pageId]/route.ts — GET (page details with snapshots, issues, rendered comparison)
+   165→  5. /api/projects/[id]/issues/route.ts — GET (list technical issues with severity/priority/category/ruleId/dismissed/session filters + severity summary)
+   166→  6. /api/projects/[id]/issues/[issueId]/route.ts — PATCH (dismiss/undismiss), DELETE (not allowed, immutable)
+   167→
+   168→  Keyword Routes (5 files):
+   169→  7. /api/projects/[id]/keywords/route.ts — GET (list with search/intent/funnel/volume/difficulty filters, opportunity score include), POST (add single or bulk keywords up to 1000)
+   170→  8. /api/projects/[id]/keywords/import/route.ts — POST (CSV import with file upload, 5MB limit, flexible column mapping)
+   171→  9. /api/projects/[id]/keywords/[keywordId]/route.ts — GET (details with opportunity score + related pages/topics), PATCH (update intent/funnel/tags/etc), DELETE (soft delete)
+   172→  10. /api/projects/[id]/keywords/[keywordId]/classify/route.ts — POST (rule-based or AI-assisted intent classification)
+   173→  11. /api/projects/[id]/keywords/[keywordId]/score/route.ts — POST (calculate/recalculate opportunity score with calculation trace)
+   174→
+   175→  Topic Routes (5 files):
+   176→  12. /api/projects/[id]/topics/route.ts — GET (list or graph format via ?graph=true, clusterId filter), POST (create topic with cluster assignment)
+   177→  13. /api/projects/[id]/topics/[topicId]/route.ts — GET (details with relations, keywords, briefs), PATCH (update), DELETE (soft delete)
+   178→  14. /api/projects/[id]/clusters/route.ts — GET (list with topic counts or ?withTopics=true for full groups), POST (create cluster)
+   179→  15. /api/projects/[id]/clusters/[clusterId]/route.ts — GET (cluster with topics and pillar), PATCH (update), DELETE (soft delete, detaches topics)
+   180→  16. /api/projects/[id]/topic-relations/route.ts — POST (create relation between topics), DELETE (remove relation by ?relationId)
+   181→
+   182→  AI Provider Routes (3 files):
+   183→  17. /api/projects/[id]/ai-providers/route.ts — GET (list with masked API keys), POST (add provider with URL validation, isDefault handling)
+   184→  18. /api/projects/[id]/ai-providers/[providerId]/route.ts — GET (details with privacy settings), PATCH (update), DELETE (soft delete + deactivate)
+   185→  19. /api/projects/[id]/ai-providers/[providerId]/test/route.ts — POST (test connection with simple generate request, returns success/duration/tokens)
+   186→
+   187→  Content Routes (5 files):
+   188→  20. /api/projects/[id]/briefs/route.ts — GET (list with approval/intent/funnel/search filters + pagination), POST (create brief)
+   189→  21. /api/projects/[id]/briefs/[briefId]/route.ts — GET (details with versions), PATCH (update fields or approve), DELETE (archive)
+   190→  22. /api/projects/[id]/briefs/[briefId]/draft/route.ts — POST (generate AI draft, or regenerate with feedback)
+   191→  23. /api/projects/[id]/briefs/[briefId]/quality/route.ts — POST (run quality analysis on latest version, 11 dimensions)
+   192→  24. /api/projects/[id]/decay/route.ts — GET (list decay records with pruning action filter + summary), POST (run decay detection)
+   193→
+   194→Implementation details:
+   195→- All routes verify auth with getAuthenticatedUser()
+   196→- All routes verify project access with validateProjectAccess()
+   197→- Consistent JSON response format: { data, meta? }
+   198→- Proper HTTP status codes (401, 403, 404, 400, 405, 201, 500)
+   199→- Crawl start creates Job + CrawlSession, runs crawl + rule analysis asynchronously
+   200→- Issues are immutable (DELETE returns 405, use PATCH to dismiss)
+   201→- Content briefs use ARCHIVED status instead of soft delete (no deletedAt field in schema)
+   202→- All lint checks pass
+   203→
+   204→Stage Summary:
+   205→- 24 API route files created covering all Phase 2-3 functionality
+   206→- Complete CRUD for crawls, pages, issues, keywords, topics, clusters, AI providers, content briefs
+   207→- Specialized endpoints: crawl start with async execution, keyword CSV import, intent classification (rule-based + AI), opportunity scoring, topic graph visualization, AI provider testing, content draft generation, quality analysis, decay detection
+   208→- All routes properly authenticated and tenant-isolated
+   209→- Consistent error handling and response format
+   210→
+   211→---
+   212→Task ID: 2-3-completion
+   213→Agent: Main Agent
+   214→Task: Complete Phase 2-3 - Crawling, Technical SEO, Keywords & Content Intelligence
+   215→
+   216→Work Log:
+   217→- Updated Prisma schema with 20+ new models: CrawlSession, Page, PageSnapshot, TechnicalIssue, RenderedComparison, Keyword, KeywordPage, OpportunityScore, Topic, TopicCluster, TopicKeyword, TopicRelation, AIProvider, AICallLog, PromptTemplate, ContentBrief, ContentVersion, ContentQuality, ContentDecay
+   218→- Added 10 new enums: CrawlStatus, PageStatus, Indexability, ContentType, IssueSeverity, SearchIntent, FunnelStage, PruningAction, ContentApprovalStatus, AIProviderType
+   219→- Implemented Safe Crawler engine (src/lib/crawler/): SSRF protection, robots.txt parser, sitemap parser, HTML parser, main crawler with progress tracking
+   220→- Implemented Source vs Rendered comparison (src/lib/crawler/renderer.ts)
+   221→- Implemented Technical SEO Rule Engine (src/lib/rules/): 28 rules across 9 categories with Dutch explanations, session-wide analysis
+   222→- Implemented Keyword Management (src/lib/keywords/): CSV import, 150+ Dutch intent patterns, opportunity scoring with 7 components and Dutch calculation traces
+   223→- Implemented Topic Clusters (src/lib/topics/): CRUD, graph visualization, relations, drag-drop
+   224→- Implemented AI Provider Layer (src/lib/ai/): Ollama adapter, OpenAI-compatible adapter, fallback, token/cost tracking, prompt templates
+   225→- Implemented Content Studio (src/lib/content/): briefs, outline editor, draft generation, versions, quality analysis (11 dimensions), decay detection, pruning recommendations
+   226→- Built 24 API route endpoints covering all Phase 2-3 functionality
+   227→- Built 12 frontend pages: crawls, inventory, inventory detail, issues, keywords, keyword detail, topics, briefs, content studio, AI providers, content decay
+   228→- Updated project detail page with module navigation cards
+   229→- Wrote 236 test cases across 9 test suites - all passing
+   230→- Updated IMPLEMENTATION_STATUS.md to reflect Phase 1-3 completion
+   231→- Fixed all Phase 2-3 TypeScript errors
+   232→
+   233→Stage Summary:
+   234→- Phase 2 (Crawling & Technical SEO) is complete with all definition of done items checked
+   235→- Phase 3 (Keywords & Content Intelligence) is complete with all definition of done items checked
+   236→- 99 requirements implemented out of 218 total (45%)
+   237→- All tests pass, lint passes, TypeScript compiles
+   238→- All user-facing text is in Dutch
+   239→
+   240→---
+   241→Task ID: 4
+   242→Agent: Main Agent
+   243→Task: Build Phase 4 - Content Automation, CMS, Internal Linking & Programmatic SEO
+   244→
+   245→Work Log:
+   246→- Updated Prisma schema with 8 new enums (CMSProviderType, CMSConnectionStatus, ContentWorkflowStep, InternalLinkStatus, InternalLinkStrategy, StructuredDataType, ProgrammaticTemplateType, ProgrammaticPageStatus, ContentChangeType) and 9 new models (CMSConnection, InternalLink, StructuredData, ProgrammaticTemplate, ProgrammaticPage, ContentChange, ContentSource, QualityFinding)
+   247→- Implemented Internal Linking module (src/lib/linking/): 5 strategies (semantic AI, topic cluster, orphan page, strong page, broken replacement), anchor variation with Dutch patterns, approval workflow with bulk approve/reject, diff preview, CMS publishing, rollback
+   248→- Implemented Structured Data Generator (src/lib/structured-data/): 15 JSON-LD schema types, Dutch validation with required field checks, never fabricates missing values
+   249→- Implemented WordPress Integration (src/lib/cms/wordpress.ts): connection wizard with application passwords, CRUD, scheduling, publishing, media upload, SEO plugin detection (Yoast/RankMath/AIOSEO), retry logic, audit trail
+   250→- Implemented WooCommerce Integration (src/lib/cms/woocommerce.ts): product operations, category management, variations, reviews, inventory, pricing, product import/sync, audit trail
+   251→- Implemented Programmatic SEO module (src/lib/programmatic/): 9 template types with Dutch variable labels, 8 quality gates (3 blocking: duplicate, template completeness, brand check), AI-powered page generation, approval queue, publication limits
+   252→- Implemented Content Quality Controls (src/lib/content/quality-controls.ts): 13 pre-publication checks with BLOCKING/WARNING/INFO severities, dismiss functionality
+   253→- Implemented Change History (src/lib/content/change-history.ts): record, query with filters, content diff generation, rollback support
+   254→- Implemented Source Grounding (src/lib/content/source-grounding.ts): source CRUD, claim support checking (SUPPORTED/UNSUPPORTED/PARTIALLY_SUPPORTED), never claims verified when not
+   255→- Implemented Content Workflow (src/lib/content/workflow.ts): 14-step content creation wizard, 17 content types with Dutch labels, approval gates
+   256→- Implemented Decay & Pruning Workflows (src/lib/content/decay-workflow.ts): update briefs for decayed pages, content comparison, pruning with evidence/risk/rollback guidance
+   257→- Created 32 API route files across 11 feature areas
+   258→- Created 7 frontend pages: CMS connections, internal links, structured data, programmatic SEO, content studio (workflow), content history, decay workflow
+   259→- Updated project detail page with 8 new module navigation cards
+   260→- Created 11 test suites covering all Phase 4 modules
+   261→- Fixed all Phase 4 TypeScript errors
+   262→- Updated IMPLEMENTATION_STATUS.md
+   263→
+   264→Stage Summary:
+   265→- Phase 4 (Content Automation & CMS) is complete with all definition of done items checked
+   266→- 126 requirements implemented out of 218 total (58%)
+   267→- All lint passes, Phase 4 TypeScript compiles cleanly
+   268→- All user-facing text is in Dutch
+   269→- 8 new backend library modules, 32 API routes, 7 frontend pages
+   270→- Approval-first workflows enforced throughout
+   271→- Quality gates prevent thin/doorway page publication
+   272→
+   273→---
+   274→Task ID: 5
+   275→Agent: Main Agent
+   276→Task: Build Phase 5 - Analytics & Monitoring
+   277→
+   278→Work Log:
+   279→- Updated Prisma schema with 9 new enums (DataConnectionType, DataConnectionStatus, AlertType, AlertSeverity, AlertStatus, RoadmapView, RoadmapItemType, ReportType, ReportStatus, ReportSectionType) and 9 new models (DataConnection, DailyMetric, QueryPerformance, Alert, AlertPreference, RoadmapItem, WhiteLabelProfile, Report, ReportComment)
+   280→- Pushed schema changes to SQLite database
+   281→- Implemented Analytics module (src/lib/analytics/): types with Dutch metric display info, CSV imports (5 types with flexible column mapping), time-series calculations with period comparison & YoY, data connection sync manager, CSV export with Dutch formatting
+   282→- Implemented Alert Engine (src/lib/alerts/): 16 alert types with Dutch labels, threshold & anomaly detection (Z-score + IQR), alert lifecycle management, notification preferences with quiet hours, digest generation
+   283→- Implemented Roadmap module (src/lib/roadmap/): recommendation generation from technical issues, keyword opportunities, content decay, internal links; 5 time views with Dutch labels; CRUD and drag-to-reorder
+   284→- Implemented Reporting module (src/lib/reporting/): 14 report types with default Dutch section layouts, report builder with sections, snapshot data for immutable reports, white-label profiles with branding, share links with password & expiry, HTML rendering with Dutch formatting, comments
+   285→- Created 27 API route files covering: data connections (5), metrics (4), query performance (2), alerts (4), roadmap (3), reporting (6), white-label (2), shared reports (1)
+   286→- Created 6 frontend pages: analytics dashboard, data connections, alerts, roadmap, reports, report detail
+   287→- Updated project detail page with 4 new Phase 5 navigation cards
+   288→- Added Dutch translations for all Phase 5 modules
+   289→- Wrote 180 tests across 8 test suites - all passing (388 assertions)
+   290→- Fixed TypeScript error in connections page (unintentional comparison)
+   291→- Updated IMPLEMENTATION_STATUS.md
+   292→
+   293→Stage Summary:
+   294→- Phase 5 (Analytics & Monitoring) is complete with all definition of done items checked
+   295→- 140 requirements implemented out of 218 total (64%)
+   296→- All lint passes, Phase 5 TypeScript compiles cleanly
+   297→- All user-facing text is in Dutch
+   298→- 4 new backend library modules (22 files), 27 API routes, 6 frontend pages
+   299→- 180 tests all passing
+   300→- Report snapshots ensure historical reports don't change when source data changes
+   301→- Alert deduplication prevents notification spam
+   302→
+   303→---
+   304→Task ID: 6
+   305→Agent: Main Agent
+   306→Task: Build Phase 6 - GEO & Competitive Intelligence
+   307→
+   308→Work Log:
+   309→- Updated Prisma schema with 6 new enums (GeoCheckCategory, GeoCheckStatus, AIVisibilityMethod, CompetitorChangeType, TrendSourceType, AuthorityRecordType) and 12 new models (GeoReadinessCheck, GeoReadinessSummary, AIPromptLibrary, AIPromptCluster, AIVisibilityResult, AIVisibilitySummary, Competitor, CompetitorSnapshot, CompetitorChange, TrendRecord, AuthorityRecord, OutreachCampaign)
+   310→- Fixed prompt/relation naming conflict in AIVisibilityResult (prompt → promptText)
+   311→- Pushed schema changes to SQLite database
+   312→- Implemented GEO Readiness module (src/lib/geo/): 15-category readiness analysis using existing Page/TechnicalIssue/StructuredData/BrandProfile data, summary scoring, NOT presented as measured external AI visibility
+   313→- Implemented AI Visibility module (src/lib/ai-visibility/): prompt library with clusters, manual test entry, CSV import, local simulation (always flagged with Dutch disclaimer "Simulatie – geen bewijs van werkelijke externe AI-zichtbaarheid"), Share of AI Voice calculation, brand/competitor mention rates
+   314→- Implemented Competitor Intelligence module (src/lib/competitor/): respectful public crawling with robots.txt/SSRF protection, snapshot creation, change detection with Dutch summaries, change feed with dismissal. CRITICAL: Never invents traffic or revenue data
+   315→- Implemented Trends module (src/lib/trends/): trend records from 8 source types, keyword/seasonal trend detection, internal search CSV import
+   316→- Implemented Authority module (src/lib/authority/): provider-neutral backlink data, CSV import (Ahrefs/Moz/Semrush formats), mark-as-lost, outreach campaigns. CRITICAL: Does not send outreach automatically
+   317→- Created 15 API route files covering GEO, AI visibility, competitors, trends, authority, outreach
+   318→- Created 3 frontend pages: GEO-gereedheid, AI-zichtbaarheid, Concurrentieanalyse
+   319→- Updated project detail page with 3 Phase 6 navigation cards
+   320→- Wrote 78 tests across 5 test suites - all passing (183 assertions)
+   321→- Fixed multiple test type mismatches between test expectations and actual function signatures
+   322→- Added global fetch mock for competitor crawl tests
+   323→- Updated IMPLEMENTATION_STATUS.md
+   324→
+   325→Stage Summary:
+   326→- Phase 6 (GEO & Competitive Intelligence) is complete with all definition of done items checked
+   327→- 152 requirements implemented out of 218 total (70%)
+   328→- All lint passes, Phase 6 TypeScript compiles cleanly
+   329→- All user-facing text is in Dutch
+   330→- 5 new backend library modules (20 files), 15 API routes, 3 frontend pages
+   331→- 78 tests all passing
+   332→- GEO readiness is clearly NOT presented as measured external AI visibility
+   333→- AI simulations are always flagged with Dutch disclaimer
+   334→- Competitor intelligence never invents traffic or revenue
+   335→- Authority data is provider-neutral; outreach is never sent automatically
+   336→
+   337→---
+   338→Task ID: 7-2b
+   339→Agent: Reviews & Reputation Agent
+   340→Task: Build Reviews & Reputation Module (Subphase J, Phase 7)
+   341→
+   342→Work Log:
+   343→- Created /src/lib/reviews/types.ts — Core type definitions:
+   344→  - ReviewImportData interface for review import operations
+   345→  - SentimentAnalysisResult with Dutch themes, complaints, compliments, product/service issues, FAQ/content opportunities, trust signals
+   346→  - ReviewSummary with rating distribution, sentiment distribution, top themes, response rate, avg response time
+   347→  - ReviewResponseDraft interface
+   348→  - Dutch label maps: REVIEW_SOURCE_LABELS (7 sources), REVIEW_SENTIMENT_LABELS (4 sentiments), REVIEW_RESPONSE_STATUS_LABELS (5 statuses)
+   349→  - DEFAULT_REVIEW_COLUMN_MAPPINGS with Dutch/English column aliases for CSV import
+   350→  - NEGATIVE_KEYWORDS (32 Dutch negative keywords), POSITIVE_KEYWORDS (32 Dutch positive keywords)
+   351→  - PRODUCT_THEME_KEYWORDS (24 Dutch product keywords), SERVICE_THEME_KEYWORDS (24 Dutch service keywords)
+   352→
+   353→- Created /src/lib/reviews/sentiment-analyzer.ts — Rule-based sentiment and theme analysis:
+   354→  - analyzeSentiment() — Full analysis combining all sub-analyses
+   355→  - classifySentiment() — Rating-based base score with keyword adjustment (±0.1 per keyword, capped -1 to 1)
+   356→  - detectThemes() — Dutch theme detection (Productkwaliteit, Levering, Verpakking, Prijs-kwaliteit, Klantenservice, etc.)
+   357→  - detectComplaints() — Dutch complaint extraction (15+ patterns: product defect, trage levering, onvriendelijk, etc.)
+   358→  - detectCompliments() — Dutch compliment extraction (13+ patterns: snelle levering, hoge kwaliteit, aanbeveling, etc.)
+   359→  - detectProductIssues() — Product-specific issue detection (12 patterns)
+   360→  - detectServiceIssues() — Service-specific issue detection (11 patterns)
+   361→  - generateFAQOpportunities() — FAQ suggestions from themes/complaints (Dutch)
+   362→  - generateContentOpportunities() — Blog/guide/landing page suggestions (Dutch)
+   363→  - identifyTrustSignals() — Trust signal extraction (geverifieerde aankoop, aanbeveling, terugkerende klant, etc.)
+   364→
+   365→- Created /src/lib/reviews/review-importer.ts — CSV import and bulk operations:
+   366→  - parseReviewCSV() — Flexible CSV parsing with Dutch/English column mapping
+   367→  - parseFlexibleDate() — Multi-format date parsing (YYYY-MM-DD, DD-MM-YYYY, DD/MM/YYYY)
+   368→  - importReview() — Single review import with deduplication by externalId or authorName+reviewDate+source
+   369→  - importReviewsBulk() — Bulk import with individual validation and deduplication
+   370→  - importReviewsCSV() — Full CSV import pipeline with batch ID generation
+   371→  - All error messages in Dutch
+   372→
+   373→- Created /src/lib/reviews/review-manager.ts — Review CRUD and querying:
+   374→  - listReviews() — Paginated listing with 10+ filters (source, sentiment, rating range, dates, search, hasResponse, location)
+   375→  - getReview() — Single review details with responses and location
+   376→  - getReviewSummary() — Aggregated statistics (avg rating, distributions, top themes/complaints/compliments, response rate, avg response time)
+   377→  - analyzeAndSaveReviewSentiment() — Run analysis on a single review and persist results
+   378→  - analyzeProjectReviews() — Batch analysis of all unanalyzed reviews in a project
+   379→  - deleteReview() — Soft delete with deletedAt timestamp
+   380→  - All functions verify projectId for tenant isolation
+   381→
+   382→- Created /src/lib/reviews/response-drafter.ts — Review response drafting with approval workflow:
+   383→  - generateResponseDraft() — Template-based Dutch response generation:
+   384→    - Positive (4-5 stars): Thank customer, mention specifics (levering, kwaliteit, service, prijs)
+   385→    - Neutral (3 stars): Thank and ask for improvement feedback
+   386→    - Negative (1-2 stars): Apologize, address specific issues, offer resolution, invite contact
+   387→  - CRITICAL: Responses ALWAYS created as DRAFT, never auto-published
+   388→  - submitResponseForApproval() — DRAFT → PENDING_APPROVAL transition
+   389→  - approveResponse() — PENDING_APPROVAL → APPROVED transition
+   390→  - rejectResponse() — PENDING_APPROVAL → REJECTED with Dutch reason
+   391→  - updateResponseDraft() — Edit DRAFT or REJECTED responses (REJECTED resets to DRAFT)
+   392→  - publishResponse() — APPROVED → PUBLISHED (only from APPROVED, never from DRAFT)
+   393→  - getReviewResponses() — List all responses for a review
+   394→  - Full approval workflow enforced: DRAFT → PENDING_APPROVAL → APPROVED → PUBLISHED
+   395→
+   396→- Created /src/lib/reviews/index.ts — Barrel export of all public types, functions, and constants
+   397→
+   398→Stage Summary:
+   399→- Complete Reviews & Reputation module with 6 files
+   400→- Rule-based sentiment analyzer with 32+ Dutch negative keywords, 32+ positive keywords, 24 product themes, 24 service themes
+   401→- CSV import with flexible Dutch/English column mapping and multi-format date parsing
+   402→- Automatic deduplication by externalId or authorName+reviewDate+source
+   403→- Full review CRUD with 10+ filters and aggregated summary statistics
+   404→- Template-based Dutch response drafts for positive, neutral, and negative reviews
+   405→- Strict approval-first workflow: responses ALWAYS start as DRAFT, must go through approval before PUBLISHED
+   406→- Direct publishing from DRAFT is explicitly blocked
+   407→- All user-facing text in Dutch
+   408→- All functions verify projectId for tenant isolation
+   409→- No new TypeScript errors introduced
+   410→
+   411→---
+   412→Task ID: 7-2a
+   413→Agent: Local SEO Agent
+   414→Task: Build Local SEO Module (Subphase I, Phase 7)
+   415→
+   416→Work Log:
+   417→- Created /src/lib/local-seo/types.ts — Core type definitions:
+   418→  - NAPRecord, DayHours, OpeningHours, LocalKeywordData, LandingPageQuality, LocationHealthResult, LocationComparison interfaces
+   419→  - LOCAL_HEALTH_CATEGORY_LABELS (10 categories, Dutch labels)
+   420→  - LOCAL_HEALTH_STATUS_LABELS (4 statuses, Dutch labels)
+   421→  - LOCAL_KEYWORD_INTENT_LABELS (5 intents, Dutch labels)
+   422→  - Re-exports Prisma enums (LocalHealthCategory, LocalHealthStatus, LocalKeywordIntent)
+   423→
+   424→- Created /src/lib/local-seo/location-manager.ts — Location CRUD:
+   425→  - createLocation() — Create location with NAP, geo, opening hours, business type, service area
+   426→  - updateLocation() — Update location with tenant isolation verification
+   427→  - deleteLocation() — Soft delete with tenant isolation verification
+   428→  - getLocation() — Get location with all related data (keywords, landing pages, health checks, GBP)
+   429→  - listLocations() — List with optional filters (city, businessType, minHealthScore, minRating)
+   430→  - compareLocations() — Compare multiple locations with keyword and landing page counts
+   431→  - All functions verify projectId for tenant isolation
+   432→  - All error messages in Dutch
+   433→
+   434→- Created /src/lib/local-seo/health-checker.ts — 10-category health analysis:
+   435→  - checkNAPConsistency() — Verifies name, address, phone completeness with optional fields check
+   436→  - checkOpeningHours() — Checks if weekly opening hours are set and complete
+   437→  - checkLocalStructuredData() — Validates JSON-LD quality (5 key fields)
+   438→  - checkLandingPages() — Counts pages and calculates average quality score
+   439→  - checkLocalKeywords() — Checks keyword count, ranking distribution, top 10/3 coverage
+   440→  - checkReviews() — Checks avgRating and reviewCount with scoring matrix
+   441→  - checkGoogleBusinessProfile() — Checks GBP connection status and profile completeness
+   442→  - checkLocalLinks() — Placeholder (NOT_CHECKED)
+   443→  - checkPhotos() — Placeholder (NOT_CHECKED)
+   444→  - checkServiceAreas() — Checks service area coverage
+   445→  - saveHealthChecks() — Upserts results and updates overall health score
+   446→  - calculateOverallHealthScore() — Weighted average (NAP=20, LandingPages=15, Keywords=15, etc.)
+   447→  - getLocationHealthChecks() — Retrieve existing checks with tenant isolation
+   448→  - All titles, descriptions, and recommendations in Dutch
+   449→  - Never fabricates data — NOT_CHECKED for unavailable checks
+   450→
+   451→- Created /src/lib/local-seo/rank-import.ts — CSV rank data import:
+   452→  - parseRankCSV() — Parses CSV with flexible column mapping (Dutch/English)
+   453→  - importRankCSV() — Full import with batch ID, upsert, and error tracking
+   454→  - DEFAULT_RANK_COLUMN_MAPPINGS — 7 fields with Dutch/English aliases
+   455→  - Supports quoted CSV fields, various delimiters, BOM markers
+   456→  - Intent parsing supports Dutch and English names
+   457→  - Generates unique import batch ID
+   458→  - All error messages in Dutch
+   459→
+   460→- Created /src/lib/local-seo/gbp-adapter.ts — Google Business Profile adapter:
+   461→  - connectGBP() — Connect GBP with OAuth tokens, upserts profile record
+   462→  - disconnectGBP() — Disconnect, clears tokens, resets sync status
+   463→  - syncGBPData() — Placeholder sync (updates timestamp, never fabricates data)
+   464→  - getGBPStatus() — Returns connection state, sync status, rating, review count
+   465→  - CRITICAL: Never fabricates sync data — real API integration is a stub
+   466→  - All error messages in Dutch
+   467→
+   468→- Created /src/lib/local-seo/landing-page-analyzer.ts — Landing page quality:
+   469→  - analyzeLandingPageQuality() — 8-element quality scoring (0-100):
+   470→    Title (10), Meta description (10), H1 (10), Word count ≥300 (15),
+   471→    Structured data (15), NAP (15), Map (10), Opening hours (15)
+   472→  - generateLocalStructuredData() — LocalBusiness JSON-LD generator:
+   473→    Only includes fields with data, never fabricates missing values
+   474→    Maps 60+ business types to schema.org types
+   475→    Generates OpeningHoursSpecification and areaServed
+   476→  - saveLandingPageAnalysis() — Upsert landing pages with quality scores
+   477→  - All issue descriptions in Dutch
+   478→
+   479→- Created /src/lib/local-seo/index.ts — Barrel export
+   480→
+   481→Stage Summary:
+   482→- Local SEO module complete with 7 files
+   483→- 10 health check categories with weighted scoring
+   484→- Full location CRUD with tenant isolation
+   485→- CSV rank import with Dutch/English column mapping
+   486→- GBP adapter as stub/interface (never fabricates data)
+   487→- Landing page quality analysis with 8 scoring elements
+   488→- JSON-LD generator never fabricates missing values
+   489→- All user-facing text in Dutch
+   490→- No new TypeScript compilation errors introduced
+   491→
+   492→---
+   493→Task ID: 7
+   494→Agent: Main Agent
+   495→Task: Build Phase 7 - Local SEO & Reputation
+   496→
+   497→Work Log:
+   498→- Updated Prisma schema with 6 new enums (LocalHealthCategory, LocalHealthStatus, ReviewSource, ReviewSentiment, ReviewResponseStatus, LocalKeywordIntent) and 8 new models (expanded Location, LocalKeyword, LocalLandingPage, LocalCompetitor, LocationHealthCheck, GoogleBusinessProfile, RankImport, Review, ReviewResponse)
+   499→- Pushed schema changes to SQLite database
+   500→- Implemented Local SEO module (src/lib/local-seo/, 7 files): Location CRUD with NAP, 10-category health checker, landing page quality analyzer with JSON-LD generation, rank CSV import with Dutch/English columns, Google Business Profile adapter (stub), opening hours management
+   501→- Implemented Reviews & Reputation module (src/lib/reviews/, 6 files): Dutch sentiment analyzer with 60+ keyword patterns, review CSV importer with flexible column mapping, review manager with filters/summary, response drafter with strict approval workflow (DRAFT→PENDING_APPROVAL→APPROVED→PUBLISHED)
+   502→- Created 21 API route files: locations CRUD + health + compare (3), location sub-resources (5), rank import (1), reviews CRUD + import + summary + analyze (5), review response workflow (4)
+   503→- Created 4 frontend pages: locations list, location detail (6 tabs), reviews list (with summary stats + filters + import), review detail (with sentiment analysis + response workflow)
+   504→- Updated project detail page with 2 Phase 7 navigation cards (Locaties, Beoordelingen)
+   505→- Wrote 306 tests across 8 test suites - all passing (608 assertions)
+   506→- Updated IMPLEMENTATION_STATUS.md
+   507→
+   508→Stage Summary:
+   509→- Phase 7 (Local SEO & Reputation) is complete with all definition of done items checked
+   510→- 161 requirements implemented out of 218 total (74%)
+   511→- All lint passes, Phase 7 TypeScript compiles cleanly
+   512→- All user-facing text is in Dutch
+   513→- 2 new backend library modules (13 files), 21 API routes, 4 frontend pages
+   514→- 306 tests all passing
+   515→- Location health checks cover 10 categories with Dutch findings
+   516→- Review response workflow enforces approval-before-publish
+   517→- GBP adapter is a stub ready for real Google API integration
+   518→- Sentiment analysis uses 60+ Dutch keyword patterns
+   519→
+   520→---
+   521→Task ID: 8-2
+   522→Agent: Sub Agent
+   523→Task: Build E-commerce SEO Module (Subphase K)
+   524→
+   525→Work Log:
+   526→- Created 9 files under src/lib/ecommerce/ implementing the full E-commerce SEO module
+   527→- types.ts: Core type definitions (ProductSEOAnalysis, CategoryQualityResult, RevenuePrioritization, FacetedNavigationResult, SeasonalProductResult, VariationAnalysisResult, Dutch labels, scoring weights, CRUD types)
+   528→- product-manager.ts: Product CRUD operations (create, update, soft delete, get, list with filters/sorting/pagination, inventory summary) — all scoped by projectId for tenant isolation
+   529→- product-analyzer.ts: Product SEO analysis across 4 dimensions (title quality, description quality, structured data score, image score) with weighted overall score; pure analyzeProductSEO function plus DB-persisting analyzeAndSaveProductSEO and batch analyzeAllProducts
+   530→- category-analyzer.ts: Category quality analysis with 7-point scoring (description presence, description length, slug, product count, >5 products, structured data, product description coverage); pure function + DB-persisted analysis
+   531→- revenue-prioritizer.ts: Revenue-based SEO investment prioritization (critical/high/medium/low) with Dutch reasoning; margin-aware; getTopRevenueOpportunities for high-ROI targets
+   532→- variation-analyzer.ts: Product variation analysis detecting duplicate content, missing unique descriptions, missing variation images, missing structured attributes, and out-of-stock marking issues
+   533→- seasonal-analyzer.ts: Seasonal product detection and phase-based recommendations (pre-season, in-season, post-season); markProductSeasonal for manual tagging
+   534→- faceted-analyzer.ts: Faceted navigation issue detection from crawled Page data (duplicate content, thin content, missing canonical, noindex needed); CRUD for faceted issues with resolve capability
+   535→- index.ts: Barrel export of all public functions and types
+   536→- Fixed TypeScript compilation error (string | null | undefined → string | null coercion in product-analyzer.ts)
+   537→- All user-facing text is in Dutch throughout the module
+   538→- No fabricated data — uses "— —" or null for missing numeric values
+   539→- All functions verify projectId for tenant isolation
+   540→
+   541→Stage Summary:
+   542→- E-commerce SEO module complete with 9 files, 0 TypeScript errors
+   543→- Product SEO analysis covers 4 dimensions with 25/25/25/25 weighting
+   544→- Category quality uses 7-point scoring system (max 100)
+   545→- Revenue prioritization maps products to critical/high/medium/low with Dutch explanations
+   546→- Variation analyzer detects duplicate content groups and missing unique content
+   547→- Seasonal analyzer provides timing-based recommendations (pre/in/post season)
+   548→- Faceted navigation analyzer detects 4 issue types from crawled page data
+   549→
+   550→---
+   551→Task ID: 8
+   552→Agent: Main Agent
+   553→Task: Build Phase 8 - E-commerce SEO & Product Feeds
+   554→
+   555→Work Log:
+   556→- Updated Prisma schema with 4 new enums (ProductStatus, FeedType, FeedValidationStatus, FeedIssueSeverity) and 6 new models (Product, ProductCategory, FacetedNavigationIssue, ProductFeed, ProductFeedItem, FeedValidationRule)
+   557→- Pushed schema changes to SQLite database
+   558→- Implemented E-commerce SEO module (src/lib/ecommerce/, 9 files): Product CRUD with inventory summary, product SEO analyzer (4 dimensions: title/description/structured data/images), category quality analyzer, revenue-based prioritization (critical/high/medium/low with Dutch reasoning), variation analysis with duplicate detection, seasonal product analysis, faceted navigation issue detection
+   559→- Implemented Product Feeds module (src/lib/product-feeds/, 6 files): Feed manager (CRUD), feed parser (XML Merchant Center/CSV/TSV with Dutch/English columns), feed validator (8 validation functions with Dutch messages at ERROR/WARNING/INFO severity), feed importer with product matching by GTIN/SKU/URL
+   560→- Created 18 API route files: products (5), product-categories (2), variations (1), seasonal (1), faceted-issues (2), feeds (6)
+   561→- Created 4 frontend pages: products list with revenue prioritization, product detail with SEO scores and variations, feeds list, feed detail with validation and import
+   562→- Updated project detail page with 2 Phase 8 navigation cards (Producten, Productfeeds)
+   563→- Wrote 142 tests across 6 test suites - all passing (202 assertions)
+   564→- Updated IMPLEMENTATION_STATUS.md
+   565→
+   566→Stage Summary:
+   567→- Phase 8 (E-commerce SEO) is complete with all definition of done items checked
+   568→- 169 requirements implemented out of 218 total (78%)
+   569→- All lint passes, Phase 8 TypeScript compiles cleanly
+   570→- All user-facing text is in Dutch
+   571→- 2 new backend library modules (15 files), 18 API routes, 4 frontend pages
+   572→- 142 tests all passing
+   573→- Product SEO scoring covers 4 dimensions with Dutch issues
+   574→- Revenue prioritization drives SEO investment decisions
+   575→- Feed validation engine supports 5 feed types with configurable rules
+   576→- Never fabricates revenue or margin data
+   577→
+   578→---
+   579→Task ID: 9-2b
+   580→Agent: General Purpose Agent
+   581→Task: Build Experiments + Forecasting Modules (Subphases O & P, Phase 9)
+   582→
+   583→Work Log:
+   584→- Added deletedAt fields to Experiment, Forecast, and BudgetAllocation Prisma models (with indexes)
+   585→- Ran prisma generate and prisma db push successfully
+   586→- Created Module 3: Experiments (src/lib/experiments/) — 5 files
+   587→  - types.ts: ExperimentData, ExperimentResult, StatisticalTestResult, ExperimentFilters interfaces; Dutch status labels (Concept/Actief/Afgerond/Geannuleerd)
+   588→  - statistics.ts: calculateZTest (two-proportion Z-test), calculateTTest (Welch's t-test), calculateRequiredSampleSize, calculateImprovement, generateDutchConclusion — honest statistical analysis with Dutch explanations and sample size cautions
+   589→  - experiment-manager.ts: Full CRUD + lifecycle (create/update/get/list/start/complete/cancel/soft-delete) with projectId tenant isolation and state transition validation
+   590→  - experiment-analyzer.ts: recordExperimentResult (runs statistical analysis, generates Dutch conclusion with sample-size warnings), getExperimentRecommendations (rule-based Dutch recommendations per experiment)
+   591→  - index.ts: Barrel export of all types, functions, and labels
+   592→- Created Module 4: Forecasting & Budget (src/lib/forecasting/) — 4 files
+   593→  - types.ts: ForecastInput, ForecastOutput, ForecastRange, MonthlyProjection, BudgetAllocationData, BudgetRecommendation interfaces; Dutch labels for scenarios (Conservatief/Realistisch/Ambitieus) and categories (10 Dutch budget category labels)
+   594→  - forecast-engine.ts: generateForecast (3-scenario projections with compounding, confidence levels, uncertainty ranges ±20/30/50%), generateAssumptions (Dutch), calculateForecastRanges (low/mid/high), getForecasts/getForecast/deleteForecast with tenant isolation
+   595→  - budget-manager.ts: createBudget/updateBudget/getBudget/listBudgets/deleteBudget with 100% allocation validation, getBudgetRecommendations (rule-based Dutch recommendations analyzing project state — technical issues, content decay, authority, locations, experiments)
+   596→  - index.ts: Barrel export of all types, functions, and labels
+   597→- All TypeScript compilation passes for new modules (0 errors)
+   598→- All user-facing text in Dutch; never fabricates data; all functions verify projectId for tenant isolation
+   599→- Statistical engine never overstates certainty — includes sample size warnings, p-values, confidence intervals, and honest Dutch disclaimers
+   600→
+   601→Stage Summary:
+   602→- 2 complete backend modules for Phase 9 Subphases O & P
+   603→- 9 new source files across src/lib/experiments/ and src/lib/forecasting/
+   604→- 3 Prisma schema updates (deletedAt + indexes)
+   605→- Zero TypeScript errors in new code
+   606→- All Dutch-first with honest statistical framing
+   607→
+   608→---
+   609→Task ID: 9
+   610→Agent: Main Agent
+   611→Task: Build Phase 9 - CRO & Business Intelligence
+   612→
+   613→Work Log:
+   614→- Updated Prisma schema with 8 new enums (AnalyticsEventType, ConsentState, CROCategory, CROSeverity, BehaviourType, ExperimentStatus, ForecastScenario, BudgetCategory) and 7 new models (AnalyticsEvent, AnalyticsSession, BehaviourRecord, CROFinding, Experiment, Forecast, BudgetAllocation)
+   615→- Pushed schema changes to SQLite database
+   616→- Implemented First-party Analytics module (src/lib/first-party-analytics/, 5 files): Event collector with cookieless session generation (cls- prefix), session manager with summary statistics, funnel analyzer with dropoff rates, privacy disclaimer in Dutch
+   617→- Implemented CRO & Behaviour module (src/lib/cro/, 4 files): Behaviour CSV importer with Dutch/English columns, CRO analyzer with 5 analysis modules (scroll depth, rage clicks, dead clicks, form abandonment, device engagement), CRO finding CRUD with 9 categories
+   618→- Implemented Experiments module (src/lib/experiments/, 5 files): Experiment lifecycle management (DRAFT→RUNNING→COMPLETED→CANCELLED), Z-test + t-test statistical engine, honest Dutch conclusions with sample size warnings, never overstates certainty
+   619→- Implemented Forecasting & Budget module (src/lib/forecasting/, 4 files): 3-scenario forecast engine (conservative/realistic/ambitious) with compounding growth, uncertainty ranges (±20%/30%/50%), budget allocation with 100% validation, rule-based budget recommendations
+   620→- Created 20 API route files covering: analytics events (4), behaviour & CRO (4), experiments (7), forecasting & budget (5)
+   621→- Created 3 frontend pages: CRO & Gedrag (combined behaviour/findings/experiments), Experiment detail (with statistical results), Prognoses & Budget (forecasting + budget planning)
+   622→- Updated project detail page with 2 Phase 9 navigation cards (CRO & Gedrag, Prognoses & Budget)
+   623→- Wrote 107 tests across 5 test suites - all passing (212 assertions)
+   624→- Updated IMPLEMENTATION_STATUS.md
+   625→
+   626→Stage Summary:
+   627→- Phase 9 (CRO & Business Intelligence) is complete with all definition of done items checked
+   628→- 186 requirements implemented out of 218 total (85%)
+   629→- All lint passes, Phase 9 TypeScript compiles cleanly
+   630→- All user-facing text is in Dutch
+   631→- 4 new backend library modules (18 files), 20 API routes, 3 frontend pages
+   632→- 107 tests all passing
+   633→- Statistical engine never overstates certainty - includes honest disclaimers
+   634→- Cookieless mode for privacy-friendly analytics
+   635→- Forecasts always show uncertainty ranges and confidence levels
+   636→- Budget allocation validates percentages sum to 100%
+   637→---
+   638→Task ID: 10
+   639→Agent: Main Agent
+   640→Task: Build Phase 10 - Agency & Client Operations
+   641→
+   642→Work Log:
+   643→- Read Phase 10 spec from 07_agency_client_portal_copilot_agents_migrations_deployments.txt
+   644→- Designed 11 new Prisma enums: ClientPortalAccessType, DeliverableStatus, RecurringTaskFrequency, SLAStatus, PMIntegrationProvider, PMIntegrationStatus, BenchmarkCategory, ClientHealthStatus, ApprovalQueueStatus
+   645→- Created 12 new Prisma models: ClientExtension, ClientPortalAccess, ClientNotificationPreference, Deliverable, TimeEntry, MonthlyWorkSummary, RecurringTask, ApprovalQueueItem, InternalNote, PMIntegration, PMTaskExport, BenchmarkResult, BenchmarkConsent, AgencyAlert
+   646→- Added reverse relations to Client, Organization, and Project models
+   647→- Pushed schema to SQLite database, generated Prisma client
+   648→- Created 4 backend library modules:
+   649→  - client-portal (types.ts, portal-manager.ts, index.ts): Portal access control, data filtering, notification preferences
+   650→  - agency (types.ts, agency-manager.ts, index.ts): Client health scoring, SLA tracking, deliverables, time tracking, approval queue, internal notes, agency dashboard
+   651→  - benchmarking (types.ts, benchmark-calculator.ts, index.ts): 10 benchmark categories with score calculation, anonymised peer comparison with consent
+   652→  - pm-integrations (types.ts, pm-manager.ts, adapters/jira.ts, adapters/trello.ts, adapters/asana.ts, adapters/generic-webhook.ts, index.ts): 8 PM providers with adapter pattern
+   653→- Created 22 API route files:
+   654→  - Client portal: portal-access, notification-preferences, extension (4 files)
+   655→  - Agency operations: deliverables, time-entries, monthly-summaries, recurring-tasks, approval-queue, internal-notes (10 files)
+   656→  - Benchmarking: benchmarks, benchmarks/consent (2 files)
+   657→  - PM integrations: pm-integrations, pm-integrations/[id], pm-integrations/[id]/test, pm-integrations/[id]/export, pm-integrations/[id]/sync (5 files)
+   658→  - Agency alerts (1 file)
+   659→- Created 5 frontend pages:
+   660→  - /projects/[id]/benchmarks - Benchmark visualization with consent management
+   661→  - /organizations/[id]/agency - Agency dashboard with 8 alert categories
+   662→  - /organizations/[id]/deliverables - Deliverables management
+   663→  - /organizations/[id]/integrations - PM integration management
+   664→  - /organizations/[id]/approvals - Approval queue
+   665→- Added Benchmarks navigation card to project detail page
+   666→- Wrote 126 tests across 4 test files (228 assertions):
+   667→  - client-portal: 36 tests (portal access, data filtering, restricted fields)
+   668→  - agency: 36 tests (health scoring, status mapping, recurring task scheduling, Dutch labels)
+   669→  - benchmarking: 40 tests (all 10 categories, score boundaries, constants)
+   670→  - pm-integrations: 14 tests (provider labels, validation rules)
+   671→- Updated IMPLEMENTATION_STATUS.md: Phase 10 marked complete, 184/218 requirements (84%)
+   672→
+   673→Stage Summary:
+   674→- Phase 10 (Agency & Client Operations) fully implemented
+   675→- 12 new database models with full CRUD
+   676→- Client portal with permission-based access control and data filtering
+   677→- Agency dashboard with 8 alert categories
+   678→- Benchmarking with 10 categories and anonymised peer comparison (requires consent, min 5 peers)
+   679→- PM integration with adapter pattern for 8 providers (Jira, Trello, Asana, ClickUp, Monday, Linear, GitHub Issues, Generic Webhook)
+   680→- 126 tests passing, 0 failures
+   681→- Current progress: 184/218 requirements (84%)
+   682→---
+   683→Task ID: 11
+   684→Agent: Main Agent
+   685→Task: Build Phase 11 - AI Copilots & Agents
+   686→
+   687→Work Log:
+   688→- Read Phase 11 spec (sections 5-7): Dutch copilot, specialised agents, automation rules
+   689→- Designed 7 new Prisma enums: AgentType (15 types), AgentRunStatus (6), AutomationTriggerType (11), AutomationActionType (11), AutomationRuleStatus (4)
+   690→- Created 5 new Prisma models: CopilotConversation, CopilotMessage, AgentRun, AutomationRule, AutomationExecution
+   691→- Added reverse relations to Organization and Project models
+   692→- Pushed schema to SQLite, generated Prisma client
+   693→- Created 3 backend library modules:
+   694→  - copilot (types.ts, copilot-manager.ts, index.ts): Prompt injection detection (12 patterns), input sanitization, conversation management, tool execution with approval workflow, response building with citations
+   695→  - agent-framework (types.ts, agent-manager.ts, index.ts): 15 specialised agents with tool allowlists, run lifecycle management, approval gates, cost tracking, human-readable summaries
+   696→  - automation-rules (types.ts, rule-manager.ts, index.ts): 11 trigger types, 11 action types, condition evaluation engine, high-risk action detection, rule CRUD, execution tracking
+   697→- Created 10 API route files:
+   698→  - Copilot: conversations, messages, tools (3 files)
+   699→  - Agent runs: list/create, details/cancel, approve (3 files)
+   700→  - Automation: rules CRUD, trigger, execution history (4 files)
+   701→- Created 3 frontend pages:
+   702→  - /projects/[id]/copilot - Chat interface with citations and quick questions
+   703→  - /projects/[id]/agents - 15 agent cards with run management
+   704→  - /organizations/[id]/automation - Rule builder with conditions/actions
+   705→- Added Copilot and Agents navigation cards to project detail page
+   706→- Wrote 89 tests across 3 test files (198 assertions):
+   707→  - copilot: 25 tests (prompt injection, sanitization, response building, constants)
+   708→  - agent-framework: 33 tests (tool allowlists, configs, execution summary, labels)
+   709→  - automation-rules: 31 tests (condition evaluation, high-risk detection, labels)
+   710→- Updated IMPLEMENTATION_STATUS.md: Phase 11 marked complete, 192/218 requirements (88%)
+   711→
+   712→Stage Summary:
+   713→- Phase 11 (AI Copilots & Agents) fully implemented
+   714→- Dutch copilot with prompt injection protection and citation support
+   715→- 15 specialised agents with tool allowlists and approval gates
+   716→- Automation rules with 11 triggers and 11 actions
+   717→- High-risk actions automatically require approval
+   718→- 89 tests passing, 0 failures
+   719→- Current progress: 192/218 requirements (88%)
+   720→---
+   721→Task ID: 12
+   722→Agent: Main Agent
+   723→Task: Build Phase 12 - Migrations & Deployments
+   724→
+   725→Work Log:
+   726→- Read Phase 12 spec (sections 8-9): Website migration module and deployment monitoring
+   727→- Designed 7 new Prisma enums: MigrationCheckStatus (5 Dutch-named statuses), MigrationProjectStatus (8), DeploymentProvider (3), DeploymentCheckType (11), DeploymentCheckStatus (4)
+   728→- Created 6 new Prisma models: MigrationProject, MigrationUrlMapping, MigrationPreLaunchCheck, MigrationLaunchBlocker, DeploymentRecord, DeploymentCheck
+   729→- Added reverse relations to Organization and Project models
+   730→- Pushed schema to SQLite, generated Prisma client
+   731→- Created 2 backend library modules:
+   732→  - migration (migration-manager.ts, index.ts): Migration project CRUD, URL mapping with bulk create, pre-launch checks, launch blockers, launch readiness check, redirect validation with Dutch warnings
+   733→  - deployment (deployment-manager.ts, index.ts): Deployment records with before/after comparison, 11 check types, regression detection, severity classification, optional blocking, unblock workflow
+   734→- Created 10 API route files:
+   735→  - Migrations: CRUD, URL mappings, launch check, blockers (6 files)
+   736→  - Deployments: CRUD, checks, unblock (4 files)
+   737→- Created 3 frontend pages:
+   738→  - /projects/[id]/migrations - Migration projects with status badges
+   739→  - /projects/[id]/migrations/[migrationId] - Migration detail with tabs (URL-mapping, pre-launch, blockers)
+   740→  - /projects/[id]/deployments - Deployment monitoring with expandable checks
+   741→- Added Migrations and Deployments navigation cards to project detail page
+   742→- Wrote 39 tests across 2 test files (55 assertions):
+   743→  - migration: 20 tests (redirect validation, Dutch status labels)
+   744→  - deployment: 19 tests (provider labels, check type labels, completeness)
+   745→- Updated IMPLEMENTATION_STATUS.md: Phase 12 marked complete, 200/218 requirements (92%)
+   746→
+   747→Stage Summary:
+   748→- Phase 12 (Migrations & Deployments) fully implemented
+   749→- Dutch migration statuses: Nog te controleren, Klaar, Probleem gevonden, Blokkeert lancering, Goedgekeurd
+   750→- All redirect changes require approval (automatic approval queue item creation)
+   751→- Deployment monitoring with 11 check types and regression detection
+   752→- Blocking must be explicitly enabled per deployment
+   753→- 39 tests passing, 0 failures
+   754→- Current progress: 200/218 requirements (92%)
+   755→
+   756→---
+   757→Task ID: 13b-1
+   758→Agent: Privacy & Data Management Agent
+   759→Task: Implement Phase 13 privacy and data management features (PRIV-001, PRIV-002)
+   760→
+   761→Work Log:
+   762→- Read full Prisma schema (4515 lines, 60+ models across Phases 1-12) to understand data model
+   763→- Read existing auth helper, db client, and API route patterns for consistency
+   764→- Created 6 privacy library modules in /src/lib/privacy/:
+   765→  1. data-export.ts — GDPR right to data portability
+   766→     - exportUserData(): Collects user profile, settings, org memberships, and all project-related data
+   767→     - generateExportFile(): Writes structured JSON export to /tmp with metadata section
+   768→     - Excludes sensitive fields like API keys from AI providers
+   769→     - ISO 8601 dates, format version, data range metadata
+   770→  2. account-deletion.ts — GDPR right to erasure (account level)
+   771→     - requestAccountDeletion(): 30-day grace period, UUID confirmation code
+   772→     - confirmAccountDeletion(): Validates code + grace period, then:
+   773→       - Transfers org ownership if last ORG_OWNER
+   774→       - Removes all memberships
+   775→       - Anonymizes PII with "Verwijderd [date]"
+   776→       - Soft-deletes user record (deletedAt)
+   777→       - Anonymizes audit log entries (nullifies userId, ipAddress, userAgent)
+   778→       - Deletes sessions, accounts, and settings
+   779→     - cancelAccountDeletion(): Clears scheduled deletion with audit trail
+   780→     - getDeletionStatus(): Reads current deletion status
+   781→     - Uses privacyPreferences JSON field for scheduling metadata
+   782→  3. project-deletion.ts — Project data erasure
+   783→     - requestProjectDeletion(): 7-day grace period, permission check (ORG_OWNER/AGENCY_OWNER/SEO_MANAGER/PLATFORM_ADMIN)
+   784→     - confirmProjectDeletion(): Prisma cascade delete handles all related records
+   785→     - cancelProjectDeletion(): Clears deletion with audit trail
+   786→     - getProjectDeletionStatus(): Reads current status
+   787→     - Uses project settings JSON field for scheduling metadata
+   788→  4. consent-manager.ts — Consent management with full audit trail
+   789→     - ConsentType enum: ANALYTICS, BEHAVIOUR_TRACKING, EXTERNAL_AI, EMAIL_MARKETING
+   790→     - recordConsent(): Stores consent action with evidence, IP, user agent
+   791→     - checkConsent(): Returns current consent state (opt-in default: false)
+   792→     - withdrawConsent(): Records withdrawal + handles consequences:
+   793→       - EXTERNAL_AI: Deactivates non-local AI providers
+   794→       - EMAIL_MARKETING: Disables marketing notification preferences
+   795→       - BEHAVIOUR_TRACKING: Flags for anonymization
+   796→       - ANALYTICS: Records withdrawal, retains anonymized data
+   797→     - getConsentHistory(): Full chronological audit trail
+   798→     - Includes proposed Prisma model (ConsentRecord) in comments for future migration
+   799→  5. retention-manager.ts — Data retention lifecycle management
+   800→     - 7 predefined retention policies with Dutch descriptions:
+   801→       - DailyMetrics: 730 days (2 years)
+   802→       - AICallLogs: 365 days
+   803→       - AuditLogs: 365 days
+   804→       - CrawlData: 180 days
+   805→       - PageSnapshots: 90 days
+   806→       - SessionData: 30 days
+   807→       - JobHistory: 90 days (completed/failed/cancelled only)
+   808→     - enforceRetentionPolicy(): Deletes expired data by type
+   809→     - enforceAllRetentionPolicies(): Runs all policies
+   810→     - getRetentionPolicy() / listRetentionPolicies(): Query policies
+   811→  6. index.ts — Re-exports all privacy modules with type aliases
+   812→- Created 4 API route files:
+   813→  1. /api/user/data-export (POST + GET)
+   814→     - POST: Request data export, returns download link
+   815→     - GET: Download generated export file with user-prefix security check
+   816→     - Zod validation, auth required
+   817→  2. /api/user/account-deletion (POST + GET)
+   818→     - POST: Discriminated union schema for request/confirm/cancel actions
+   819→     - GET: Check deletion status
+   820→     - Dutch error messages with appropriate HTTP status codes
+   821→  3. /api/projects/[id]/deletion (POST + GET)
+   822→     - POST: Discriminated union schema for request/confirm/cancel actions
+   823→     - GET: Check project deletion status
+   824→     - Permission verification built into requestProjectDeletion
+   825→  4. /api/user/consent (GET + POST)
+   826→     - GET: Returns all current consent states + full history
+   827→     - POST: Discriminated union for record/withdraw actions
+   828→     - Extracts IP and user agent from request headers for audit
+   829→- All API routes: auth required, Zod validation, Dutch error messages, proper HTTP status codes
+   830→- TypeScript strict typing throughout
+   831→- Verified: tsc --noEmit shows no errors in new files
+   832→- Verified: lint passes with no new errors
+   833→
+   834→Stage Summary:
+   835→- Phase 13 privacy features (PRIV-001, PRIV-002) fully implemented
+   836→- Complete GDPR compliance: data portability, right to erasure, consent management, data retention
+   837→- 10 new files created, 0 existing files modified
+   838→- All user-facing messages in Dutch
+   839→- Grace periods: 30 days (account), 7 days (project)
+   840→- Full audit trail for consent changes with IP and user agent
+   841→
+   842→---
+   843→Task ID: 13d-1
+   844→Agent: Observability Agent
+   845→Task: Implement health checks, observability, and reliability infrastructure (Phase 13 — OBS-001, OBS-002, PERF-R-002)
+   846→
+   847→Work Log:
+   848→- Created /src/lib/observability/logger.ts — Structured logging with createLogger factory, JSON/pretty-print output, secret masking (15+ patterns), child loggers via withContext(), appLogger singleton
+   849→- Created /src/lib/observability/metrics.ts — In-memory metrics collector with counters, histograms, gauges, duration recording; 11 predefined metric names; getMetricsSnapshot() and resetMetrics()
+   850→- Created /src/lib/observability/request-id.ts — AsyncLocalStorage-based request ID propagation with generateRequestId(), getRequestId(), setRequestId(), withRequestId()
+   851→- Created /src/lib/observability/health.ts — Health check system with checkDatabase(), checkOllama(), checkDiskSpace(), checkMemory(); runAllChecks() computes overall status; OverallHealth type with uptime/version/timestamp
+   852→- Created /src/lib/observability/reliability.ts — withRetry (exponential backoff + jitter), withCircuitBreaker (CLOSED/OPEN/HALF_OPEN), withTimeout, withIdempotency; custom CircuitBreakerOpenError and TimeoutError classes
+   853→- Created /src/lib/observability/index.ts — Central re-export of all observability modules
+   854→- Created /src/app/api/health/route.ts — GET /api/health (full health check, no auth, Cache-Control: no-store)
+   855→- Created /src/app/api/health/ready/route.ts — GET /api/health/ready (200 if DB healthy, 503 otherwise)
+   856→- Created /src/app/api/health/live/route.ts — GET /api/health/live (always 200 if Node.js running)
+   857→- Verified zero TypeScript errors in all new files via bunx tsc --noEmit
+   858→- No existing files modified
+   859→
+   860→Stage Summary:
+   861→- Phase 13 observability infrastructure fully implemented
+   862→- Structured logging with automatic secret masking
+   863→- In-memory metrics collection with 11 predefined metric names
+   864→- Request ID propagation via AsyncLocalStorage
+   865→- 4 health checks (database, Ollama, disk, memory) with Dutch messages
+   866→- 4 reliability patterns (retry, circuit breaker, timeout, idempotency)
+   867→- 3 API endpoints (health, ready, live) for orchestrator probes
+   868→- Zero external dependencies added — only Node.js built-ins
+   869→
+   870→---
+   871→Task ID: 13a-1
+   872→Agent: Security Hardening Agent
+   873→Task: Build Phase 13 — Production Hardening (SEC-001, SEC-002)
+   874→
+   875→Work Log:
+   876→- Created /src/lib/security/rate-limiter.ts — Sliding window rate limiter
+   877→  - In-memory store with configurable presets (auth: 10/min, api: 60/min, crawl: 5/min, ai: 20/min)
+   878→  - Tenant-aware (per organisationId) and IP-based fallback for unauthenticated requests
+   879→  - Auto-cleanup of expired entries every 60 seconds
+   880→  - Exports: checkRateLimit(), createRateLimitMiddleware(), buildTenantKey(), buildIpKey()
+   881→
+   882→- Created /src/lib/security/input-sanitizer.ts — Comprehensive input sanitization
+   883→  - sanitizeHtml(): Strips all HTML except b/i/em/strong/p/br/ul/ol/li/a(href only), removes scripts/events
+   884→  - sanitizeUrl(): Only allows http/https, blocks private IPs (10.x, 172.16-31.x, 192.168.x, 127.x, 169.254.x, ::1, 0.0.0.0)
+   885→  - sanitizeFileName(): Removes path traversal, null bytes, limits length (255), preserves extensions
+   886→  - escapeForRegex(): Escapes all regex metacharacters
+   887→  - sanitizeObject<T>(): Deep object sanitization with dot-notation paths and 9 strategies
+   888→
+   889→- Created /src/lib/security/csrf-protection.ts — CSRF protection
+   890→  - generateCsrfToken(): 32-byte crypto-random via Node.js crypto.randomBytes
+   891→  - validateCsrfToken(): Timing-safe comparison via crypto.timingSafeEqual
+   892→  - Double-submit cookie pattern with __Host- prefix
+   893→  - Origin/Referer validation against NEXTAUTH_URL
+   894→  - Token payload with 1-hour TTL
+   895→
+   896→- Created /src/lib/security/api-permissions.ts — Centralized API permission checking
+   897→  - 20+ route patterns covering all API endpoints with role-based access
+   898→  - checkApiPermission(path, method, userRole): First-match evaluation, deny-by-default
+   899→  - checkObjectPermission(ctx): Tenant isolation + role-based action restrictions
+   900→  - requirePermission() / withPermission(): Decorator/wrapper for API routes
+   901→  - All 9 roles: PLATFORM_ADMIN, ORG_OWNER, AGENCY_OWNER, SEO_MANAGER, CONTENT_MANAGER, EDITOR, DEVELOPER, CLIENT, READ_ONLY
+   902→
+   903→- Created /src/lib/security/secret-masker.ts — Secret masking for logs/errors
+   904→  - maskSecret(): Show first 4 chars, mask rest with ***
+   905→  - maskObject(): Recursive sensitive field masking (case-insensitive key matching)
+   906→  - maskUrl(): Mask credentials in URLs (user:pass@host → user:***@host)
+   907→  - Predefined patterns: password, secret, token, apiKey, apiSecret, consumerKey, consumerSecret, apiKeyEncrypted, applicationPassword, hashedPassword, accessToken, refreshToken
+   908→
+   909→- Created /src/lib/security/index.ts — Barrel re-export of all security modules
+   910→
+   911→- Updated /src/middleware.ts — Integrated security middleware
+   912→  - Rate limiting on all /api/* routes with automatic type detection
+   913→  - CSRF protection on mutation requests (POST, PUT, PATCH, DELETE)
+   914→  - Security headers: X-Content-Type-Options, X-Frame-Options, X-XSS-Protection, Referrer-Policy, Content-Security-Policy, Permissions-Policy
+   915→  - Rate-limit response headers (X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset, Retry-After)
+   916→  - CSRF cookie set on GET responses (HttpOnly, Secure, SameSite=Strict)
+   917→  - Preserved existing next-intl locale routing
+   918→  - All user-facing error messages in Dutch
+   919→
+   920→- Verified: zero TypeScript errors in all new/modified files (bunx tsc --noEmit)
+   921→- Verified: zero ESLint errors in security files (bun run lint)
+   922→
+   923→Stage Summary:
+   924→- Phase 13 security hardening fully implemented (SEC-001, SEC-002)
+   925→- Sliding window rate limiter with tenant-aware and IP-based limiting
+   926→- Comprehensive input sanitization (HTML, URL, file names, regex, deep objects)
+   927→- CSRF protection with double-submit cookie pattern and timing-safe comparison
+   928→- Centralized API permission checking with 20+ route patterns and all 9 roles
+   929→- Secret masking for logs, errors, and URLs
+   930→- Full middleware integration with rate limiting, CSRF, and security headers
+   931→- All user-facing messages in Dutch
+   932→

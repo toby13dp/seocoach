@@ -146,3 +146,67 @@
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
   background: oklch(0.5 0.05 166.113);
 }
+
+/* ===== Accessibility Styles (WCAG 2.1 AA) ===== */
+
+/* Keyboard vs Mouse focus ring management */
+.using-keyboard :focus {
+  outline: 2px solid oklch(0.596 0.145 163.225);
+  outline-offset: 2px;
+}
+
+.using-mouse :focus {
+  outline: none;
+}
+
+.using-keyboard :focus:not(:focus-visible) {
+  outline: none;
+}
+
+.using-keyboard :focus-visible {
+  outline: 2px solid oklch(0.596 0.145 163.225);
+  outline-offset: 2px;
+}
+
+/* Reduced motion — disable animations and transitions */
+.reduced-motion *,
+.reduced-motion *::before,
+.reduced-motion *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+  scroll-behavior: auto !important;
+}
+
+/* Skip link styles */
+.skip-link {
+  font-weight: 600;
+  text-decoration: none;
+  transition: transform 0.2s ease;
+}
+
+.skip-link:focus {
+  transform: translateY(0);
+}
+
+/* Accessible table responsive styles */
+.accessible-table-wrapper {
+  width: 100%;
+}
+
+.accessible-table-mobile .accessible-table-card {
+  background: var(--card);
+  border-color: var(--border);
+}
+
+.accessible-table-mobile .accessible-table-card:hover {
+  background: var(--accent);
+}
+
+/* High contrast mode support */
+@media (forced-colors: active) {
+  .using-keyboard :focus-visible {
+    outline: 2px solid Highlight;
+    outline-offset: 2px;
+  }
+}

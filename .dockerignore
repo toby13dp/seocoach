@@ -1,0 +1,85 @@
+# ============================================================================
+# SEOCoach — Docker Ignore
+# ============================================================================
+# Bestanden en mappen die NIET in de Docker image gekopieerd moeten worden.
+# Vermindert image grootte en voorkomt lekken van gevoelige data.
+# ============================================================================
+
+# Afhankelijkheden (worden in de Dockerfile geïnstalleerd)
+node_modules
+
+# Next.js build output (wordt in de Dockerfile gebouwd)
+.next
+
+# Git versiebeheer
+.git
+.gitignore
+
+# Omgevingsbestanden met geheimen (NIET in image)
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Toegestaan: .env.example en .env.production als referentie
+# .env.example
+# .env.production
+
+# Runtime database bestanden (SQLite)
+db/*.db
+db/*.db-journal
+db/*.db-wal
+
+# Backup bestanden
+backups/
+
+# Log bestanden
+*.log
+dev.log
+server.log
+
+# Development en test bestanden
+skills/
+tool-results/
+agent-ctx/
+__tests__/
+coverage/
+.nyc_output/
+
+# IDE en editor bestanden
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS bestanden
+.DS_Store
+Thumbs.db
+
+# Docker gerelateerd (voorkom recursie)
+docker-compose*.yml
+Dockerfile
+.dockerignore
+
+# Documentatie (niet nodig in image)
+*.md
+!README.md
+PROJECT_CHARTER.md
+PRODUCT_REQUIREMENTS.md
+UX_PRINCIPLES.md
+IMPLEMENTATION_STATUS.md
+REQUIREMENTS_TRACEABILITY.md
+
+# Download map
+download/
+
+# Voorbeelden
+examples/
+
+# Prisma migraties lock (niet nodig in standalone)
+prisma/migrations/migration_lock.toml
+
+# Bun debug
+*.bun

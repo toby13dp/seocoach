@@ -752,3 +752,301 @@ Stage Summary:
 - Blocking must be explicitly enabled per deployment
 - 39 tests passing, 0 failures
 - Current progress: 200/218 requirements (92%)
+
+---
+Task ID: 13b-1
+Agent: Privacy & Data Management Agent
+Task: Implement Phase 13 privacy and data management features (PRIV-001, PRIV-002)
+
+Work Log:
+- Read full Prisma schema (4515 lines, 60+ models across Phases 1-12) to understand data model
+- Read existing auth helper, db client, and API route patterns for consistency
+- Created 6 privacy library modules in /src/lib/privacy/:
+  1. data-export.ts — GDPR right to data portability
+     - exportUserData(): Collects user profile, settings, org memberships, and all project-related data
+     - generateExportFile(): Writes structured JSON export to /tmp with metadata section
+     - Excludes sensitive fields like API keys from AI providers
+     - ISO 8601 dates, format version, data range metadata
+  2. account-deletion.ts — GDPR right to erasure (account level)
+     - requestAccountDeletion(): 30-day grace period, UUID confirmation code
+     - confirmAccountDeletion(): Validates code + grace period, then:
+       - Transfers org ownership if last ORG_OWNER
+       - Removes all memberships
+       - Anonymizes PII with "Verwijderd [date]"
+       - Soft-deletes user record (deletedAt)
+       - Anonymizes audit log entries (nullifies userId, ipAddress, userAgent)
+       - Deletes sessions, accounts, and settings
+     - cancelAccountDeletion(): Clears scheduled deletion with audit trail
+     - getDeletionStatus(): Reads current deletion status
+     - Uses privacyPreferences JSON field for scheduling metadata
+  3. project-deletion.ts — Project data erasure
+     - requestProjectDeletion(): 7-day grace period, permission check (ORG_OWNER/AGENCY_OWNER/SEO_MANAGER/PLATFORM_ADMIN)
+     - confirmProjectDeletion(): Prisma cascade delete handles all related records
+     - cancelProjectDeletion(): Clears deletion with audit trail
+     - getProjectDeletionStatus(): Reads current status
+     - Uses project settings JSON field for scheduling metadata
+  4. consent-manager.ts — Consent management with full audit trail
+     - ConsentType enum: ANALYTICS, BEHAVIOUR_TRACKING, EXTERNAL_AI, EMAIL_MARKETING
+     - recordConsent(): Stores consent action with evidence, IP, user agent
+     - checkConsent(): Returns current consent state (opt-in default: false)
+     - withdrawConsent(): Records withdrawal + handles consequences:
+       - EXTERNAL_AI: Deactivates non-local AI providers
+       - EMAIL_MARKETING: Disables marketing notification preferences
+       - BEHAVIOUR_TRACKING: Flags for anonymization
+       - ANALYTICS: Records withdrawal, retains anonymized data
+     - getConsentHistory(): Full chronological audit trail
+     - Includes proposed Prisma model (ConsentRecord) in comments for future migration
+  5. retention-manager.ts — Data retention lifecycle management
+     - 7 predefined retention policies with Dutch descriptions:
+       - DailyMetrics: 730 days (2 years)
+       - AICallLogs: 365 days
+       - AuditLogs: 365 days
+       - CrawlData: 180 days
+       - PageSnapshots: 90 days
+       - SessionData: 30 days
+       - JobHistory: 90 days (completed/failed/cancelled only)
+     - enforceRetentionPolicy(): Deletes expired data by type
+     - enforceAllRetentionPolicies(): Runs all policies
+     - getRetentionPolicy() / listRetentionPolicies(): Query policies
+  6. index.ts — Re-exports all privacy modules with type aliases
+- Created 4 API route files:
+  1. /api/user/data-export (POST + GET)
+     - POST: Request data export, returns download link
+     - GET: Download generated export file with user-prefix security check
+     - Zod validation, auth required
+  2. /api/user/account-deletion (POST + GET)
+     - POST: Discriminated union schema for request/confirm/cancel actions
+     - GET: Check deletion status
+     - Dutch error messages with appropriate HTTP status codes
+  3. /api/projects/[id]/deletion (POST + GET)
+     - POST: Discriminated union schema for request/confirm/cancel actions
+     - GET: Check project deletion status
+     - Permission verification built into requestProjectDeletion
+  4. /api/user/consent (GET + POST)
+     - GET: Returns all current consent states + full history
+     - POST: Discriminated union for record/withdraw actions
+     - Extracts IP and user agent from request headers for audit
+- All API routes: auth required, Zod validation, Dutch error messages, proper HTTP status codes
+- TypeScript strict typing throughout
+- Verified: tsc --noEmit shows no errors in new files
+- Verified: lint passes with no new errors
+
+Stage Summary:
+- Phase 13 privacy features (PRIV-001, PRIV-002) fully implemented
+- Complete GDPR compliance: data portability, right to erasure, consent management, data retention
+- 10 new files created, 0 existing files modified
+- All user-facing messages in Dutch
+- Grace periods: 30 days (account), 7 days (project)
+- Full audit trail for consent changes with IP and user agent
+
+---
+Task ID: 13d-1
+Agent: Observability Agent
+Task: Implement health checks, observability, and reliability infrastructure (Phase 13 — OBS-001, OBS-002, PERF-R-002)
+
+Work Log:
+- Created /src/lib/observability/logger.ts — Structured logging with createLogger factory, JSON/pretty-print output, secret masking (15+ patterns), child loggers via withContext(), appLogger singleton
+- Created /src/lib/observability/metrics.ts — In-memory metrics collector with counters, histograms, gauges, duration recording; 11 predefined metric names; getMetricsSnapshot() and resetMetrics()
+- Created /src/lib/observability/request-id.ts — AsyncLocalStorage-based request ID propagation with generateRequestId(), getRequestId(), setRequestId(), withRequestId()
+- Created /src/lib/observability/health.ts — Health check system with checkDatabase(), checkOllama(), checkDiskSpace(), checkMemory(); runAllChecks() computes overall status; OverallHealth type with uptime/version/timestamp
+- Created /src/lib/observability/reliability.ts — withRetry (exponential backoff + jitter), withCircuitBreaker (CLOSED/OPEN/HALF_OPEN), withTimeout, withIdempotency; custom CircuitBreakerOpenError and TimeoutError classes
+- Created /src/lib/observability/index.ts — Central re-export of all observability modules
+- Created /src/app/api/health/route.ts — GET /api/health (full health check, no auth, Cache-Control: no-store)
+- Created /src/app/api/health/ready/route.ts — GET /api/health/ready (200 if DB healthy, 503 otherwise)
+- Created /src/app/api/health/live/route.ts — GET /api/health/live (always 200 if Node.js running)
+- Verified zero TypeScript errors in all new files via bunx tsc --noEmit
+- No existing files modified
+
+Stage Summary:
+- Phase 13 observability infrastructure fully implemented
+- Structured logging with automatic secret masking
+- In-memory metrics collection with 11 predefined metric names
+- Request ID propagation via AsyncLocalStorage
+- 4 health checks (database, Ollama, disk, memory) with Dutch messages
+- 4 reliability patterns (retry, circuit breaker, timeout, idempotency)
+- 3 API endpoints (health, ready, live) for orchestrator probes
+- Zero external dependencies added — only Node.js built-ins
+
+---
+Task ID: 13a-1
+Agent: Security Hardening Agent
+Task: Build Phase 13 — Production Hardening (SEC-001, SEC-002)
+
+Work Log:
+- Created /src/lib/security/rate-limiter.ts — Sliding window rate limiter
+  - In-memory store with configurable presets (auth: 10/min, api: 60/min, crawl: 5/min, ai: 20/min)
+  - Tenant-aware (per organisationId) and IP-based fallback for unauthenticated requests
+  - Auto-cleanup of expired entries every 60 seconds
+  - Exports: checkRateLimit(), createRateLimitMiddleware(), buildTenantKey(), buildIpKey()
+
+- Created /src/lib/security/input-sanitizer.ts — Comprehensive input sanitization
+  - sanitizeHtml(): Strips all HTML except b/i/em/strong/p/br/ul/ol/li/a(href only), removes scripts/events
+  - sanitizeUrl(): Only allows http/https, blocks private IPs (10.x, 172.16-31.x, 192.168.x, 127.x, 169.254.x, ::1, 0.0.0.0)
+  - sanitizeFileName(): Removes path traversal, null bytes, limits length (255), preserves extensions
+  - escapeForRegex(): Escapes all regex metacharacters
+  - sanitizeObject<T>(): Deep object sanitization with dot-notation paths and 9 strategies
+
+- Created /src/lib/security/csrf-protection.ts — CSRF protection
+  - generateCsrfToken(): 32-byte crypto-random via Node.js crypto.randomBytes
+  - validateCsrfToken(): Timing-safe comparison via crypto.timingSafeEqual
+  - Double-submit cookie pattern with __Host- prefix
+  - Origin/Referer validation against NEXTAUTH_URL
+  - Token payload with 1-hour TTL
+
+- Created /src/lib/security/api-permissions.ts — Centralized API permission checking
+  - 20+ route patterns covering all API endpoints with role-based access
+  - checkApiPermission(path, method, userRole): First-match evaluation, deny-by-default
+  - checkObjectPermission(ctx): Tenant isolation + role-based action restrictions
+  - requirePermission() / withPermission(): Decorator/wrapper for API routes
+  - All 9 roles: PLATFORM_ADMIN, ORG_OWNER, AGENCY_OWNER, SEO_MANAGER, CONTENT_MANAGER, EDITOR, DEVELOPER, CLIENT, READ_ONLY
+
+- Created /src/lib/security/secret-masker.ts — Secret masking for logs/errors
+  - maskSecret(): Show first 4 chars, mask rest with ***
+  - maskObject(): Recursive sensitive field masking (case-insensitive key matching)
+  - maskUrl(): Mask credentials in URLs (user:pass@host → user:***@host)
+  - Predefined patterns: password, secret, token, apiKey, apiSecret, consumerKey, consumerSecret, apiKeyEncrypted, applicationPassword, hashedPassword, accessToken, refreshToken
+
+- Created /src/lib/security/index.ts — Barrel re-export of all security modules
+
+- Updated /src/middleware.ts — Integrated security middleware
+  - Rate limiting on all /api/* routes with automatic type detection
+  - CSRF protection on mutation requests (POST, PUT, PATCH, DELETE)
+  - Security headers: X-Content-Type-Options, X-Frame-Options, X-XSS-Protection, Referrer-Policy, Content-Security-Policy, Permissions-Policy
+  - Rate-limit response headers (X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset, Retry-After)
+  - CSRF cookie set on GET responses (HttpOnly, Secure, SameSite=Strict)
+  - Preserved existing next-intl locale routing
+  - All user-facing error messages in Dutch
+
+- Verified: zero TypeScript errors in all new/modified files (bunx tsc --noEmit)
+- Verified: zero ESLint errors in security files (bun run lint)
+
+Stage Summary:
+- Phase 13 security hardening fully implemented (SEC-001, SEC-002)
+- Sliding window rate limiter with tenant-aware and IP-based limiting
+- Comprehensive input sanitization (HTML, URL, file names, regex, deep objects)
+- CSRF protection with double-submit cookie pattern and timing-safe comparison
+- Centralized API permission checking with 20+ route patterns and all 9 roles
+- Secret masking for logs, errors, and URLs
+- Full middleware integration with rate limiting, CSRF, and security headers
+- All user-facing messages in Dutch
+
+---
+Task ID: 13c-1
+Agent: Accessibility Infrastructure Agent
+Task: Implement WCAG 2.1 AA Accessibility Infrastructure (Phase 13 — A11Y-001, A11Y-002)
+
+Work Log:
+- Created 8 accessibility components in /src/components/accessibility/
+- Created barrel re-export index.ts
+- Appended accessibility CSS styles to globals.css
+- Updated providers.tsx with AnnouncerProvider, KeyboardNavigationProvider, ReducedMotionProvider
+- All components use "use client" directive, strict TypeScript, and Dutch labels
+- TypeScript type check passes (no new errors from accessibility code)
+- ESLint passes with 0 new errors
+
+Components Created:
+1. skip-link.tsx — Skip-to-content link, Dutch label "Ga naar hoofdinhoud", hidden by default visible on focus
+2. visually-hidden.tsx — Reusable sr-only component, accepts all HTML div props
+3. announcer.tsx — AnnouncerProvider + useAnnouncer() hook, polite/assertive ARIA live regions, 5s auto-clear
+4. focus-trap.tsx — FocusTrap component, Tab/Shift+Tab cycling, focus restoration on unmount
+5. keyboard-navigation.tsx — KeyboardNavigationProvider + useKeyboardNavigation() hook, data-using-keyboard/mouse on body
+6. reduced-motion.tsx — ReducedMotionProvider + useReducedMotion() hook + ReducedMotionScript, prefers-reduced-motion detection
+7. accessible-table.tsx — AccessibleTable with caption, thead/th scope, sortable with aria-sort, responsive card layout
+8. accessible-dialog.tsx — AccessibleDialog wrapping shadcn/ui Dialog, focus trap, aria-labelledby/describedby, screen reader announcements
+
+CSS Styles Added (globals.css):
+- .using-keyboard :focus — visible focus ring (2px solid emerald)
+- .using-mouse :focus — no focus ring
+- .using-keyboard :focus:not(:focus-visible) — no ring
+- .using-keyboard :focus-visible — visible ring
+- .reduced-motion — animation-duration: 0.01ms, transition-duration: 0.01ms
+- Skip link styles
+- Accessible table responsive styles
+- High contrast mode support via forced-colors media query
+
+Providers Updated:
+- AnnouncerProvider wraps children inside ThemeProvider
+- KeyboardNavigationProvider wraps ThemeProvider
+- ReducedMotionProvider wraps AnnouncerProvider
+- All existing providers (SessionProvider, QueryClientProvider, ThemeProvider) preserved
+
+Stage Summary:
+- Phase 13 accessibility infrastructure (A11Y-001, A11Y-002) fully implemented
+- All 8 components + barrel export + CSS + provider integration complete
+- Zero new TypeScript errors, zero new ESLint errors
+- Dev server running without issues
+
+---
+Task ID: 13f-g-1
+Agent: Docker & Backup Agent
+Task: Phase 13 — Docker Compose Production Setup and Backup/Restore Scripts (BACKUP-001, BACKUP-002)
+
+Work Log:
+- Created multi-stage production Dockerfile (3 stages: deps, builder, runner)
+  - Stage 1 (deps): Installs dependencies with bun
+  - Stage 2 (builder): Builds Next.js app with standalone output, copies static files and public
+  - Stage 3 (runner): Slim node:24-alpine production image
+    - Non-root user (nextjs:nodejs, UID 1001)
+    - Exposes port 3000, NODE_ENV=production
+    - Health check: curl -f http://localhost:3000/api/health/live
+    - CMD: node server.js
+    - Includes version/description labels
+- Created docker-compose.yml (production)
+  - app service: builds from Dockerfile, port 3000, depends_on postgres (healthy), env_file, volumes, healthcheck, restart unless-stopped
+  - postgres service: postgres:16-alpine, named volume, healthcheck pg_isready, environment vars
+  - ollama service: ollama/ollama:latest, named volume, port 11434, GPU deploy config, healthcheck
+  - caddy service: caddy:2-alpine, ports 80+443, Caddyfile volume, depends_on app (healthy)
+  - Named volumes: postgres-data, ollama-data, caddy-data, caddy-config, seocoach-db-data
+  - Network: seocoach-internal (bridge)
+- Created docker-compose.dev.yml (development override)
+  - Mounts source code as volume for hot-reload
+  - NODE_ENV=development, command: bun run dev
+  - Exposes debug port 9229
+  - PostgreSQL port 5432 exposed to host
+- Created scripts/backup.sh (BACKUP-001)
+  - Timestamped backup directory, supports custom output dir
+  - PostgreSQL dump via pg_dump (custom format, compressed)
+  - SQLite backup via sqlite3 .backup (or fallback file copy)
+  - Ollama models list backup
+  - .env backup with chmod 600 and permission warning
+  - manifest.json with timestamp, version, database type, file sizes, SHA256 checksums
+  - Retention: deletes backups older than 30 days
+  - Logging with timestamps, idempotent, cron-safe
+  - Uses set -euo pipefail
+- Created scripts/restore.sh (BACKUP-002)
+  - Validates backup directory and manifest.json
+  - Verifies SHA256 checksums of all backup files
+  - Stops app service (docker compose stop app)
+  - Restores PostgreSQL via pg_restore --clean --if-exists
+  - Restores SQLite via file copy (with pre-restore backup of current DB)
+  - Restarts app, runs health check verification
+  - Prompts for confirmation before destructive operations
+  - Supports --dry-run flag
+  - Logging with timestamps, uses set -euo pipefail
+- Created scripts/setup-ollama.sh
+  - Detects Ollama in Docker Compose, standalone Docker, or native install
+  - Offers to install Ollama locally if not found
+  - Pulls llama3.1 (default chat model, ~4.7 GB) and nomic-embed-text (embeddings, ~274 MB)
+  - Shows disk space requirements and checks available space
+  - Progress indicators during model pull
+  - Lists installed models after completion
+- Updated Caddyfile for production
+  - Uses {$SITE_ADDRESS::81} for local/production dual support
+  - Compression (gzip + zstd)
+  - Security headers: X-Content-Type-Options, X-Frame-Options, X-XSS-Protection, Referrer-Policy, Permissions-Policy, CSP, HSTS
+  - Rate limiting zone definition
+  - JSON access logging with rotation
+  - Preserved XTransformPort query handling
+  - Reverse proxy to app:3000 with extended timeouts for AI requests
+  - Static asset caching with immutable headers
+  - Error page handling
+- Created .dockerignore
+  - Excludes: node_modules, .next, .git, .env, db/*.db, backups/, *.log, skills/, tool-results/, agent-ctx/, examples/, docs, IDE files
+
+Stage Summary:
+- Phase 13 BACKUP-001 and BACKUP-002 requirements fully implemented
+- 8 files created/updated: Dockerfile, docker-compose.yml, docker-compose.dev.yml, scripts/backup.sh, scripts/restore.sh, scripts/setup-ollama.sh, Caddyfile, .dockerignore
+- All bash scripts use set -euo pipefail with proper error handling
+- All scripts executable (chmod +x)
+- Lint check passes (0 errors, 3 pre-existing warnings)
+- Dev server running without issues
